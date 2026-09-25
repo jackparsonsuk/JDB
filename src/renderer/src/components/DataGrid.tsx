@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import type { CellValue, ColumnInfo, DbKind, FilterOp, TableRef } from '@shared/types'
 import { COPY_FORMATS, displayValue, formatRows, type CopyFormat } from '../lib/format'
+import { useOpenLink } from '../lib/openLink'
+import type { OpenTarget } from '../state'
 import { toast } from './Toast'
 
 const ROW_HEIGHT = 26
@@ -22,10 +24,11 @@ interface Props {
   onSort?(column: string): void
   selection: Selection
   onSelectionChange(selection: Selection): void
-  onFollowReference?(column: ColumnInfo, value: CellValue): void
+  /** Where a foreign key cell's ↗ button goes; the button can also be dragged into a pane. */
+  referenceTarget?(column: ColumnInfo, value: CellValue): OpenTarget
   /** Columns linked to another database: tooltip and env class for the jump button. */
   crossLinks?: Map<string, { title: string; env: string }>
-  onFollowCrossLink?(column: string, value: CellValue): void
+  crossLinkTarget?(column: string, value: CellValue): OpenTarget | undefined
   onFilter?(column: string, op: FilterOp, value?: string): void
   copyTarget?: { kind: DbKind; table?: TableRef }
   /** Double-clicking a row, e.g. to open the record explorer. */
@@ -43,6 +46,7 @@ interface MenuState {
 
 export function DataGrid(props: Props) {
   const { columns, rows, columnInfo, selection, onSelectionChange } = props
+  const link = useOpenLink()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(600)
@@ -229,8 +233,10 @@ export function DataGrid(props: Props) {
                         onContextMenu={(e) => openMenu(e, index, ci)}
                       >
                         {(() => {
-                          const fk = info?.references && value !== null && props.onFollowReference ? info : null
-                          const cross = value !== null && props.onFollowCrossLink ? props.crossLinks?.get(columns[ci]) : undefined
+                          const fk = info?.references && value !== null && props.referenceTarget ? props.referenceTarget(info, value) : null
+                          const crossInfo = value !== null ? props.crossLinks?.get(columns[ci]) : undefined
+                          const crossTarget = crossInfo ? props.crossLinkTarget?.(columns[ci], value) : undefined
+                          const cross = crossInfo && crossTarget ? { ...crossInfo, target: crossTarget } : null
                           if (!fk && !cross) return displayValue(value)
                           return (
                             <span className="fk-cell">
@@ -239,9 +245,9 @@ export function DataGrid(props: Props) {
                                 {fk && (
                                   <button
                                     className="fk-jump"
-                                    title={`Open ${fk.references!.name} where ${fk.references!.column} = ${displayValue(value)}`}
+                                    title={`Open ${info!.references!.name} where ${info!.references!.column} = ${displayValue(value)}\nShift+click or drag to open beside`}
                                     onMouseDown={(e) => e.stopPropagation()}
-                                    onClick={() => props.onFollowReference?.(fk, value)}
+                                    {...link(fk)}
                                   >
                                     ↗
                                   </button>
@@ -249,9 +255,9 @@ export function DataGrid(props: Props) {
                                 {cross && (
                                   <button
                                     className={`fk-jump cross env-${cross.env}`}
-                                    title={cross.title}
+                                    title={`${cross.title}\nShift+click or drag to open beside`}
                                     onMouseDown={(e) => e.stopPropagation()}
-                                    onClick={() => props.onFollowCrossLink?.(columns[ci], value)}
+                                    {...link(cross.target)}
                                   >
                                     ⇗
                                   </button>

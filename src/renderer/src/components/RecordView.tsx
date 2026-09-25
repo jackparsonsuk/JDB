@@ -4,6 +4,7 @@ import { incomingLinks, outgoingLinks } from '@shared/links'
 import { pickDateColumn, pickDisplayColumn } from '@shared/display'
 import { useAppState, type Tab } from '../state'
 import { displayValue, formatCount } from '../lib/format'
+import { useOpenLink } from '../lib/openLink'
 import { RowInspector } from './RowInspector'
 import { LoadingBar } from './DataGrid'
 
@@ -59,7 +60,8 @@ interface Relation {
 }
 
 export function RecordView({ tab }: { tab: Extract<Tab, { kind: 'record' }> }) {
-  const { connection, links, openRecord, openTable } = useAppState()
+  const { connection, links } = useAppState()
+  const link = useOpenLink()
   const conn = connection(tab.connectionId)
   const [details, setDetails] = useState<TableDetails | null>(null)
   const [record, setRecord] = useState<RowsResult | null>(null)
@@ -209,7 +211,7 @@ export function RecordView({ tab }: { tab: Extract<Tab, { kind: 'record' }> }) {
           </h2>
         </div>
         <span className="grow" />
-        <button className="ghost" onClick={() => openTable(tab.connectionId, tab.table, tab.key)}>Open in table</button>
+        <button className="ghost" title="Shift+click or drag to open beside" {...link({ kind: 'table', connectionId: tab.connectionId, table: tab.table, filters: tab.key })}>Open in table</button>
       </div>
 
       <div className="record-body">
@@ -228,7 +230,7 @@ export function RecordView({ tab }: { tab: Extract<Tab, { kind: 'record' }> }) {
                     key={p.id}
                     className={`parent-card ${remote ? `remote env-${target?.env}` : ''} ${p.state}`}
                     disabled={p.state !== 'found' || !p.key}
-                    onClick={() => p.key && openRecord(p.connectionId, p.table, p.key)}
+                    {...(p.key ? link({ kind: 'record', connectionId: p.connectionId, table: p.table, key: p.key }) : {})}
                     title={`${p.label} = ${p.filter.value}`}
                   >
                     <span className="parent-label">
@@ -276,7 +278,8 @@ function countOf(r: Relation): number {
 }
 
 function RelationRow({ relation, local, onCountAnyway }: { relation: Relation; local: boolean; onCountAnyway(): void }) {
-  const { connection, openRecord, openTable } = useAppState()
+  const { connection } = useAppState()
+  const link = useOpenLink()
   const [open, setOpen] = useState(false)
   const [preview, setPreview] = useState<{ details: TableDetails; rows: RowsResult } | null>(null)
   const target = connection(relation.connectionId)
@@ -308,7 +311,7 @@ function RelationRow({ relation, local, onCountAnyway }: { relation: Relation; l
         </span>
         <span className={`count-pill ${c?.status ?? 'pending'} ${hasRows ? 'has' : ''}`} title={c?.status === 'skipped' ? c.reason : c?.status === 'error' ? c.message : c?.status === 'timeout' ? 'Stopped after 8 seconds' : undefined}>{badge}</span>
         {(c?.status === 'skipped' || c?.status === 'timeout') && <button className="link small" onClick={onCountAnyway}>count anyway</button>}
-        {hasRows && <button className="link small" onClick={() => openTable(relation.connectionId, relation.table, [filter])}>open all</button>}
+        {hasRows && <button className="link small" {...link({ kind: 'table', connectionId: relation.connectionId, table: relation.table, filters: [filter] })}>open all</button>}
       </div>
       {open && (
         <div className="relation-preview">
@@ -325,7 +328,7 @@ function RelationRow({ relation, local, onCountAnyway }: { relation: Relation; l
                   {preview.rows.rows.map((r, i) => {
                     const key = recordKey(preview.details, preview.rows.columns, r)
                     return (
-                      <tr key={i} className={key ? 'clickable' : ''} onClick={() => key && openRecord(relation.connectionId, relation.table, key)}>
+                      <tr key={i} className={key ? 'clickable' : ''} {...(key ? link({ kind: 'record', connectionId: relation.connectionId, table: relation.table, key }) : {})}>
                         {shown.map((col) => <td key={col.name}>{displayValue(r[idx(col.name)])}</td>)}
                       </tr>
                     )

@@ -14,7 +14,8 @@ import type { TranslateResult } from '@shared/nl/translate'
 
 const emptySelection: Selection = { rows: new Set(), active: null }
 
-export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }>; active: boolean }) {
+/** `active`: the tab is showing in its pane; `focused`: and that pane has the keyboard. */
+export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 'query' }>; active: boolean; focused: boolean }) {
   const { connection, tables, loadTables } = useAppState()
   const conn = connection(tab.connectionId)
   const scheme = useColorScheme()
@@ -61,13 +62,13 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
 
   // Esc cancels from anywhere in the tab, as long as something is running.
   useEffect(() => {
-    if (!running || !active) return
+    if (!running || !focused) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') cancel()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [running, active, cancel])
+  }, [running, focused, cancel])
 
   useEffect(() => {
     loadTables(tab.connectionId)

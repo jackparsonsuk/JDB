@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CellValue, ColumnFilter, ColumnInfo, FilterOp, RowsResult, TableDetails } from '@shared/types'
-import { useAppState, type Tab } from '../state'
+import { useAppState, type OpenTarget, type Tab } from '../state'
 import { incomingLinks, outgoingLinks } from '@shared/links'
 import { formatCount, selectSql } from '../lib/format'
 import { DataGrid, type Selection } from './DataGrid'
@@ -22,8 +22,9 @@ const OPS: { op: FilterOp; label: string; needsValue: boolean }[] = [
 
 const emptySelection: Selection = { rows: new Set(), active: null }
 
-export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }>; active: boolean }) {
-  const { connection, openTable, openQuery, openRecord, links, tables } = useAppState()
+/** `focused`: this tab is showing in the focused pane, so it owns the keyboard. */
+export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' }>; focused: boolean }) {
+  const { connection, openQuery, openRecord, links, tables } = useAppState()
   const conn = connection(tab.connectionId)
   const [details, setDetails] = useState<TableDetails | null>(null)
   const [filters, setFilters] = useState<ColumnFilter[]>(tab.initialFilters)
@@ -71,7 +72,7 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
   const refresh = useCallback(() => setReloadKey((k) => k + 1), [])
 
   useEffect(() => {
-    if (!active) return
+    if (!focused) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'F5') {
         e.preventDefault()
@@ -82,7 +83,7 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [active, refresh, selection.active])
+  }, [focused, refresh, selection.active])
 
   const outgoing = useMemo(() => outgoingLinks(links, tab.connectionId, tab.table), [links, tab.connectionId, tab.table])
   const incoming = useMemo(() => incomingLinks(links, tab.connectionId, tab.table), [links, tab.connectionId, tab.table])
@@ -94,13 +95,13 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
   const explore = (index: number): void => {
     const r = visibleRows[index]
     const key = details && result && r ? recordKey(details, result.columns, r) : null
-    if (key) openRecord(tab.connectionId, tab.table, key)
+    if (key) openRecord(tab.connectionId, tab.table, key, tab.pane)
   }
   const canExplore = !!details?.columns.some((c) => c.isPrimaryKey)
 
-  const followCrossLink = (column: string, value: CellValue): void => {
+  const crossLinkTarget = (column: string, value: CellValue): OpenTarget | undefined => {
     const link = outgoing.find((l) => l.from.column === column)
-    if (link) openTable(link.to.connectionId, link.to.table, [{ column: link.to.column, op: '=', value: String(value) }])
+    return link && { kind: 'table', connectionId: link.to.connectionId, table: link.to.table, filters: [{ column: link.to.column, op: '=', value: String(value) }] }
   }
 
   const columnInfo = useMemo(
@@ -129,9 +130,9 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
     setPage(0)
   }
 
-  const followReference = (column: ColumnInfo, value: CellValue): void => {
+  const referenceTarget = (column: ColumnInfo, value: CellValue): OpenTarget => {
     const ref = column.references!
-    openTable(tab.connectionId, { schema: ref.schema, name: ref.name }, [{ column: ref.column, op: '=', value: String(value) }])
+    return { kind: 'table', connectionId: tab.connectionId, table: { schema: ref.schema, name: ref.name }, filters: [{ column: ref.column, op: '=', value: String(value) }] }
   }
 
   if (!conn) return null
@@ -224,10 +225,10 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
           onSort={toggleSort}
           selection={selection}
           onSelectionChange={setSelection}
-          onFollowReference={followReference}
+          referenceTarget={referenceTarget}
           crossLinks={crossLinks}
           onRowDoubleClick={canExplore ? explore : undefined}
-          onFollowCrossLink={followCrossLink}
+          crossLinkTarget={crossLinkTarget}
           onFilter={addFilter}
           copyTarget={{ kind: conn.kind, table: tab.table }}
         />
@@ -239,8 +240,8 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
             row={activeRow}
             columnInfo={columnInfo}
             referencedBy={details?.referencedBy}
-            onOpen={(table, f) => openTable(tab.connectionId, table, f)}
-            cross={{ outgoing, incoming, connection, open: openTable }}
+            connectionId={tab.connectionId}
+            cross={{ outgoing, incoming, connection }}
             onExplore={canExplore && selection.active !== null ? () => explore(selection.active!) : undefined}
             onClose={() => setSelection(emptySelection)}
           />

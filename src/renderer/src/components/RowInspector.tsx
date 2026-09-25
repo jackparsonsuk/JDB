@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import type { CellValue, ColumnFilter, ColumnInfo, CrossLink, DbKind, ReverseReference, TableRef } from '@shared/types'
+import type { CellValue, ColumnInfo, CrossLink, DbKind, ReverseReference, TableRef } from '@shared/types'
 import { displayValue, formatRows, quoteIdent, sqlLiteral } from '../lib/format'
+import { useOpenLink } from '../lib/openLink'
 import { toast } from './Toast'
 
 interface Props {
@@ -10,7 +11,8 @@ interface Props {
   row: CellValue[]
   columnInfo?: Map<string, ColumnInfo>
   referencedBy?: ReverseReference[]
-  onOpen?(table: TableRef, filters: ColumnFilter[]): void
+  /** The row's connection; when set, references are shown as links that open (or drag) into a pane. */
+  connectionId?: string
   cross?: CrossLinkProps
   /** Opens the record explorer for this row; omitted when the table has no primary key. */
   onExplore?(): void
@@ -23,7 +25,6 @@ export interface CrossLinkProps {
   /** Links from other databases pointing at a key in this table. */
   incoming: CrossLink[]
   connection(id: string): { name: string; env: string } | undefined
-  open(connectionId: string, table: TableRef, filters: ColumnFilter[]): void
 }
 
 /** Incoming links can be numerous (audit columns on dozens of tables); show a few, expandable. */
@@ -41,7 +42,10 @@ function prettyJson(value: CellValue): string | null {
   }
 }
 
-export function RowInspector({ kind, table, columns, row, columnInfo, referencedBy, onOpen, cross, onExplore, onClose }: Props) {
+export function RowInspector({ kind, table, columns, row, columnInfo, referencedBy, connectionId, cross, onExplore, onClose }: Props) {
+  const link = useOpenLink()
+  const tableTarget = (table: TableRef, column: string, value: CellValue) =>
+    link({ kind: 'table', connectionId: connectionId!, table, filters: [{ column, op: '=', value: String(value) }] })
   const valueOf = (column: string): CellValue => row[columns.indexOf(column)]
   const copy = (text: string, what: string): void => {
     window.api.copy(text)
@@ -90,13 +94,11 @@ export function RowInspector({ kind, table, columns, row, columnInfo, referenced
               <div className={`field-value ${value === null ? 'null' : ''}`}>
                 {json ? <pre>{json}</pre> : displayValue(value)}
               </div>
-              {info?.references && value !== null && onOpen && (
+              {info?.references && value !== null && connectionId && (
                 <button
                   className="link"
-                  onClick={() => onOpen(
-                    { schema: info.references!.schema, name: info.references!.name },
-                    [{ column: info.references!.column, op: '=', value: String(value) }]
-                  )}
+                  title="Shift+click or drag to open beside"
+                  {...tableTarget({ schema: info.references.schema, name: info.references.name }, info.references.column, value)}
                 >
                   → {info.references.name}.{info.references.column}
                 </button>
@@ -106,7 +108,7 @@ export function RowInspector({ kind, table, columns, row, columnInfo, referenced
         })}
       </div>
 
-      {referencedBy && referencedBy.length > 0 && onOpen && (
+      {referencedBy && referencedBy.length > 0 && connectionId && (
         <div className="inspector-refs">
           <div className="section-title">Referenced by</div>
           {referencedBy.map((ref) => {
@@ -116,7 +118,7 @@ export function RowInspector({ kind, table, columns, row, columnInfo, referenced
                 key={`${ref.table.schema}.${ref.table.name}.${ref.column}`}
                 className="ref"
                 disabled={value === null || value === undefined}
-                onClick={() => onOpen(ref.table, [{ column: ref.column, op: '=', value: String(value) }])}
+                {...(value === null || value === undefined ? {} : tableTarget(ref.table, ref.column, value))}
               >
                 <span>{ref.table.name}</span>
                 <span className="muted">.{ref.column}</span>
@@ -135,6 +137,9 @@ export function RowInspector({ kind, table, columns, row, columnInfo, referenced
 
 function CrossLinks({ cross, valueOf }: { cross: CrossLinkProps; valueOf(column: string): CellValue }) {
   const [showAll, setShowAll] = useState(false)
+  const link = useOpenLink()
+  const open = (connectionId: string, table: TableRef, column: string, value: CellValue) =>
+    link({ kind: 'table', connectionId, table, filters: [{ column, op: '=', value: String(value) }] })
   const usable = (v: CellValue): v is string | number | boolean => v !== null && v !== undefined
   const outgoing = cross.outgoing.filter((l) => usable(valueOf(l.from.column)))
   const incoming = cross.incoming.filter((l) => usable(valueOf(l.to.column)))
@@ -158,7 +163,7 @@ function CrossLinks({ cross, valueOf }: { cross: CrossLinkProps; valueOf(column:
       {outgoing.map((l) => {
         const value = valueOf(l.from.column)
         return (
-          <button key={l.id} className="ref cross-ref" onClick={() => cross.open(l.to.connectionId, l.to.table, [{ column: l.to.column, op: '=', value: String(value) }])}>
+          <button key={l.id} className="ref cross-ref" {...open(l.to.connectionId, l.to.table, l.to.column, value)}>
             <Target connectionId={l.to.connectionId} label={`${l.to.table.name} (${l.from.column} ${displayValue(value)})`} />
           </button>
         )
@@ -166,7 +171,7 @@ function CrossLinks({ cross, valueOf }: { cross: CrossLinkProps; valueOf(column:
       {shown.map((l) => {
         const value = valueOf(l.to.column)
         return (
-          <button key={l.id} className="ref cross-ref" onClick={() => cross.open(l.from.connectionId, l.from.table, [{ column: l.from.column, op: '=', value: String(value) }])}>
+          <button key={l.id} className="ref cross-ref" {...open(l.from.connectionId, l.from.table, l.from.column, value)}>
             <Target connectionId={l.from.connectionId} label={`${l.from.table.name}.${l.from.column}`} />
           </button>
         )
