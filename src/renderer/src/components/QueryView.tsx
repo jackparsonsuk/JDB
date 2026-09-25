@@ -6,9 +6,11 @@ import { findWriteKeyword } from '@shared/sqlGuard'
 import { useAppState, type Tab } from '../state'
 import { formatCount, formatDuration } from '../lib/format'
 import { useColorScheme } from '../lib/useColorScheme'
-import { DataGrid, type Selection } from './DataGrid'
+import { DataGrid, LoadingBar, type Selection } from './DataGrid'
 import { RowInspector } from './RowInspector'
 import { AskBar } from './AskBar'
+import { runFederated, type StepRun } from '../lib/federated'
+import type { TranslateResult } from '@shared/nl/translate'
 
 const emptySelection: Selection = { rows: new Set(), active: null }
 
@@ -20,6 +22,18 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
   const [result, setResult] = useState<QueryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
+  const [runStarted, setRunStarted] = useState(0)
+  /** Cross-database runs: which step is running, and what each step did once finished. */
+  const [stepLabel, setStepLabel] = useState<string | null>(null)
+  const [stepRuns, setStepRuns] = useState<StepRun[] | null>(null)
+  const [, setTick] = useState(0)
+
+  // Re-render every 100ms while a query runs so the elapsed time counts up.
+  useEffect(() => {
+    if (!running) return
+    const id = setInterval(() => setTick((t) => t + 1), 100)
+    return () => clearInterval(id)
+  }, [running])
   const [resultIndex, setResultIndex] = useState(0)
   const [selection, setSelection] = useState<Selection>(emptySelection)
   const [editorHeight, setEditorHeight] = useState(220)
@@ -52,6 +66,7 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
     }
 
     setRunning(true)
+    setRunStarted(Date.now())
     setError(null)
     try {
       const r = await window.api.runQuery(tab.connectionId, statement)
@@ -65,6 +80,35 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
       setRunning(false)
     }
   }, [conn, running, tab.connectionId])
+
+  const runAsk = useCallback(async (translated: TranslateResult) => {
+    const plan = translated.federated
+    if (!plan) {
+      setText(translated.sql ?? '')
+      setStepRuns(null)
+      execute(translated.sql ?? '')
+      return
+    }
+    if (running) return
+    setRunning(true)
+    setRunStarted(Date.now())
+    setError(null)
+    setStepRuns(null)
+    try {
+      const { result: merged, runs } = await runFederated(plan, (step) =>
+        setStepLabel(`Step ${step.index} of ${plan.steps.length} · ${step.connectionName}: ${step.description}`))
+      setResult(merged)
+      setStepRuns(runs)
+      setResultIndex(0)
+      setSelection(emptySelection)
+    } catch (e) {
+      setError((e as Error).message)
+      setResult(null)
+    } finally {
+      setRunning(false)
+      setStepLabel(null)
+    }
+  }, [execute, running])
 
   /** Runs the editor selection if there is one, otherwise the whole editor. */
   const run = useCallback(() => {
@@ -121,12 +165,8 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
         <div className="query-main">
           {showAsk && (
             <AskBar
-              connectionId={tab.connectionId}
-              kind={conn.kind}
-              onRun={(generated) => {
-                setText(generated)
-                execute(generated)
-              }}
+              connection={conn}
+              onRun={runAsk}
               onEdit={(generated) => {
                 setText(generated)
                 viewRef.current?.focus()
@@ -150,6 +190,11 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
           <div className="splitter" onMouseDown={startResize} />
 
           {error && <div className="error-bar">{error}</div>}
+          {running && !result && (
+            <div className="results running">
+              <LoadingBar label={`${stepLabel ?? 'Running query'}… ${((Date.now() - runStarted) / 1000).toFixed(1)}s`} overlay={false} />
+            </div>
+          )}
 
           {result && (
             <div className="results">
@@ -159,6 +204,15 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
                     Result {i + 1} <span className="muted">({formatCount(s.rows.length)})</span>
                   </button>
                 ))}
+                {stepRuns && (
+                  <span className="step-runs" title={stepRuns.map((r) => `Step ${r.step.index} · ${r.step.connectionName}: ${r.step.description}`).join('\n')}>
+                    {stepRuns.map((r) => (
+                      <span key={r.step.index} className="step-run">
+                        {r.step.connectionName} <span className="muted">{r.rows.toLocaleString()} · {formatDuration(r.durationMs)}</span>
+                      </span>
+                    ))}
+                  </span>
+                )}
                 <span className="muted result-meta">
                   {formatDuration(result.durationMs)}
                   {result.resultSets.length === 0 && ` · ${result.rowsAffected.reduce((a, b) => a + b, 0)} rows affected`}
@@ -167,6 +221,7 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
               {set ? (
                 <div className="view-body">
                   <DataGrid
+                    loadingLabel={running ? `${stepLabel ?? 'Running query'}… ${((Date.now() - runStarted) / 1000).toFixed(1)}s` : undefined}
                     columns={set.columns}
                     rows={set.rows}
                     selection={selection}

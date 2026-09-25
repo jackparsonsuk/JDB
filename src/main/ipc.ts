@@ -1,8 +1,9 @@
 import { clipboard, ipcMain } from 'electron'
-import type { ConnectionConfig, ConnectionInput, CrossLink, LinkEnd, RowsRequest, TableRef, ValueLookup } from '@shared/types'
+import type { ConnectionConfig, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RowsRequest, TableRef, ValueLookup } from '@shared/types'
 import * as db from './db'
 import * as store from './store'
 import { discoverLinks, verifyLink } from './links'
+import { countRelated } from './explore'
 
 /**
  * Registers a handler that returns { ok, value } or { ok: false, error } rather than throwing,
@@ -35,11 +36,12 @@ export function registerIpc(): void {
   handle('db:tables', (id: string) => db.listTables(id))
   handle('db:describe', (id: string, table: TableRef) => db.describeTable(id, table))
   handle('db:rows', (id: string, request: RowsRequest) => db.fetchRows(id, request))
-  handle('db:schema', (id: string) => db.describeSchema(id))
+  handle('db:schema', (id: string) => db.cachedSchema(id))
   handle('db:distinct', (id: string, table: TableRef, column: string, limit: number, via?: ValueLookup) =>
     db.distinctValues(id, table, column, limit, via))
   handle('db:query', (id: string, sql: string) => db.runQuery(id, sql))
 
+  handle('db:countRelated', (id: string, requests: RelatedCountRequest[]) => countRelated(id, requests))
   handle('links:list', () => store.listLinks())
   handle('links:save', (links: CrossLink[]) => store.saveLinks(links))
   handle('links:delete', (id: string) => store.deleteLink(id))

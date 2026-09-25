@@ -2,6 +2,7 @@ import type { DbKind } from '../types'
 import { formatRangeLabel, isoDate, parseDate, type DateRange } from './dates'
 import { valueSources, type ChildLink, type Model, type ModelColumn, type ModelTable, type ValueSource } from './model'
 import { buildPlan, type Plan } from './plan'
+import { buildFederated, usesRemote, type FederatedPlan } from './federated'
 import { tokenize, type Token } from './tokens'
 import { containsRun, FILLER, sameWords, splitIdentifier, SQL_KEYWORDS, stem } from './words'
 
@@ -24,6 +25,8 @@ export interface TranslateResult {
   wanted: ValueSource[]
   /** Tables and links the query uses, for the diagram view. */
   plan: Plan | null
+  /** Set when the query spans databases and has to run as several steps. */
+  federated?: FederatedPlan
 }
 
 /** Loaded values per ValueSource key; null means the column had too many distinct values to use. */
@@ -48,11 +51,14 @@ export type Condition =
   | { kind: 'null'; target: Target; isNull: boolean }
   | { kind: 'range'; target: Target; range: DateRange }
   | { kind: 'exists'; link: ChildLink; negate: boolean }
+  /** Key list produced by an earlier step of a cross-database plan. */
+  | { kind: 'inKeys'; target: Target; step: number; negate: boolean }
 
 export interface Query {
   table: ModelTable
   conditions: Condition[]
-  shown: ModelColumn[]
+  /** Extra columns from joined tables, e.g. a lookup's label. */
+  shown: Target[]
   count: boolean
   groupBy?: Target
   limit?: number
@@ -230,6 +236,18 @@ export function translate(input: string, model: Model, values: ValueCache, now =
     if (m.alternatives.length && !m.exact) notes.push(`"${word}" → ${m.column.info.name} (also: ${m.alternatives.map((a) => a.info.name).join(', ')})`)
   }
 
+  const addShown = (target: Target): void => {
+    if (!q.shown.some((t) => t.column === target.column && t.via === target.via)) q.shown.push(target)
+  }
+
+  /** "<parent> <column>": a column of a table reached through a foreign key or cross-database link. */
+  const matchParentColumn = (i: number): { fk: ModelColumn; match: ColumnMatch; prefix: number } | null => {
+    const parent = matchParent(table, tokens, i)
+    if (!parent) return null
+    const match = matchColumn(parent.column.ref!.table, tokens, i + parent.length, used)
+    return match ? { fk: parent.column, match, prefix: parent.length } : null
+  }
+
   /** Default date column: the table's own date (InvoiceDate), then created, then any date. */
   const defaultDate = (): ModelColumn | undefined => {
     const dates = table.columns.filter((c) => c.kind === 'date')
@@ -399,10 +417,21 @@ export function translate(input: string, model: Model, values: ValueCache, now =
       }
       const parent = matchParent(table, tokens, i + offset)
       if (parent && !neg) {
-        if (!q.shown.includes(parent.column)) q.shown.push(parent.column)
+        const parentTable = parent.column.ref!.table
+        const found = matchColumn(parentTable, tokens, i + offset + parent.length, used)
+        // "with repairer created this year": "created this year" is about the main table, not a repairer column.
+        const specific = found && found.column.kind === 'date' && readDateCondition(i + offset + parent.length + found.length, true) ? null : found
+        if (specific && readOperator(i + offset + parent.length + specific.length)) {
+          // "with job status is closed": a condition on the parent, handled below.
+          mark(range(i, offset), 'filler')
+          i += offset
+          continue
+        }
+        const column = specific?.column ?? parentTable.display!
+        addShown({ column, via: parent.column })
         mark(range(i, offset), 'keyword', 'also show')
-        mark(range(i + offset, parent.length), 'column', `${parent.column.ref!.table.info.name}.${parent.column.ref!.table.display!.info.name}`)
-        i += offset + parent.length
+        mark(range(i + offset, parent.length + (specific?.length ?? 0)), 'column', `${parentTable.info.name}.${column.info.name}`)
+        i += offset + parent.length + (specific?.length ?? 0)
         continue
       }
       const column = matchColumn(table, tokens, i + offset, used)
@@ -436,8 +465,8 @@ export function translate(input: string, model: Model, values: ValueCache, now =
         if (value) {
           q.conditions.push({ kind: 'like', target, pattern: `%${value.text}%`, negate })
           mark(range(i + offset + parent.length, value.length), 'value', `contains "${value.text}"`)
-        } else if (!q.shown.includes(parent.column)) {
-          q.shown.push(parent.column)
+        } else {
+          addShown(target)
         }
         negate = false
         i += offset + parent.length + (value?.length ?? 0)
@@ -460,8 +489,20 @@ export function translate(input: string, model: Model, values: ValueCache, now =
       }
     }
 
+    // <parent> <column> <operator> <value>: "job claim reference contains 123", "customer name is acme"
+    const parentColumn = matchParentColumn(i)
+    const plainColumn = matchColumn(table, tokens, i, used)
+    if (parentColumn && parentColumn.prefix + parentColumn.match.length > (plainColumn?.length ?? 0)) {
+      const consumed = columnCondition(parentColumn.match, i, parentColumn.fk, parentColumn.prefix)
+      if (consumed) {
+        negate = false
+        i += consumed
+        continue
+      }
+    }
+
     // <column> <operator> <value>, <date column> <date>, or a column used as an adjective
-    const column = matchColumn(table, tokens, i, used)
+    const column = plainColumn
     if (column) {
       const consumed = columnCondition(column, i)
       if (consumed) {
@@ -514,7 +555,11 @@ export function translate(input: string, model: Model, values: ValueCache, now =
     if (!roles[k] && !FILLER.has(t.lower) && t.type === 'word') notes.push(`Didn't understand "${t.text}"`)
   }
 
-  return { sql: buildSql(q, model.kind), table, spans: spans(), notes: dedupe(notes), wanted, plan: buildPlan(q) }
+  if (usesRemote(q)) {
+    const federated = buildFederated(q, model, notes)
+    return { sql: federated.script, table, spans: spans(), notes: dedupe(notes), wanted, plan: buildPlan(q), federated: federated.plan }
+  }
+  return { sql: buildSql(q, model.kind).sql, table, spans: spans(), notes: dedupe(notes), wanted, plan: buildPlan(q) }
 
   // ---- closures that need the parse state ----
 
@@ -531,19 +576,21 @@ export function translate(input: string, model: Model, values: ValueCache, now =
     return { target, length: column.length }
   }
 
-  function columnCondition(m: ColumnMatch, i: number): number {
+  function columnCondition(m: ColumnMatch, i: number, via?: ModelColumn, prefix = 0): number {
     const c = m.column
-    let k = i + m.length
-    const colName = c.info.name
+    const length = prefix + m.length
+    let k = i + length
+    const colName = via ? `${via.ref!.table.info.name}.${c.info.name}` : c.info.name
+    const own: Target = { column: c, via }
 
     // Date column followed by a date: "created after 1/1/2025", "exported this week"
     if (c.kind === 'date') {
       const date = readDateCondition(k, true)
       if (date) {
-        q.conditions.push({ kind: 'range', target: { column: c }, range: date.range })
-        mark(range(i, m.length), 'column', colName)
+        q.conditions.push({ kind: 'range', target: own, range: date.range })
+        mark(range(i, length), 'column', colName)
         mark(range(k, date.length), 'date', formatRangeLabel(date.range))
-        return m.length + date.length
+        return length + date.length
       }
     }
 
@@ -551,18 +598,18 @@ export function translate(input: string, model: Model, values: ValueCache, now =
     const op = readOperator(k)
     if (op) {
       k += op.length
-      mark(range(i, m.length), 'column', colName)
-      mark(range(i + m.length, op.length), 'keyword', op.label)
+      mark(range(i, length), 'column', colName)
+      mark(range(i + length, op.length), 'keyword', op.label)
       if (op.op === 'empty' || op.op === 'filled') {
-        q.conditions.push({ kind: 'null', target: { column: c }, isNull: (op.op === 'empty') !== negate })
-        return m.length + op.length
+        q.conditions.push({ kind: 'null', target: own, isNull: (op.op === 'empty') !== negate })
+        return length + op.length
       }
       const value = readValue(k)
-      if (!value) return m.length + op.length
+      if (!value) return length + op.length
       // Comparing a foreign key to text means comparing its lookup's label, e.g. status is closed.
-      const target: Target = c.ref?.table.display && !/^-?\d+$/.test(value.text)
+      const target: Target = !via && c.ref?.table.display && !/^-?\d+$/.test(value.text)
         ? { column: c.ref.table.display, via: c }
-        : { column: c }
+        : own
       const known = canonical(target, value.text)
       if (op.op === 'like' || op.op === 'starts' || op.op === 'ends') {
         const pattern = op.op === 'like' ? `%${value.text}%` : op.op === 'starts' ? `${value.text}%` : `%${value.text}`
@@ -572,11 +619,11 @@ export function translate(input: string, model: Model, values: ValueCache, now =
         q.conditions.push({ kind: 'compare', target, op: sqlOp, value: literal(known ?? value.text, target.column) })
       }
       mark(range(k, value.length), 'value', known ?? value.text)
-      return m.length + op.length + value.length
+      return length + op.length + value.length
     }
 
     // Adjective use needs an exact name match to avoid false positives.
-    if (!m.exact) return 0
+    if (!m.exact || via) return 0
     if (c.kind === 'date' && !c.core.includes('created')) {
       // "exported invoices" -> ExportedDatetime IS NOT NULL
       q.conditions.push({ kind: 'null', target: { column: c }, isNull: negate })
@@ -728,8 +775,27 @@ function dedupe(items: string[]): string[] {
 
 // ---- SQL generation ------------------------------------------------------------------------
 
-function buildSql(q: Query, kind: DbKind): string {
-  const quote = (s: string): string => (kind === 'mssql' ? `[${s.replace(/]/g, ']]')}]` : `\`${s.replace(/`/g, '``')}\``)
+/** Where a cross-database step's key list goes in the SQL: `{{keys:N}}` is replaced by a predicate at run time. */
+export interface KeyPlaceholder {
+  token: string
+  step: number
+  /** Rendered column expression the keys are compared with, e.g. o.`JobId`. */
+  column: string
+  negate: boolean
+  columnType: string
+}
+
+export interface BuildOptions {
+  /** Replace the SELECT list: plain columns of the main table, optionally DISTINCT, with aliases. */
+  select?: { columns: { name: string; alias?: string }[]; distinct?: boolean }
+  /** Row limit override; null for none. */
+  limit?: number | null
+  /** Extra WHERE predicates; `{t}` stands for the main table alias. */
+  where?: string[]
+}
+
+export function buildSql(q: Query, kind: DbKind, options: BuildOptions = {}): { sql: string; placeholders: KeyPlaceholder[] } {
+  const quote = (s: string): string => quoteIdentifier(kind, s)
   const qualified = (t: ModelTable): string => `${quote(t.info.schema)}.${quote(t.info.name)}`
   const taken = new Set<string>()
   const makeAlias = (words: string[]): string => {
@@ -759,6 +825,7 @@ function buildSql(q: Query, kind: DbKind): string {
   const dateLit = (d: Date): string => (kind === 'mssql' ? `'${isoDate(d).replace(/-/g, '')}'` : `'${isoDate(d)}'`)
 
   const where: string[] = []
+  const placeholders: KeyPlaceholder[] = []
   for (const c of q.conditions) {
     switch (c.kind) {
       case 'compare':
@@ -786,18 +853,33 @@ function buildSql(q: Query, kind: DbKind): string {
         where.push(`${c.negate ? 'NOT EXISTS' : 'EXISTS'} (\n    SELECT 1 FROM ${qualified(c.link.table)} ${alias}\n    WHERE ${alias}.${quote(c.link.column)} = ${main}.${quote(c.link.parentColumn)}\n  )`)
         break
       }
+      case 'inKeys': {
+        const token = `{{keys:${c.step}}}`
+        placeholders.push({ token, step: c.step, column: col(c.target), negate: c.negate, columnType: c.target.column.info.dataType })
+        where.push(token)
+        break
+      }
     }
   }
+  for (const extra of options.where ?? []) where.push(extra.replace(/\{t\}/g, main))
 
-  for (const fk of q.shown) joinAlias(fk)
-  const shownCols = q.shown.map((fk) => `${joinAlias(fk)}.${quote(fk.ref!.table.display!.info.name)} AS ${quote(splitIdentifier(fk.info.name).filter((w) => w !== 'id').map(cap).join('') + cap(splitIdentifier(fk.ref!.table.display!.info.name).join('')))}`)
+  const shownCols = q.shown.map((t) => {
+    const label = t.via
+      ? splitIdentifier(t.via.info.name).filter((w) => w !== 'id').map(cap).join('') + cap(splitIdentifier(t.column.info.name).join(''))
+      : t.column.info.name
+    return `${col(t)} AS ${quote(label)}`
+  })
   const order = q.order ? `${col(q.order.target)} ${q.order.desc ? 'DESC' : 'ASC'}` : null
 
   let select: string
   let groupBy = ''
   let orderBy = order ? `\nORDER BY ${order}` : ''
-  let limit = q.limit ?? (q.count ? undefined : DEFAULT_LIMIT)
-  if (q.count && q.groupBy) {
+  let limit = options.limit !== undefined ? options.limit ?? undefined : q.limit ?? (q.count ? undefined : DEFAULT_LIMIT)
+  if (options.select) {
+    const cols = options.select.columns.map((c) => `${main}.${quote(c.name)}${c.alias ? ` AS ${quote(c.alias)}` : ''}`)
+    select = cols.join(', ')
+    orderBy = ''
+  } else if (q.count && q.groupBy) {
     const g = col(q.groupBy)
     select = `${g}, COUNT(*) AS ${quote('Count')}`
     groupBy = `\nGROUP BY ${g}`
@@ -810,17 +892,24 @@ function buildSql(q: Query, kind: DbKind): string {
     select = [`${main}.*`, ...shownCols].join(', ')
   }
 
-  // Joins are collected while rendering conditions, so emit them last.
+  // Joins are collected while rendering conditions and columns, so emit them last.
   const joinSql = [...joins.entries()].map(([fk, alias]) => {
     const parent = fk.ref!.table
     const required = q.conditions.some((c) => 'target' in c && c.target.via === fk && !(c.kind === 'null' && c.isNull))
     return `\n${required ? 'JOIN' : 'LEFT JOIN'} ${qualified(parent)} ${alias} ON ${alias}.${quote(fk.ref!.column)} = ${main}.${quote(fk.info.name)}`
   }).join('')
 
+  // SQL Server wants DISTINCT before TOP: SELECT DISTINCT TOP 10 ...
+  const distinct = options.select?.distinct ? 'DISTINCT ' : ''
   const top = kind === 'mssql' && limit ? `TOP ${limit} ` : ''
   const tail = kind === 'mysql' && limit ? `\nLIMIT ${limit}` : ''
   const whereSql = where.length ? `\nWHERE ${where.join('\n  AND ')}` : ''
-  return `SELECT ${top}${select}\nFROM ${qualified(q.table)} ${main}${joinSql}${whereSql}${groupBy}${orderBy}${tail}`
+  const sql = `SELECT ${distinct}${top}${select}\nFROM ${qualified(q.table)} ${main}${joinSql}${whereSql}${groupBy}${orderBy}${tail}`
+  return { sql, placeholders }
+}
+
+export function quoteIdentifier(kind: DbKind, s: string): string {
+  return kind === 'mssql' ? `[${s.replace(/]/g, ']]')}]` : `\`${s.replace(/`/g, '``')}\``
 }
 
 function cap(s: string): string {

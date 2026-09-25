@@ -146,6 +146,20 @@ export interface LinkCandidate {
 /** How key values are compared across servers, so literals are written safely for each driver. */
 export type KeyKind = 'number' | 'guid' | 'text'
 
+export interface RelatedCountRequest {
+  table: TableRef
+  column: string
+  value: string
+  /** Count even when the table is large and the column has no index. */
+  force?: boolean
+}
+
+export type RelatedCount =
+  | { status: 'ok'; count: number; capped: boolean }
+  | { status: 'skipped'; reason: string }
+  | { status: 'timeout' }
+  | { status: 'error'; message: string }
+
 export interface HistoryEntry {
   id: string
   connectionId: string

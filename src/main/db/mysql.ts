@@ -3,7 +3,7 @@ import type {
   CellValue, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
   KeyKind, SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
 } from '@shared/types'
-import { assembleSchema, chunk, distinctSource, KEY_BATCH, SAMPLE_SCAN_ROWS, toCell, type Driver, type SchemaColumnRow } from './driver'
+import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, SAMPLE_SCAN_ROWS, TimeoutError, toCell, type Driver, type SchemaColumnRow } from './driver'
 import { buildWhere } from './filters'
 
 const quote = (identifier: string): string => `\`${identifier.replace(/`/g, '``')}\``
@@ -168,6 +168,33 @@ export class MysqlDriver implements Driver {
       matched += Number(rows[0].n)
     }
     return matched
+  }
+
+  async indexedColumns(tables: TableRef[]): Promise<Set<string>> {
+    const out = new Set<string>()
+    for (const batch of chunk(tables, 200)) {
+      const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
+        `SELECT table_schema AS s, table_name AS t, column_name AS c FROM information_schema.statistics
+         WHERE seq_in_index = 1 AND (${batch.map(() => '(table_schema = ? AND table_name = ?)').join(' OR ')})`,
+        batch.flatMap((t) => [t.schema, t.name])
+      )
+      for (const r of rows) out.add(indexKey(r.s, r.t, r.c))
+    }
+    return out
+  }
+
+  async countWhere(table: TableRef, column: string, _dataType: string, value: string, cap: number, timeoutMs: number): Promise<number> {
+    try {
+      const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
+        `SELECT /*+ MAX_EXECUTION_TIME(${Math.floor(timeoutMs)}) */ COUNT(*) AS n FROM (SELECT 1 FROM ${qualified(table)} WHERE ${quote(column)} = ? LIMIT ${Math.floor(cap) + 1}) s`,
+        [value]
+      )
+      return Number(rows[0].n)
+    } catch (error) {
+      // ER_QUERY_TIMEOUT (3024): the optimizer hint stopped the statement.
+      if ((error as { errno?: number }).errno === 3024) throw new TimeoutError()
+      throw error
+    }
   }
 
   async fetchRows(req: RowsRequest): Promise<RowsResult> {

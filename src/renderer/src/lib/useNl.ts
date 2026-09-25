@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { DbKind } from '@shared/types'
-import { applyCrossLinks, buildModel, type Model } from '@shared/nl/model'
+import type { ConnectionConfig, CrossLink } from '@shared/types'
+import { applyCrossLinks, attachRemote, buildModel, type Model } from '@shared/nl/model'
 import { translate, type TranslateResult, type ValueCache } from '@shared/nl/translate'
 
 const VALUE_LIMIT = 60
@@ -11,24 +11,44 @@ interface Engine {
   pending: Set<string>
 }
 
-/** One engine per connection, shared by every query tab, so the schema is read once. */
+/**
+ * One engine per connection (and set of reachable linked connections), shared by every query tab,
+ * so each schema is read once.
+ */
 const engines = new Map<string, Engine>()
 
-function engineFor(connectionId: string, kind: DbKind): Engine {
-  let engine = engines.get(connectionId)
+function engineFor(connection: ConnectionConfig, remotes: ConnectionConfig[]): { key: string; engine: Engine } {
+  const key = `${connection.id}|${remotes.map((r) => r.id).sort().join(',')}`
+  let engine = engines.get(key)
   if (!engine) {
-    const model = Promise.all([window.api.describeSchema(connectionId), window.api.listLinks()])
-      .then(([schema, links]) => applyCrossLinks(buildModel(schema, kind), connectionId, links))
+    const model = (async () => {
+      const [schema, links] = await Promise.all([window.api.describeSchema(connection.id), window.api.listLinks()])
+      const local = buildModel(schema, connection.kind)
+      local.connection = { id: connection.id, name: connection.name }
+      const loaded = new Map<string, { model: Model; name: string }>()
+      await Promise.all(remotes.map(async (r) => {
+        try {
+          loaded.set(r.id, { model: buildModel(await window.api.describeSchema(r.id), r.kind), name: r.name })
+        } catch {
+          // A linked database we can't read just isn't included; the local model still works.
+        }
+      }))
+      // Links fix wrong naming guesses even when the other side isn't loaded.
+      return attachRemote(applyCrossLinks(local, connection.id, links), connection.id, links, loaded)
+    })()
     engine = { model, values: new Map(), pending: new Set() }
-    engines.set(connectionId, engine)
-    model.catch(() => engines.delete(connectionId))
+    engines.set(key, engine)
+    model.catch(() => engines.delete(key))
   }
-  return engine
+  return { key, engine }
 }
 
-/** Drops the cached schema, e.g. after reconnecting or editing the connection. */
+/** Drops cached schemas involving a connection, e.g. after reconnecting or editing it. */
 export function forgetNlEngine(connectionId: string): void {
-  engines.delete(connectionId)
+  for (const key of [...engines.keys()]) {
+    const [own, remotes] = key.split('|')
+    if (own === connectionId || remotes.split(',').includes(connectionId)) engines.delete(key)
+  }
 }
 
 /** Links change how columns resolve, so every engine is rebuilt after they're edited. */
@@ -36,7 +56,15 @@ export function forgetAllNlEngines(): void {
   engines.clear()
 }
 
-export function useNl(connectionId: string, kind: DbKind, text: string): {
+/** Connections linked to this one, split into those connected this session and those not. */
+export function linkedConnections(connectionId: string, links: CrossLink[], connections: ConnectionConfig[], connected: Set<string>) {
+  const ids = new Set(links.filter((l) => l.status === 'confirmed').flatMap((l) =>
+    l.from.connectionId === connectionId ? [l.to.connectionId] : l.to.connectionId === connectionId ? [l.from.connectionId] : []))
+  const linked = connections.filter((c) => ids.has(c.id))
+  return { ready: linked.filter((c) => connected.has(c.id)), notConnected: linked.filter((c) => !connected.has(c.id)) }
+}
+
+export function useNl(connection: ConnectionConfig, remotes: ConnectionConfig[], text: string): {
   result: TranslateResult | null
   loading: boolean
   error: string | null
@@ -44,38 +72,41 @@ export function useNl(connectionId: string, kind: DbKind, text: string): {
   const [model, setModel] = useState<Model | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
+  const remoteKey = remotes.map((r) => r.id).sort().join(',')
+
+  // Keyed on ids so a re-render with equal connections doesn't rebuild the engine.
+  const { key, engine } = useMemo(() => engineFor(connection, remotes), [connection.id, connection.kind, remoteKey])
 
   useEffect(() => {
     let cancelled = false
     setModel(null)
     setError(null)
-    engineFor(connectionId, kind).model
+    engine.model
       .then((m) => !cancelled && setModel(m))
       .catch((e) => !cancelled && setError((e as Error).message))
     return () => {
       cancelled = true
     }
-  }, [connectionId, kind])
+  }, [engine])
 
   const result = useMemo(
-    () => (model && text.trim() ? translate(text, model, engines.get(connectionId)?.values ?? new Map()) : null),
+    () => (model && text.trim() ? translate(text, model, engine.values) : null),
     // version bumps when lookup values arrive, so recognised words update in place
-    [model, text, version, connectionId]
+    [model, text, version, key]
   )
 
   useEffect(() => {
-    const engine = engines.get(connectionId)
-    if (!engine || !result?.wanted.length) return
+    if (!result?.wanted.length) return
     for (const source of result.wanted) {
       if (engine.pending.has(source.key)) continue
       engine.pending.add(source.key)
       window.api
-        .distinctValues(connectionId, source.table, source.column, VALUE_LIMIT, source.via)
+        .distinctValues(connection.id, source.table, source.column, VALUE_LIMIT, source.via)
         .then((list) => engine.values.set(source.key, list ? list.map(String) : null))
         .catch(() => engine.values.set(source.key, null))
         .finally(() => setVersion((v) => v + 1))
     }
-  }, [result, connectionId])
+  }, [result, connection.id, engine])
 
   return { result, loading: !model && !error, error }
 }

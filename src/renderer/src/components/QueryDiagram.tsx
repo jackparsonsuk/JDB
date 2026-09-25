@@ -126,10 +126,10 @@ function TableNode({ table, role }: { table: PlanTable; role: 'main' | 'parent' 
   const h = tableHeight(table)
   return (
     <>
-      <title>{`${table.schema}.${table.name}${table.caption ? ` (${table.caption})` : ''}`}</title>
-      <rect className={`dg-node ${role}`} width={NODE_W} height={h} rx={8} />
-      <rect className={`dg-head ${role}`} width={NODE_W} height={HEAD_H} rx={8} />
-      <rect className={`dg-head ${role}`} y={HEAD_H - 8} width={NODE_W} height={8} />
+      <title>{`${table.remote ? `${table.remote} · ` : ''}${table.schema}.${table.name}${table.caption ? ` (${table.caption})` : ''}`}</title>
+      <rect className={`dg-node ${role} ${table.remote ? 'remote' : ''}`} width={NODE_W} height={h} rx={8} />
+      <rect className={`dg-head ${role} ${table.remote ? 'remote' : ''}`} width={NODE_W} height={HEAD_H} rx={8} />
+      <rect className={`dg-head ${role} ${table.remote ? 'remote' : ''}`} y={HEAD_H - 8} width={NODE_W} height={8} />
       <text className="dg-title" x={12} y={table.caption ? 15 : 21}>{clip(table.name, 26)}</text>
       {table.caption && <text className="dg-caption" x={12} y={28}>{clip(table.caption, 34)}</text>}
       {table.columns.map((c, i) => <ColumnRow key={c.name} column={c} y={HEAD_H + i * ROW_H} />)}

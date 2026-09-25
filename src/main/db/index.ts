@@ -1,4 +1,4 @@
-import type { ConnectionConfig, KeyKind, QueryResult, RowsRequest, TableRef, ValueLookup } from '@shared/types'
+import type { ConnectionConfig, KeyKind, QueryResult, RowsRequest, SchemaTable, TableRef, ValueLookup } from '@shared/types'
 import { findWriteKeyword } from '@shared/sqlGuard'
 import { addHistory, getConnection } from '../store'
 import type { Driver } from './driver'
@@ -38,6 +38,7 @@ function isConnectionError(error: unknown): boolean {
 }
 
 export async function disconnect(connectionId: string): Promise<void> {
+  schemaCache.delete(connectionId)
   const entry = drivers.get(connectionId)
   drivers.delete(connectionId)
   await entry?.driver.close().catch(() => undefined)
@@ -62,6 +63,21 @@ export const listTables = (id: string) => withDriver(id, (d) => d.listTables())
 export const describeTable = (id: string, table: TableRef) => withDriver(id, (d) => d.describeTable(table))
 export const fetchRows = (id: string, request: RowsRequest) => withDriver(id, (d) => d.fetchRows(request))
 export const describeSchema = (id: string) => withDriver(id, (d) => d.describeSchema())
+
+/** Schema reads are one big query; keep them per connection until it reconnects. */
+const schemaCache = new Map<string, Promise<SchemaTable[]>>()
+export function cachedSchema(id: string): Promise<SchemaTable[]> {
+  let schema = schemaCache.get(id)
+  if (!schema) {
+    schema = describeSchema(id)
+    schemaCache.set(id, schema)
+    schema.catch(() => schemaCache.delete(id))
+  }
+  return schema
+}
+export const indexedColumns = (id: string, tables: TableRef[]) => withDriver(id, (d) => d.indexedColumns(tables))
+export const countWhere = (id: string, table: TableRef, column: string, dataType: string, value: string, cap: number, timeoutMs: number) =>
+  withDriver(id, (d) => d.countWhere(table, column, dataType, value, cap, timeoutMs))
 export const distinctValues = (id: string, table: TableRef, column: string, limit: number, via?: ValueLookup) =>
   withDriver(id, (d) => d.distinctValues(table, column, limit, via))
 

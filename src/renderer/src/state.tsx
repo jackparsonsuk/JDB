@@ -5,6 +5,7 @@ import { forgetAllNlEngines, forgetNlEngine } from './lib/useNl'
 export type Tab =
   | { kind: 'table'; id: string; connectionId: string; table: TableRef; initialFilters: ColumnFilter[] }
   | { kind: 'query'; id: string; connectionId: string; title: string; initialSql: string }
+  | { kind: 'record'; id: string; connectionId: string; table: TableRef; key: ColumnFilter[] }
 
 export interface TablesState {
   status: 'loading' | 'ready' | 'error'
@@ -26,6 +27,8 @@ interface AppState {
   setActiveTab(id: string): void
   openTable(connectionId: string, table: TableRef, filters?: ColumnFilter[]): void
   openQuery(connectionId: string, sql?: string): void
+  /** Opens the record explorer for one row, identified by its primary key values. */
+  openRecord(connectionId: string, table: TableRef, key: ColumnFilter[]): void
   closeTab(id: string): void
   connection(id: string): ConnectionConfig | undefined
 }
@@ -102,6 +105,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     addTab({ kind: 'query', id: nextTabId(), connectionId, title: `Query ${++queryCounter.current}`, initialSql: sql })
   }, [addTab])
 
+  const openRecord = useCallback((connectionId: string, table: TableRef, key: ColumnFilter[]) => {
+    const same = (t: Tab): boolean => t.kind === 'record' && t.connectionId === connectionId &&
+      t.table.schema === table.schema && t.table.name === table.name &&
+      JSON.stringify(t.key) === JSON.stringify(key)
+    const existing = tabsRef.current.find(same)
+    if (existing) setActiveTabId(existing.id)
+    else addTab({ kind: 'record', id: nextTabId(), connectionId, table, key })
+  }, [addTab])
+
   const closeTab = useCallback((id: string) => {
     const prev = tabsRef.current
     const index = prev.findIndex((t) => t.id === id)
@@ -123,9 +135,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setActiveTab: setActiveTabId,
     openTable,
     openQuery,
+    openRecord,
     closeTab,
     connection: (id) => connections.find((c) => c.id === id)
-  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, tabs, activeTabId, openTable, openQuery, closeTab])
+  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, tabs, activeTabId, openTable, openQuery, openRecord, closeTab])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

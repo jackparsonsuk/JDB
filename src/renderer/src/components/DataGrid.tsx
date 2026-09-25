@@ -28,6 +28,10 @@ interface Props {
   onFollowCrossLink?(column: string, value: CellValue): void
   onFilter?(column: string, op: FilterOp, value?: string): void
   copyTarget?: { kind: DbKind; table?: TableRef }
+  /** Double-clicking a row, e.g. to open the record explorer. */
+  onRowDoubleClick?(index: number): void
+  /** While set, shows a progress bar and this message instead of "No rows". */
+  loadingLabel?: string
 }
 
 interface MenuState {
@@ -165,6 +169,7 @@ export function DataGrid(props: Props) {
 
   return (
     <div className="grid-wrap">
+      {props.loadingLabel && <LoadingBar label={props.loadingLabel} overlay={rows.length > 0} />}
       <div
         ref={scrollRef}
         className="grid-scroll"
@@ -212,6 +217,7 @@ export function DataGrid(props: Props) {
                   key={index}
                   className={`${selected ? 'selected' : ''} ${selection.active === index ? 'active' : ''}`}
                   onMouseDown={(e) => e.button === 0 && selectRow(index, e)}
+                  onDoubleClick={() => props.onRowDoubleClick?.(index)}
                 >
                   <td className="rownum">{(props.rowOffset ?? 0) + index + 1}</td>
                   {row.map((value, ci) => {
@@ -263,7 +269,7 @@ export function DataGrid(props: Props) {
             {last < rows.length && <tr style={{ height: (rows.length - last) * ROW_HEIGHT }} />}
           </tbody>
         </table>
-        {!rows.length && <div className="grid-empty">No rows</div>}
+        {!rows.length && !props.loadingLabel && <div className="grid-empty">No rows</div>}
       </div>
 
       {menu && (
@@ -310,4 +316,14 @@ function cellClass(value: CellValue): string {
 
 function truncate(text: string, max = 24): string {
   return text.length > max ? `${text.slice(0, max)}…` : text
+}
+
+/** Indeterminate progress bar; over existing rows it's a thin strip with a small label, otherwise centred. */
+export function LoadingBar({ label, overlay }: { label: string; overlay: boolean }) {
+  return (
+    <div className={`loading ${overlay ? 'overlay' : ''}`} role="status">
+      <div className="loading-track"><div className="loading-fill" /></div>
+      <div className="loading-label">{label}</div>
+    </div>
+  )
 }

@@ -1,10 +1,11 @@
 import sql from 'mssql'
 import { InteractiveBrowserCredential, type AccessToken } from '@azure/identity'
+import { keyKind } from '@shared/links'
 import type {
   CellValue, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
   KeyKind, SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
 } from '@shared/types'
-import { assembleSchema, chunk, distinctSource, KEY_BATCH, SAMPLE_SCAN_ROWS, toCell, type Driver, type SchemaColumnRow } from './driver'
+import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, SAMPLE_SCAN_ROWS, TimeoutError, toCell, type Driver, type SchemaColumnRow } from './driver'
 import { buildWhere } from './filters'
 
 const AZURE_SQL_SCOPE = 'https://database.windows.net/.default'
@@ -229,6 +230,48 @@ export class MssqlDriver implements Driver {
       matched += Number(result.recordset[0].n)
     }
     return matched
+  }
+
+  async indexedColumns(tables: TableRef[]): Promise<Set<string>> {
+    const out = new Set<string>()
+    for (const batch of chunk(tables, 200)) {
+      const request = await this.request()
+      batch.forEach((t, i) => request.input(`t${i}`, sql.NVarChar, qualified(t)))
+      const result = await request.query(`
+        SELECT OBJECT_SCHEMA_NAME(ic.object_id) AS s, OBJECT_NAME(ic.object_id) AS t, c.name AS c
+        FROM sys.index_columns ic
+        JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+        WHERE ic.key_ordinal = 1 AND ic.object_id IN (${batch.map((_, i) => `OBJECT_ID(@t${i})`).join(', ')})`)
+      for (const r of result.recordset) out.add(indexKey(r.s, r.t, r.c))
+    }
+    return out
+  }
+
+  async countWhere(table: TableRef, column: string, dataType: string, value: string, cap: number, timeoutMs: number): Promise<number> {
+    const request = await this.request()
+    // Type the parameter like the column so SQL Server can seek an index instead of converting every row.
+    const kind = keyKind(dataType)
+    if (kind === 'number') {
+      if (!/^-?\d{1,15}$/.test(value)) return 0
+      request.input('v', sql.BigInt, Number(value))
+    } else if (kind === 'guid' && /uniqueidentifier/i.test(dataType)) {
+      if (!/^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value)) return 0
+      request.input('v', sql.UniqueIdentifier, value)
+    } else {
+      request.input('v', /^n(var)?char|^ntext/i.test(dataType) ? sql.NVarChar : sql.VarChar, value)
+    }
+    const timer = setTimeout(() => request.cancel(), timeoutMs)
+    try {
+      const result = await request.query(
+        `SELECT COUNT(*) AS n FROM (SELECT TOP (${Math.floor(cap) + 1}) 1 AS x FROM ${qualified(table)} WHERE ${quote(column)} = @v) s`
+      )
+      return Number(result.recordset[0].n)
+    } catch (error) {
+      if ((error as { code?: string }).code === 'ECANCEL') throw new TimeoutError()
+      throw error
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   async fetchRows(req: RowsRequest): Promise<RowsResult> {

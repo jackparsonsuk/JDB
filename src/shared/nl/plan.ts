@@ -19,6 +19,8 @@ export interface PlanTable {
   schema: string
   /** Why the table is there, e.g. "via InvoiceStatusId". */
   caption?: string
+  /** Name of the other connection, when the table lives in another database. */
+  remote?: string
   columns: PlanColumn[]
 }
 
@@ -61,6 +63,7 @@ function conditionNote(c: Exclude<Condition, { kind: 'exists' }>): string {
     case 'like': return `${c.negate ? "doesn't contain" : 'contains'} ${c.pattern.replace(/^%|%$/g, '')}`
     case 'null': return c.isNull ? 'is empty' : 'is set'
     case 'range': return formatRangeLabel(c.range)
+    case 'inKeys': return `in keys from step ${c.step}`
   }
 }
 
@@ -84,7 +87,7 @@ export function buildPlan(q: Query): Plan {
   const node = (table: ModelTable, id: string, caption?: string): PlanTable => {
     let n = tables.get(id)
     if (!n) {
-      n = { id, name: table.info.name, schema: table.info.schema, caption, columns: [] }
+      n = { id, name: table.info.name, schema: table.info.schema, caption, remote: table.remote?.name, columns: [] }
       tables.set(id, n)
     }
     return n
@@ -107,7 +110,7 @@ export function buildPlan(q: Query): Plan {
     const parent = fk.ref!.table
     const id = `${parent.key}#${fk.info.name}`
     const isNew = !tables.has(id)
-    const n = node(parent, id, `via ${fk.info.name}`)
+    const n = node(parent, id, parent.remote ? `in ${parent.remote.name}, via ${fk.info.name}` : `via ${fk.info.name}`)
     if (isNew) {
       addColumn(n, fk.ref!.column, 'key')
       addColumn(mainNode, fk.info.name, 'key')
@@ -127,7 +130,8 @@ export function buildPlan(q: Query): Plan {
     if (c.kind === 'exists') {
       const child = c.link.table
       const id = `${child.key}#exists${i}`
-      const n = node(child, id, c.negate ? 'must have none' : 'must have at least one')
+      const rule = c.negate ? 'must have none' : 'must have at least one'
+      const n = node(child, id, child.remote ? `in ${child.remote.name}, ${rule}` : rule)
       addColumn(n, c.link.column, 'key')
       addColumn(mainNode, c.link.parentColumn, 'key')
       links.push({ kind: c.negate ? 'not-exists' : 'exists', from: id, fromColumn: c.link.column, to: mainNode.id, toColumn: c.link.parentColumn })
@@ -137,7 +141,7 @@ export function buildPlan(q: Query): Plan {
     place(c.target, 'filter', note)
   })
 
-  for (const fk of q.shown) place({ column: fk.ref!.table.display!, via: fk }, 'shown', 'shown')
+  for (const target of q.shown) place(target, 'shown', 'shown')
   if (q.groupBy) place(q.groupBy, 'group', 'grouped, counted')
   if (q.order) place(q.order.target, 'sort', q.order.desc ? 'sorted ↓' : 'sorted ↑')
 

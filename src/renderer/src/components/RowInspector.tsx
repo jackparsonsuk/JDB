@@ -12,7 +12,9 @@ interface Props {
   referencedBy?: ReverseReference[]
   onOpen?(table: TableRef, filters: ColumnFilter[]): void
   cross?: CrossLinkProps
-  onClose(): void
+  /** Opens the record explorer for this row; omitted when the table has no primary key. */
+  onExplore?(): void
+  onClose?(): void
 }
 
 export interface CrossLinkProps {
@@ -39,7 +41,7 @@ function prettyJson(value: CellValue): string | null {
   }
 }
 
-export function RowInspector({ kind, table, columns, row, columnInfo, referencedBy, onOpen, cross, onClose }: Props) {
+export function RowInspector({ kind, table, columns, row, columnInfo, referencedBy, onOpen, cross, onExplore, onClose }: Props) {
   const valueOf = (column: string): CellValue => row[columns.indexOf(column)]
   const copy = (text: string, what: string): void => {
     window.api.copy(text)
@@ -59,7 +61,9 @@ export function RowInspector({ kind, table, columns, row, columnInfo, referenced
     <aside className="inspector">
       <header>
         <span>Row details</span>
-        <button className="icon" onClick={onClose} title="Close (Esc)">✕</button>
+        <span className="grow" />
+        {onExplore && <button className="ghost small" onClick={onExplore} title="See everything linked to this record (double-click a row)">Explore ⤢</button>}
+        {onClose && <button className="icon" onClick={onClose} title="Close (Esc)">✕</button>}
       </header>
 
       <div className="inspector-actions">

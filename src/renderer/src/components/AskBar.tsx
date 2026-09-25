@@ -1,9 +1,10 @@
-import { useState, type KeyboardEvent, type ReactElement } from 'react'
+import { useMemo, useState, type KeyboardEvent, type ReactElement } from 'react'
 import CodeMirror, { EditorView } from '@uiw/react-codemirror'
 import { sql, MSSQL, MySQL } from '@codemirror/lang-sql'
-import type { DbKind } from '@shared/types'
-import type { Span } from '@shared/nl/translate'
-import { useNl } from '../lib/useNl'
+import type { ConnectionConfig } from '@shared/types'
+import type { Span, TranslateResult } from '@shared/nl/translate'
+import { linkedConnections, useNl } from '../lib/useNl'
+import { useAppState } from '../state'
 import { QueryDiagram } from './QueryDiagram'
 import { useColorScheme } from '../lib/useColorScheme'
 
@@ -26,20 +27,24 @@ const EXAMPLES = [
 ]
 
 interface Props {
-  connectionId: string
-  kind: DbKind
-  /** Runs the generated SQL (and shows it in the editor). */
-  onRun(sql: string): void
+  connection: ConnectionConfig
+  /** Runs the translated query: plain SQL, or a cross-database plan. */
+  onRun(result: TranslateResult): void
   /** Copies the generated SQL into the editor without running it. */
   onEdit(sql: string): void
 }
 
-export function AskBar({ connectionId, kind, onRun, onEdit }: Props) {
+export function AskBar({ connection, onRun, onEdit }: Props) {
+  const { links, connections, tables } = useAppState()
   const [text, setText] = useState('')
   const [view, setView] = useState<'sql' | 'diagram'>(savedView)
   const scheme = useColorScheme()
-  const { result, loading, error } = useNl(connectionId, kind, text)
+  // Linked databases are only queried once connected this session, so asking never triggers a sign-in.
+  const connected = useMemo(() => new Set(Object.entries(tables).filter(([, t]) => t.status === 'ready').map(([id]) => id)), [tables])
+  const linked = useMemo(() => linkedConnections(connection.id, links, connections, connected), [connection.id, links, connections, connected])
+  const { result, loading, error } = useNl(connection, linked.ready, text)
   const generated = result?.sql ?? ''
+  const kind = connection.kind
 
   const chooseView = (next: 'sql' | 'diagram'): void => {
     setView(next)
@@ -51,9 +56,9 @@ export function AskBar({ connectionId, kind, onRun, onEdit }: Props) {
   }
 
   const onKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Enter' && !e.shiftKey && generated) {
+    if (e.key === 'Enter' && !e.shiftKey && result?.sql) {
       e.preventDefault()
-      onRun(generated)
+      onRun(result)
     }
   }
 
@@ -81,6 +86,14 @@ export function AskBar({ connectionId, kind, onRun, onEdit }: Props) {
           )}
           {result && <Reading text={text} spans={result.spans} />}
         </div>
+        {linked.notConnected.length > 0 && (
+          <div className="ask-linked muted small">
+            Linked to {linked.notConnected.map((c) => c.name).join(', ')}. Open {linked.notConnected.length === 1 ? 'it' : 'them'} in the sidebar to ask across databases.
+          </div>
+        )}
+        {linked.ready.length > 0 && (
+          <div className="ask-linked small">🔗 Can also use linked tables in {linked.ready.map((c) => c.name).join(', ')}</div>
+        )}
         {result && result.notes.length > 0 && (
           <ul className="ask-notes">
             {result.notes.map((n) => <li key={n}>{n}</li>)}
@@ -117,8 +130,15 @@ export function AskBar({ connectionId, kind, onRun, onEdit }: Props) {
           </div>
         )}
         <div className="ask-actions">
-          <button className="primary" disabled={!generated} onClick={() => onRun(generated)}>▶ Run <kbd>Enter</kbd></button>
-          <button disabled={!generated} onClick={() => onEdit(generated)}>Edit in editor</button>
+          {result?.federated && <span className="muted small ask-steps">Runs as {result.federated.steps.length} steps across databases</span>}
+          <button className="primary" disabled={!generated} onClick={() => result && onRun(result)}>▶ Run <kbd>Enter</kbd></button>
+          <button
+            disabled={!generated || !!result?.federated}
+            title={result?.federated ? "Cross-database queries run as linked steps, so they can't be edited as one SQL statement yet" : undefined}
+            onClick={() => onEdit(generated)}
+          >
+            Edit in editor
+          </button>
         </div>
       </div>
     </div>

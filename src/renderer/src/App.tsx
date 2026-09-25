@@ -4,6 +4,7 @@ import { useAppState, type Tab } from './state'
 import { Sidebar } from './components/Sidebar'
 import { TableView } from './components/TableView'
 import { QueryView } from './components/QueryView'
+import { RecordView } from './components/RecordView'
 import { ConnectionDialog } from './components/ConnectionDialog'
 import { CommandPalette } from './components/CommandPalette'
 import { ToastHost } from './components/Toast'
@@ -61,7 +62,7 @@ export function App() {
                 }}
                 title={`${conn?.name ?? ''} · ${tabTitle(tab)}`}
               >
-                <span className="tab-icon">{tab.kind === 'table' ? '▦' : '⌨'}</span>
+                <span className="tab-icon">{tab.kind === 'table' ? '▦' : tab.kind === 'record' ? '◉' : '⌨'}</span>
                 <span className="tab-title">{tabTitle(tab)}</span>
                 <span className="tab-conn">{conn?.name}</span>
                 <button className="icon small" onMouseDown={(e) => e.stopPropagation()} onClick={() => closeTab(tab.id)}>✕</button>
@@ -82,9 +83,9 @@ export function App() {
         <div className="tab-content">
           {tabs.map((tab) => (
             <div key={tab.id} className="tab-pane" hidden={tab.id !== activeTabId}>
-              {tab.kind === 'table'
-                ? <TableView tab={tab} active={tab.id === activeTabId} />
-                : <QueryView tab={tab} active={tab.id === activeTabId} />}
+              {tab.kind === 'table' && <TableView tab={tab} active={tab.id === activeTabId} />}
+              {tab.kind === 'query' && <QueryView tab={tab} active={tab.id === activeTabId} />}
+              {tab.kind === 'record' && <RecordView tab={tab} />}
             </div>
           ))}
           {!tabs.length && <Welcome onPalette={() => setPaletteOpen(true)} />}
@@ -107,6 +108,7 @@ export function App() {
 
 function tabTitle(tab: Tab): string {
   if (tab.kind === 'query') return tab.title
+  if (tab.kind === 'record') return `${tab.table.name} ${tab.key.map((k) => k.value).join('·')}`
   const filter = tab.initialFilters[0]
   return filter ? `${tab.table.name} (${filter.column}=${filter.value ?? ''})` : tab.table.name
 }

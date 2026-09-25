@@ -14,6 +14,10 @@ export interface Driver {
   sampleDistinct(table: TableRef, column: string, limit: number): Promise<CellValue[]>
   /** How many of `values` exist in `column` (a key, so each matches at most one row). */
   countMatchingKeys(table: TableRef, column: string, values: string[], kind: KeyKind): Promise<number>
+  /** Columns that lead an index, as lowercased "schema.table.column" keys. */
+  indexedColumns(tables: TableRef[]): Promise<Set<string>>
+  /** Rows where column = value, counting at most cap + 1; rejects with TimeoutError after timeoutMs. */
+  countWhere(table: TableRef, column: string, dataType: string, value: string, cap: number, timeoutMs: number): Promise<number>
   fetchRows(request: RowsRequest): Promise<RowsResult>
   query(sql: string): Promise<QueryResult>
   close(): Promise<void>
@@ -72,6 +76,14 @@ export function distinctSource(
     from: `${qualified(table)} t JOIN ${qualified(via.table)} r ON r.${quote(via.column)} = t.${quote(column)} WHERE ${expr} IS NOT NULL`
   }
 }
+
+export class TimeoutError extends Error {
+  constructor() {
+    super('Query timed out')
+  }
+}
+
+export const indexKey = (schema: string, table: string, column: string): string => `${schema}.${table}.${column}`.toLowerCase()
 
 /** Key lookups are sent in batches to stay well under SQL Server's 2100-parameter / statement limits. */
 export const KEY_BATCH = 500

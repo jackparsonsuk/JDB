@@ -21,6 +21,7 @@ const api: Api = {
   describeSchema: (id) => call('db:schema', id),
   distinctValues: (id, table, column, limit, via) => call('db:distinct', id, table, column, limit, via),
   runQuery: (id, sql) => call('db:query', id, sql),
+  countRelated: (id, requests) => call('db:countRelated', id, requests),
   listLinks: () => call('links:list'),
   saveLinks: (links) => call('links:save', links),
   deleteLink: (id) => call('links:delete', id),

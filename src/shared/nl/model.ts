@@ -1,4 +1,5 @@
 import type { ColumnInfo, CrossLink, DbKind, SchemaTable, TableRef, ValueLookup } from '../types'
+import { pickDisplayColumn } from '../display'
 import { CATEGORY_HINTS, COLUMN_NOISE, sameWords, splitIdentifier, stem, stems } from './words'
 
 export type ColumnKind = 'date' | 'text' | 'number' | 'bool' | 'other'
@@ -33,11 +34,22 @@ export interface ModelTable {
   display?: ModelColumn
   /** Column that marks soft-deleted rows, if the table uses that pattern. */
   softDelete?: ModelColumn
+  /** Set on tables that live in another database, reached through a cross-database link. */
+  remote?: RemoteSource
+}
+
+/** Where a table lives, for tables pulled in from other connections. */
+export interface RemoteSource {
+  connectionId: string
+  name: string
+  kind: DbKind
 }
 
 export interface Model {
   kind: DbKind
   tables: ModelTable[]
+  /** The connection this model describes; needed to plan queries that span databases. */
+  connection?: { id: string; name: string }
 }
 
 /** A set of values worth loading so words like "paid" or "closed" can be recognised. */
@@ -47,8 +59,6 @@ export interface ValueSource {
   column: string
   via?: ValueLookup
 }
-
-const DISPLAY_NAMES = ['name', 'title', 'label', 'displayname', 'description', 'code', 'reference', 'value', 'text']
 
 export function columnKind(dataType: string): ColumnKind {
   const t = dataType.toLowerCase()
@@ -72,15 +82,8 @@ function textLength(dataType: string): number | null {
 }
 
 function pickDisplay(table: ModelTable): ModelColumn | undefined {
-  const text = table.columns.filter((c) => c.kind === 'text' && !c.info.isPrimaryKey && !c.ref)
-  const byName = (name: string): ModelColumn | undefined =>
-    text.find((c) => c.info.name.toLowerCase() === name) ??
-    text.find((c) => c.info.name.toLowerCase() === `${table.words.join('')}${name}`)
-  for (const name of DISPLAY_NAMES) {
-    const found = byName(name)
-    if (found) return found
-  }
-  return text.find((c) => c.core.some((w) => ['name', 'title', 'label'].includes(w))) ?? text[0]
+  const chosen = pickDisplayColumn(table.columns.map((c) => c.info), table.info.name)
+  return chosen && table.columns.find((c) => c.info.name === chosen.name)
 }
 
 function pickSoftDelete(table: ModelTable): ModelColumn | undefined {
@@ -157,6 +160,44 @@ export function buildModel(schema: SchemaTable[], kind: DbKind): Model {
  * A confirmed cross-database link says where a column really points, so drop any local
  * foreign key that was only inferred from its name (Shop Orders.JobId is not Hangfire's Job).
  */
+/**
+ * Wires confirmed cross-database links into a model: a linked column's parent becomes the table in the
+ * other database, and tables in other databases that point here become children. Tables of other
+ * connections are never the main table, so they stay out of `model.tables`.
+ */
+export function attachRemote(
+  model: Model,
+  connectionId: string,
+  links: CrossLink[],
+  remotes: Map<string, { model: Model; name: string }>
+): Model {
+  const find = (m: Model, schema: string, name: string): ModelTable | undefined =>
+    m.tables.find((t) => t.info.schema === schema && t.info.name === name)
+  const tag = (t: ModelTable, remoteId: string): ModelTable => {
+    const remote = remotes.get(remoteId)!
+    t.remote = { connectionId: remoteId, name: remote.name, kind: remote.model.kind }
+    return t
+  }
+
+  for (const link of links) {
+    if (link.status !== 'confirmed') continue
+    if (link.from.connectionId === connectionId && remotes.has(link.to.connectionId)) {
+      const table = find(model, link.from.table.schema, link.from.table.name)
+      const column = table?.columns.find((c) => c.info.name === link.from.column)
+      const target = find(remotes.get(link.to.connectionId)!.model, link.to.table.schema, link.to.table.name)
+      if (!table || !column || !target) continue
+      if (column.ref) column.ref.table.children = column.ref.table.children.filter((c) => !(c.table === table && c.column === column.info.name))
+      column.ref = { table: tag(target, link.to.connectionId), column: link.to.column, inferred: false }
+    } else if (link.to.connectionId === connectionId && remotes.has(link.from.connectionId)) {
+      const parent = find(model, link.to.table.schema, link.to.table.name)
+      const child = find(remotes.get(link.from.connectionId)!.model, link.from.table.schema, link.from.table.name)
+      if (!parent || !child) continue
+      parent.children.push({ table: tag(child, link.from.connectionId), column: link.from.column, parentColumn: link.to.column })
+    }
+  }
+  return model
+}
+
 export function applyCrossLinks(model: Model, connectionId: string, links: CrossLink[]): Model {
   for (const link of links) {
     if (link.status !== 'confirmed' || link.from.connectionId !== connectionId) continue
@@ -178,6 +219,8 @@ export function valueSources(table: ModelTable): ValueSource[] {
   const ref: TableRef = { schema: table.info.schema, name: table.info.name }
   for (const column of table.columns) {
     if (column.enumValues) continue
+    // Values in another database would need that connection; not worth it for recognising words.
+    if (column.ref?.table.remote) continue
     const hinted = column.core.some((w) => CATEGORY_HINTS.has(w))
     if (column.ref) {
       const parent = column.ref.table

@@ -5,6 +5,7 @@ import { incomingLinks, outgoingLinks } from '@shared/links'
 import { formatCount, selectSql } from '../lib/format'
 import { DataGrid, type Selection } from './DataGrid'
 import { RowInspector } from './RowInspector'
+import { recordKey } from './RecordView'
 import { toast } from './Toast'
 
 const PAGE_SIZES = [50, 100, 250, 500]
@@ -22,7 +23,7 @@ const OPS: { op: FilterOp; label: string; needsValue: boolean }[] = [
 const emptySelection: Selection = { rows: new Set(), active: null }
 
 export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }>; active: boolean }) {
-  const { connection, openTable, openQuery, links } = useAppState()
+  const { connection, openTable, openQuery, openRecord, links, tables } = useAppState()
   const conn = connection(tab.connectionId)
   const [details, setDetails] = useState<TableDetails | null>(null)
   const [filters, setFilters] = useState<ColumnFilter[]>(tab.initialFilters)
@@ -90,6 +91,13 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
     return [l.from.column, { title: `Open in ${target?.name}: ${l.to.table.name} where ${l.to.column} = this value`, env: target?.env ?? 'local' }]
   })), [outgoing, connection])
 
+  const explore = (index: number): void => {
+    const r = visibleRows[index]
+    const key = details && result && r ? recordKey(details, result.columns, r) : null
+    if (key) openRecord(tab.connectionId, tab.table, key)
+  }
+  const canExplore = !!details?.columns.some((c) => c.isPrimaryKey)
+
   const followCrossLink = (column: string, value: CellValue): void => {
     const link = outgoing.find((l) => l.from.column === column)
     if (link) openTable(link.to.connectionId, link.to.table, [{ column: link.to.column, op: '=', value: String(value) }])
@@ -127,6 +135,15 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
   }
 
   if (!conn) return null
+  /** "Loading rows 101–200 of 37,392" using the last exact count, or the sidebar's estimate on first load. */
+  const loadingLabel = (): string => {
+    const known = result?.total ?? tables[tab.connectionId]?.tables.find((t) => t.schema === tab.table.schema && t.name === tab.table.name)?.rowEstimate
+    const exact = result?.total !== undefined
+    const from = page * pageSize + 1
+    const to = known !== undefined ? Math.min(known, page * pageSize + pageSize) : page * pageSize + pageSize
+    if (known === 0 && exact) return 'Loading…'
+    return `Loading rows ${formatCount(from)}–${formatCount(Math.max(from, to))}${known !== undefined ? ` of ${exact ? '' : '~'}${formatCount(known)}` : ''}…`
+  }
   const total = result?.total ?? 0
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const activeRow = selection.active !== null ? visibleRows[selection.active] : undefined
@@ -198,6 +215,7 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
 
       <div className="view-body">
         <DataGrid
+          loadingLabel={loading ? loadingLabel() : undefined}
           columns={columnNames}
           rows={visibleRows}
           rowOffset={quickFind ? 0 : page * pageSize}
@@ -208,6 +226,7 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
           onSelectionChange={setSelection}
           onFollowReference={followReference}
           crossLinks={crossLinks}
+          onRowDoubleClick={canExplore ? explore : undefined}
           onFollowCrossLink={followCrossLink}
           onFilter={addFilter}
           copyTarget={{ kind: conn.kind, table: tab.table }}
@@ -222,6 +241,7 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
             referencedBy={details?.referencedBy}
             onOpen={(table, f) => openTable(tab.connectionId, table, f)}
             cross={{ outgoing, incoming, connection, open: openTable }}
+            onExplore={canExplore && selection.active !== null ? () => explore(selection.active!) : undefined}
             onClose={() => setSelection(emptySelection)}
           />
         )}
