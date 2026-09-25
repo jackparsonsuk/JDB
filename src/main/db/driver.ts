@@ -1,6 +1,6 @@
 import type {
   CellValue, ColumnInfo, QueryResult, RowsRequest, RowsResult, SchemaTable, TableDetails, TableInfo, TableRef,
-  ValueLookup
+  KeyKind, ValueLookup
 } from '@shared/types'
 
 export interface Driver {
@@ -10,6 +10,10 @@ export interface Driver {
   describeSchema(): Promise<SchemaTable[]>
   /** Distinct non-null values of a column, or null when there are more than `limit`. */
   distinctValues(table: TableRef, column: string, limit: number, via?: ValueLookup): Promise<CellValue[] | null>
+  /** Up to `limit` distinct non-null values of a column, for checking cross-database links. */
+  sampleDistinct(table: TableRef, column: string, limit: number): Promise<CellValue[]>
+  /** How many of `values` exist in `column` (a key, so each matches at most one row). */
+  countMatchingKeys(table: TableRef, column: string, values: string[], kind: KeyKind): Promise<number>
   fetchRows(request: RowsRequest): Promise<RowsResult>
   query(sql: string): Promise<QueryResult>
   close(): Promise<void>
@@ -67,6 +71,18 @@ export function distinctSource(
     expr,
     from: `${qualified(table)} t JOIN ${qualified(via.table)} r ON r.${quote(via.column)} = t.${quote(column)} WHERE ${expr} IS NOT NULL`
   }
+}
+
+/** Key lookups are sent in batches to stay well under SQL Server's 2100-parameter / statement limits. */
+export const KEY_BATCH = 500
+
+/** Sampling only scans this many rows, so a huge table (e.g. a 100M-row log) stays cheap. */
+export const SAMPLE_SCAN_ROWS = 5000
+
+export function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size))
+  return out
 }
 
 const MAX_BINARY_PREVIEW = 64

@@ -2,9 +2,9 @@ import sql from 'mssql'
 import { InteractiveBrowserCredential, type AccessToken } from '@azure/identity'
 import type {
   CellValue, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
-  SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
+  KeyKind, SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
 } from '@shared/types'
-import { assembleSchema, distinctSource, toCell, type Driver, type SchemaColumnRow } from './driver'
+import { assembleSchema, chunk, distinctSource, KEY_BATCH, SAMPLE_SCAN_ROWS, toCell, type Driver, type SchemaColumnRow } from './driver'
 import { buildWhere } from './filters'
 
 const AZURE_SQL_SCOPE = 'https://database.windows.net/.default'
@@ -207,6 +207,28 @@ export class MssqlDriver implements Driver {
     )
     const values = (result.recordset as unknown as unknown[][]).map((row) => toCell(row[0]))
     return values.length > limit ? null : values
+  }
+
+  async sampleDistinct(table: TableRef, column: string, limit: number): Promise<CellValue[]> {
+    const request = await this.request()
+    request.arrayRowMode = true
+    const result = await request.query(
+      `SELECT DISTINCT TOP ${Math.floor(limit)} v FROM (SELECT TOP ${SAMPLE_SCAN_ROWS} ${quote(column)} AS v FROM ${qualified(table)} WHERE ${quote(column)} IS NOT NULL) s`
+    )
+    return (result.recordset as unknown as unknown[][]).map((row) => toCell(row[0]))
+  }
+
+  async countMatchingKeys(table: TableRef, column: string, values: string[], kind: KeyKind): Promise<number> {
+    // Literals are inlined (not parameters) to allow large IN lists; callers pre-validate values per kind.
+    const literal = (v: string): string => (kind === 'number' ? String(Number(v)) : `N'${v.replace(/'/g, "''")}'`)
+    let matched = 0
+    for (const batch of chunk(values, KEY_BATCH)) {
+      const result = await (await this.request()).query(
+        `SELECT COUNT(*) AS n FROM ${qualified(table)} WHERE ${quote(column)} IN (${batch.map(literal).join(', ')})`
+      )
+      matched += Number(result.recordset[0].n)
+    }
+    return matched
   }
 
   async fetchRows(req: RowsRequest): Promise<RowsResult> {

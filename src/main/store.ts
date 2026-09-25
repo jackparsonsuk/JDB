@@ -2,7 +2,7 @@ import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { ConnectionConfig, ConnectionInput, HistoryEntry } from '@shared/types'
+import type { ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry } from '@shared/types'
 
 interface StoredConnection extends ConnectionConfig {
   /** Password encrypted with the OS keychain (DPAPI on Windows), base64 encoded. */
@@ -106,6 +106,29 @@ export function saveConnection(input: ConnectionInput): ConnectionConfig {
 
 export function deleteConnection(id: string): void {
   writeJson('connections.json', loadStored().filter((c) => c.id !== id))
+  writeJson('links.json', listLinks().filter((l) => l.from.connectionId !== id && l.to.connectionId !== id))
+}
+
+/** A link within one connection is just a foreign key; never keep one. */
+const crossesDatabases = (l: CrossLink): boolean => l.from.connectionId !== l.to.connectionId
+
+export function listLinks(): CrossLink[] {
+  return readJson<CrossLink[]>('links.json', []).filter(crossesDatabases)
+}
+
+/** Adds or replaces links by id. */
+export function saveLinks(links: CrossLink[]): CrossLink[] {
+  const incoming = links.filter(crossesDatabases).map((l) => ({ ...l, id: l.id || randomUUID() }))
+  const ids = new Set(incoming.map((l) => l.id))
+  const next = [...listLinks().filter((l) => !ids.has(l.id)), ...incoming]
+  writeJson('links.json', next)
+  return next
+}
+
+export function deleteLink(id: string): CrossLink[] {
+  const next = listLinks().filter((l) => l.id !== id)
+  writeJson('links.json', next)
+  return next
 }
 
 export function listHistory(): HistoryEntry[] {

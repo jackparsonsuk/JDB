@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { DbKind } from '@shared/types'
-import { buildModel, type Model } from '@shared/nl/model'
+import { applyCrossLinks, buildModel, type Model } from '@shared/nl/model'
 import { translate, type TranslateResult, type ValueCache } from '@shared/nl/translate'
 
 const VALUE_LIMIT = 60
@@ -17,7 +17,8 @@ const engines = new Map<string, Engine>()
 function engineFor(connectionId: string, kind: DbKind): Engine {
   let engine = engines.get(connectionId)
   if (!engine) {
-    const model = window.api.describeSchema(connectionId).then((schema) => buildModel(schema, kind))
+    const model = Promise.all([window.api.describeSchema(connectionId), window.api.listLinks()])
+      .then(([schema, links]) => applyCrossLinks(buildModel(schema, kind), connectionId, links))
     engine = { model, values: new Map(), pending: new Set() }
     engines.set(connectionId, engine)
     model.catch(() => engines.delete(connectionId))
@@ -28,6 +29,11 @@ function engineFor(connectionId: string, kind: DbKind): Engine {
 /** Drops the cached schema, e.g. after reconnecting or editing the connection. */
 export function forgetNlEngine(connectionId: string): void {
   engines.delete(connectionId)
+}
+
+/** Links change how columns resolve, so every engine is rebuilt after they're edited. */
+export function forgetAllNlEngines(): void {
+  engines.clear()
 }
 
 export function useNl(connectionId: string, kind: DbKind, text: string): {

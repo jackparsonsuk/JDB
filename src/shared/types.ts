@@ -109,6 +109,43 @@ export interface QueryResult {
   durationMs: number
 }
 
+/** One side of a cross-database link: a column in a table on a saved connection. */
+export interface LinkEnd {
+  connectionId: string
+  table: TableRef
+  column: string
+}
+
+/** How many sampled values of the `from` column were found as keys on the `to` side. */
+export interface LinkOverlap {
+  matched: number
+  sampled: number
+  checkedAt: string
+}
+
+/**
+ * A link between databases that can't join natively, e.g. Shop Orders.JobId -> TestDB Job.Id.
+ * `from` holds the reference; `to` is the key it points at.
+ */
+export interface CrossLink {
+  id: string
+  from: LinkEnd
+  to: LinkEnd
+  /** Dismissed candidates are remembered so discovery doesn't keep suggesting them. */
+  status: 'confirmed' | 'dismissed'
+  source: 'auto' | 'manual'
+  overlap?: LinkOverlap
+}
+
+export interface LinkCandidate {
+  from: LinkEnd
+  to: LinkEnd
+  overlap: LinkOverlap
+}
+
+/** How key values are compared across servers, so literals are written safely for each driver. */
+export type KeyKind = 'number' | 'guid' | 'text'
+
 export interface HistoryEntry {
   id: string
   connectionId: string

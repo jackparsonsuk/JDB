@@ -16,7 +16,7 @@ interface Item {
 
 const MAX_RESULTS = 60
 
-export function CommandPalette({ onClose, onNewConnection }: { onClose(): void; onNewConnection(): void }) {
+export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(): void; onNewConnection(): void; onLinks(connectionId: string): void }) {
   const { connections, tables, loadTables, openTable, openQuery } = useAppState()
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
@@ -45,6 +45,17 @@ export function CommandPalette({ onClose, onNewConnection }: { onClose(): void; 
         bias: -4,
         run: () => openQuery(c.id)
       })
+      if (connections.length > 1) {
+        out.push({
+          key: `l:${c.id}`,
+          label: `Cross-database links for ${c.name}…`,
+          detail: 'find and manage links to other databases',
+          icon: '🔗',
+          haystack: `links cross database join ${c.name}`,
+          bias: -6,
+          run: () => onLinks(c.id)
+        })
+      }
       out.push({
         key: `q:${c.id}`,
         label: `New query on ${c.name}`,
@@ -68,7 +79,7 @@ export function CommandPalette({ onClose, onNewConnection }: { onClose(): void; 
     }
     out.push({ key: 'new', label: 'New connection…', detail: '', icon: '＋', haystack: 'new connection add', bias: -10, run: onNewConnection })
     return out
-  }, [connections, tables, openTable, openQuery, loadTables, onNewConnection])
+  }, [connections, tables, openTable, openQuery, loadTables, onNewConnection, onLinks])
 
   const results = useMemo(() => {
     if (!query.trim()) return items.slice(0, MAX_RESULTS)

@@ -1,9 +1,9 @@
 import mysql from 'mysql2/promise'
 import type {
   CellValue, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
-  SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
+  KeyKind, SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
 } from '@shared/types'
-import { assembleSchema, distinctSource, toCell, type Driver, type SchemaColumnRow } from './driver'
+import { assembleSchema, chunk, distinctSource, KEY_BATCH, SAMPLE_SCAN_ROWS, toCell, type Driver, type SchemaColumnRow } from './driver'
 import { buildWhere } from './filters'
 
 const quote = (identifier: string): string => `\`${identifier.replace(/`/g, '``')}\``
@@ -148,6 +148,26 @@ export class MysqlDriver implements Driver {
     })
     const values = rows.map((row) => toCell(row[0]))
     return values.length > limit ? null : values
+  }
+
+  async sampleDistinct(table: TableRef, column: string, limit: number): Promise<CellValue[]> {
+    const [rows] = await this.pool.query<mysql.RowDataPacket[][]>({
+      sql: `SELECT DISTINCT v FROM (SELECT ${quote(column)} AS v FROM ${qualified(table)} WHERE ${quote(column)} IS NOT NULL LIMIT ${SAMPLE_SCAN_ROWS}) s LIMIT ${Math.floor(limit)}`,
+      rowsAsArray: true
+    })
+    return rows.map((row) => toCell(row[0]))
+  }
+
+  async countMatchingKeys(table: TableRef, column: string, values: string[]): Promise<number> {
+    let matched = 0
+    for (const batch of chunk(values, KEY_BATCH)) {
+      const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
+        `SELECT COUNT(*) AS n FROM ${qualified(table)} WHERE ${quote(column)} IN (${batch.map(() => '?').join(', ')})`,
+        batch
+      )
+      matched += Number(rows[0].n)
+    }
+    return matched
   }
 
   async fetchRows(req: RowsRequest): Promise<RowsResult> {

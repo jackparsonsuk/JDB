@@ -4,7 +4,7 @@ import { useAppState } from '../state'
 import { fuzzyScore } from '../lib/fuzzy'
 import { formatCount } from '../lib/format'
 
-export function Sidebar({ onEdit, onNew }: { onEdit(c: ConnectionConfig): void; onNew(): void }) {
+export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig): void; onNew(): void; onLinks(c: ConnectionConfig): void }) {
   const { connections } = useAppState()
   return (
     <nav className="sidebar">
@@ -13,7 +13,7 @@ export function Sidebar({ onEdit, onNew }: { onEdit(c: ConnectionConfig): void; 
         <button className="icon" title="New connection" onClick={onNew}>＋</button>
       </div>
       <div className="sidebar-list">
-        {connections.map((c) => <ConnectionNode key={c.id} connection={c} onEdit={() => onEdit(c)} />)}
+        {connections.map((c) => <ConnectionNode key={c.id} connection={c} onEdit={() => onEdit(c)} onLinks={() => onLinks(c)} />)}
         {!connections.length && <div className="muted pad">No connections yet.</div>}
       </div>
       <div className="sidebar-foot muted">Ctrl+K to jump anywhere</div>
@@ -21,7 +21,7 @@ export function Sidebar({ onEdit, onNew }: { onEdit(c: ConnectionConfig): void; 
   )
 }
 
-function ConnectionNode({ connection, onEdit }: { connection: ConnectionConfig; onEdit(): void }) {
+function ConnectionNode({ connection, onEdit, onLinks }: { connection: ConnectionConfig; onEdit(): void; onLinks(): void }) {
   const { tables, loadTables, forgetTables, openTable, openQuery } = useAppState()
   const [expanded, setExpanded] = useState(false)
   const [filter, setFilter] = useState('')
@@ -51,6 +51,7 @@ function ConnectionNode({ connection, onEdit }: { connection: ConnectionConfig; 
         {connection.readOnly && <span className="lock" title="Read-only">🔒</span>}
         <span className="conn-actions" onClick={(e) => e.stopPropagation()}>
           <button className="icon small" title="Ask in plain English / new query (Ctrl+T)" onClick={() => openQuery(connection.id)}>✦</button>
+          <button className="icon small" title="Cross-database links" onClick={onLinks}>🔗</button>
           <button className="icon small" title="Reconnect and refresh" onClick={reconnect}>⟳</button>
           <button className="icon small" title="Edit connection" onClick={onEdit}>✎</button>
         </span>

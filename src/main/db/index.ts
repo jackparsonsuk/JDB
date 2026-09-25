@@ -1,4 +1,4 @@
-import type { ConnectionConfig, QueryResult, RowsRequest, TableRef, ValueLookup } from '@shared/types'
+import type { ConnectionConfig, KeyKind, QueryResult, RowsRequest, TableRef, ValueLookup } from '@shared/types'
 import { findWriteKeyword } from '@shared/sqlGuard'
 import { addHistory, getConnection } from '../store'
 import type { Driver } from './driver'
@@ -64,6 +64,11 @@ export const fetchRows = (id: string, request: RowsRequest) => withDriver(id, (d
 export const describeSchema = (id: string) => withDriver(id, (d) => d.describeSchema())
 export const distinctValues = (id: string, table: TableRef, column: string, limit: number, via?: ValueLookup) =>
   withDriver(id, (d) => d.distinctValues(table, column, limit, via))
+
+export const sampleDistinct = (id: string, table: TableRef, column: string, limit: number) =>
+  withDriver(id, (d) => d.sampleDistinct(table, column, limit))
+export const countMatchingKeys = (id: string, table: TableRef, column: string, values: string[], kind: KeyKind) =>
+  withDriver(id, (d) => d.countMatchingKeys(table, column, values, kind))
 
 export async function runQuery(connectionId: string, sql: string): Promise<QueryResult> {
   const started = Date.now()

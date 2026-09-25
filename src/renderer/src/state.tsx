@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { ColumnFilter, ConnectionConfig, TableInfo, TableRef } from '@shared/types'
-import { forgetNlEngine } from './lib/useNl'
+import type { ColumnFilter, ConnectionConfig, CrossLink, TableInfo, TableRef } from '@shared/types'
+import { forgetAllNlEngines, forgetNlEngine } from './lib/useNl'
 
 export type Tab =
   | { kind: 'table'; id: string; connectionId: string; table: TableRef; initialFilters: ColumnFilter[] }
@@ -15,6 +15,9 @@ export interface TablesState {
 interface AppState {
   connections: ConnectionConfig[]
   reloadConnections(): Promise<void>
+  /** Cross-database links, confirmed and dismissed. */
+  links: CrossLink[]
+  setLinks(links: CrossLink[]): void
   tables: Record<string, TablesState>
   loadTables(connectionId: string, force?: boolean): Promise<void>
   forgetTables(connectionId: string): void
@@ -35,6 +38,16 @@ const nextTabId = (): string => `tab-${++tabCounter}`
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [connections, setConnections] = useState<ConnectionConfig[]>([])
   const [tables, setTables] = useState<Record<string, TablesState>>({})
+  const [links, setLinksState] = useState<CrossLink[]>([])
+
+  const setLinks = useCallback((next: CrossLink[]) => {
+    setLinksState(next)
+    forgetAllNlEngines()
+  }, [])
+
+  useEffect(() => {
+    window.api.listLinks().then(setLinksState).catch(() => undefined)
+  }, [])
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
 
@@ -100,6 +113,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppState>(() => ({
     connections,
     reloadConnections,
+    links,
+    setLinks,
     tables,
     loadTables,
     forgetTables,
@@ -110,7 +125,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     openQuery,
     closeTab,
     connection: (id) => connections.find((c) => c.id === id)
-  }), [connections, reloadConnections, tables, loadTables, forgetTables, tabs, activeTabId, openTable, openQuery, closeTab])
+  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, tabs, activeTabId, openTable, openQuery, closeTab])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CellValue, ColumnFilter, ColumnInfo, FilterOp, RowsResult, TableDetails } from '@shared/types'
 import { useAppState, type Tab } from '../state'
+import { incomingLinks, outgoingLinks } from '@shared/links'
 import { formatCount, selectSql } from '../lib/format'
 import { DataGrid, type Selection } from './DataGrid'
 import { RowInspector } from './RowInspector'
@@ -21,7 +22,7 @@ const OPS: { op: FilterOp; label: string; needsValue: boolean }[] = [
 const emptySelection: Selection = { rows: new Set(), active: null }
 
 export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }>; active: boolean }) {
-  const { connection, openTable, openQuery } = useAppState()
+  const { connection, openTable, openQuery, links } = useAppState()
   const conn = connection(tab.connectionId)
   const [details, setDetails] = useState<TableDetails | null>(null)
   const [filters, setFilters] = useState<ColumnFilter[]>(tab.initialFilters)
@@ -81,6 +82,18 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [active, refresh, selection.active])
+
+  const outgoing = useMemo(() => outgoingLinks(links, tab.connectionId, tab.table), [links, tab.connectionId, tab.table])
+  const incoming = useMemo(() => incomingLinks(links, tab.connectionId, tab.table), [links, tab.connectionId, tab.table])
+  const crossLinks = useMemo(() => new Map(outgoing.map((l) => {
+    const target = connection(l.to.connectionId)
+    return [l.from.column, { title: `Open in ${target?.name}: ${l.to.table.name} where ${l.to.column} = this value`, env: target?.env ?? 'local' }]
+  })), [outgoing, connection])
+
+  const followCrossLink = (column: string, value: CellValue): void => {
+    const link = outgoing.find((l) => l.from.column === column)
+    if (link) openTable(link.to.connectionId, link.to.table, [{ column: link.to.column, op: '=', value: String(value) }])
+  }
 
   const columnInfo = useMemo(
     () => new Map<string, ColumnInfo>(details?.columns.map((c) => [c.name, c]) ?? []),
@@ -194,6 +207,8 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
           selection={selection}
           onSelectionChange={setSelection}
           onFollowReference={followReference}
+          crossLinks={crossLinks}
+          onFollowCrossLink={followCrossLink}
           onFilter={addFilter}
           copyTarget={{ kind: conn.kind, table: tab.table }}
         />
@@ -206,6 +221,7 @@ export function TableView({ tab, active }: { tab: Extract<Tab, { kind: 'table' }
             columnInfo={columnInfo}
             referencedBy={details?.referencedBy}
             onOpen={(table, f) => openTable(tab.connectionId, table, f)}
+            cross={{ outgoing, incoming, connection, open: openTable }}
             onClose={() => setSelection(emptySelection)}
           />
         )}

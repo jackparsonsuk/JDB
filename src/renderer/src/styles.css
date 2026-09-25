@@ -340,3 +340,31 @@ tr:hover .fk-jump { opacity: 1; }
 .dg-suggestion:hover rect { stroke: var(--accent); stroke-dasharray: none; }
 .dg-suggestion text { fill: var(--text); font-size: 12px; }
 .dg-suggestion .dg-phrase { fill: var(--text-dim); font-size: 10.5px; }
+
+/* Cross-database links */
+.small { font-size: 12px; }
+.fk-buttons { display: inline-flex; gap: 2px; flex-shrink: 0; }
+.fk-jump.cross { color: var(--env-color, var(--accent)); font-weight: 700; }
+.fk-jump.cross:hover { background: color-mix(in srgb, var(--env-color, var(--accent)) 18%, transparent); }
+.inspector-refs.cross { border-top: 1px dashed var(--border); }
+.cross-ref { display: flex; align-items: center; gap: 6px; color: var(--text); }
+.cross-ref:hover { color: var(--accent); }
+.cross-conn { font-weight: 600; font-size: 11px; color: var(--env-color, var(--text-dim)); }
+.cross-ref .env-dot { display: inline-block; }
+.links-dialog { width: 760px; }
+.links-pair { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 12px; background: var(--bg-3); font-weight: 600; }
+.links-section { margin-top: 14px; }
+.link-group { border-bottom: 1px solid var(--border); }
+.link-row { display: flex; align-items: center; gap: 8px; padding: 7px 4px; }
+.link-label { flex: 1; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 12.5px; }
+.link-label code { font: 12px var(--mono); background: var(--bg-3); padding: 1px 5px; border-radius: 4px; }
+.link-label .env-dot { display: inline-block; }
+.overlap { font: 600 12px var(--mono); color: var(--text-dim); min-width: 40px; text-align: right; }
+.overlap.strong { color: var(--ok); }
+.link-items { padding: 0 0 8px 30px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px 16px; }
+.link-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.link-item .muted { margin-left: auto; font-size: 11px; }
+.manual-link { margin-top: 10px; padding: 10px; border: 1px dashed var(--border); border-radius: 7px; display: flex; flex-direction: column; gap: 10px; }
+.end-picker .form-row { display: flex; gap: 6px; margin-top: 4px; }
+.end-picker input { flex: 1; }

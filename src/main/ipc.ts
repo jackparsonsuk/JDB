@@ -1,7 +1,8 @@
 import { clipboard, ipcMain } from 'electron'
-import type { ConnectionConfig, ConnectionInput, RowsRequest, TableRef, ValueLookup } from '@shared/types'
+import type { ConnectionConfig, ConnectionInput, CrossLink, LinkEnd, RowsRequest, TableRef, ValueLookup } from '@shared/types'
 import * as db from './db'
 import * as store from './store'
+import { discoverLinks, verifyLink } from './links'
 
 /**
  * Registers a handler that returns { ok, value } or { ok: false, error } rather than throwing,
@@ -38,6 +39,12 @@ export function registerIpc(): void {
   handle('db:distinct', (id: string, table: TableRef, column: string, limit: number, via?: ValueLookup) =>
     db.distinctValues(id, table, column, limit, via))
   handle('db:query', (id: string, sql: string) => db.runQuery(id, sql))
+
+  handle('links:list', () => store.listLinks())
+  handle('links:save', (links: CrossLink[]) => store.saveLinks(links))
+  handle('links:delete', (id: string) => store.deleteLink(id))
+  handle('links:discover', (a: string, b: string) => discoverLinks(a, b))
+  handle('links:verify', (from: LinkEnd, to: LinkEnd) => verifyLink(from, to))
 
   handle('history:list', () => store.listHistory())
   handle('clipboard:write', (text: string) => clipboard.writeText(text))

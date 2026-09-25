@@ -1,4 +1,5 @@
-import type { CellValue, ColumnFilter, ColumnInfo, DbKind, ReverseReference, TableRef } from '@shared/types'
+import { useState } from 'react'
+import type { CellValue, ColumnFilter, ColumnInfo, CrossLink, DbKind, ReverseReference, TableRef } from '@shared/types'
 import { displayValue, formatRows, quoteIdent, sqlLiteral } from '../lib/format'
 import { toast } from './Toast'
 
@@ -10,8 +11,21 @@ interface Props {
   columnInfo?: Map<string, ColumnInfo>
   referencedBy?: ReverseReference[]
   onOpen?(table: TableRef, filters: ColumnFilter[]): void
+  cross?: CrossLinkProps
   onClose(): void
 }
+
+export interface CrossLinkProps {
+  /** Links whose reference column is in this table. */
+  outgoing: CrossLink[]
+  /** Links from other databases pointing at a key in this table. */
+  incoming: CrossLink[]
+  connection(id: string): { name: string; env: string } | undefined
+  open(connectionId: string, table: TableRef, filters: ColumnFilter[]): void
+}
+
+/** Incoming links can be numerous (audit columns on dozens of tables); show a few, expandable. */
+const INCOMING_PREVIEW = 6
 
 /** Pretty-prints values that are JSON objects or arrays, which are common in text columns. */
 function prettyJson(value: CellValue): string | null {
@@ -25,7 +39,7 @@ function prettyJson(value: CellValue): string | null {
   }
 }
 
-export function RowInspector({ kind, table, columns, row, columnInfo, referencedBy, onOpen, onClose }: Props) {
+export function RowInspector({ kind, table, columns, row, columnInfo, referencedBy, onOpen, cross, onClose }: Props) {
   const valueOf = (column: string): CellValue => row[columns.indexOf(column)]
   const copy = (text: string, what: string): void => {
     window.api.copy(text)
@@ -107,6 +121,57 @@ export function RowInspector({ kind, table, columns, row, columnInfo, referenced
           })}
         </div>
       )}
+
+      {cross && (cross.outgoing.length > 0 || cross.incoming.length > 0) && (
+        <CrossLinks cross={cross} valueOf={valueOf} />
+      )}
     </aside>
+  )
+}
+
+function CrossLinks({ cross, valueOf }: { cross: CrossLinkProps; valueOf(column: string): CellValue }) {
+  const [showAll, setShowAll] = useState(false)
+  const usable = (v: CellValue): v is string | number | boolean => v !== null && v !== undefined
+  const outgoing = cross.outgoing.filter((l) => usable(valueOf(l.from.column)))
+  const incoming = cross.incoming.filter((l) => usable(valueOf(l.to.column)))
+  const shown = showAll ? incoming : incoming.slice(0, INCOMING_PREVIEW)
+
+  const Target = ({ connectionId, label }: { connectionId: string; label: string }) => {
+    const conn = cross.connection(connectionId)
+    return (
+      <>
+        {/* The env class sits on both so they take the target connection's colour, not the current tab's. */}
+        <span className={`env-dot env-${conn?.env ?? 'local'}`} />
+        <span className={`cross-conn env-${conn?.env ?? 'local'}`}>{conn?.name}</span>
+        <span>{label}</span>
+      </>
+    )
+  }
+
+  return (
+    <div className="inspector-refs cross">
+      <div className="section-title">Linked in other databases</div>
+      {outgoing.map((l) => {
+        const value = valueOf(l.from.column)
+        return (
+          <button key={l.id} className="ref cross-ref" onClick={() => cross.open(l.to.connectionId, l.to.table, [{ column: l.to.column, op: '=', value: String(value) }])}>
+            <Target connectionId={l.to.connectionId} label={`${l.to.table.name} (${l.from.column} ${displayValue(value)})`} />
+          </button>
+        )
+      })}
+      {shown.map((l) => {
+        const value = valueOf(l.to.column)
+        return (
+          <button key={l.id} className="ref cross-ref" onClick={() => cross.open(l.from.connectionId, l.from.table, [{ column: l.from.column, op: '=', value: String(value) }])}>
+            <Target connectionId={l.from.connectionId} label={`${l.from.table.name}.${l.from.column}`} />
+          </button>
+        )
+      })}
+      {incoming.length > INCOMING_PREVIEW && (
+        <button className="link small" onClick={() => setShowAll((s) => !s)}>
+          {showAll ? 'show fewer' : `+${incoming.length - INCOMING_PREVIEW} more`}
+        </button>
+      )}
+    </div>
   )
 }

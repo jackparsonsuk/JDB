@@ -1,4 +1,4 @@
-import type { ColumnInfo, DbKind, SchemaTable, TableRef, ValueLookup } from '../types'
+import type { ColumnInfo, CrossLink, DbKind, SchemaTable, TableRef, ValueLookup } from '../types'
 import { CATEGORY_HINTS, COLUMN_NOISE, sameWords, splitIdentifier, stem, stems } from './words'
 
 export type ColumnKind = 'date' | 'text' | 'number' | 'bool' | 'other'
@@ -151,6 +151,23 @@ export function buildModel(schema: SchemaTable[], kind: DbKind): Model {
   }
 
   return { kind, tables }
+}
+
+/**
+ * A confirmed cross-database link says where a column really points, so drop any local
+ * foreign key that was only inferred from its name (Shop Orders.JobId is not Hangfire's Job).
+ */
+export function applyCrossLinks(model: Model, connectionId: string, links: CrossLink[]): Model {
+  for (const link of links) {
+    if (link.status !== 'confirmed' || link.from.connectionId !== connectionId) continue
+    const table = model.tables.find((t) => t.info.schema === link.from.table.schema && t.info.name === link.from.table.name)
+    const column = table?.columns.find((c) => c.info.name === link.from.column)
+    if (!table || !column?.ref?.inferred) continue
+    const parent = column.ref.table
+    parent.children = parent.children.filter((c) => !(c.table === table && c.column === column.info.name))
+    column.ref = undefined
+  }
+  return model
 }
 
 const LOOKUP_ROW_LIMIT = 2000

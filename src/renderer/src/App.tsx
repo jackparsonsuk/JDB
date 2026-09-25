@@ -7,11 +7,13 @@ import { QueryView } from './components/QueryView'
 import { ConnectionDialog } from './components/ConnectionDialog'
 import { CommandPalette } from './components/CommandPalette'
 import { ToastHost } from './components/Toast'
+import { LinksDialog } from './components/LinksDialog'
 
 export function App() {
   const { tabs, activeTabId, setActiveTab, closeTab, connection, connections, openQuery } = useAppState()
   const [editing, setEditing] = useState<ConnectionConfig | null | 'new'>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [linksFor, setLinksFor] = useState<string | null>(null)
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
 
@@ -43,7 +45,7 @@ export function App() {
 
   return (
     <div className="app">
-      <Sidebar onEdit={(c) => setEditing(c)} onNew={() => setEditing('new')} />
+      <Sidebar onEdit={(c) => setEditing(c)} onNew={() => setEditing('new')} onLinks={(c) => setLinksFor(c.id)} />
 
       <main className={`workspace ${activeConn ? `env-${activeConn.env}` : ''}`}>
         <div className="tabbar">
@@ -90,7 +92,14 @@ export function App() {
       </main>
 
       {editing && <ConnectionDialog initial={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
-      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} onNewConnection={() => setEditing('new')} />}
+      {paletteOpen && (
+        <CommandPalette
+          onClose={() => setPaletteOpen(false)}
+          onNewConnection={() => setEditing('new')}
+          onLinks={(id) => setLinksFor(id)}
+        />
+      )}
+      {linksFor && <LinksDialog connectionId={linksFor} onClose={() => setLinksFor(null)} />}
       <ToastHost />
     </div>
   )

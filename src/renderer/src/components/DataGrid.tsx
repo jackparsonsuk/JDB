@@ -23,6 +23,9 @@ interface Props {
   selection: Selection
   onSelectionChange(selection: Selection): void
   onFollowReference?(column: ColumnInfo, value: CellValue): void
+  /** Columns linked to another database: tooltip and env class for the jump button. */
+  crossLinks?: Map<string, { title: string; env: string }>
+  onFollowCrossLink?(column: string, value: CellValue): void
   onFilter?(column: string, op: FilterOp, value?: string): void
   copyTarget?: { kind: DbKind; table?: TableRef }
 }
@@ -219,21 +222,38 @@ export function DataGrid(props: Props) {
                         className={cellClass(value)}
                         onContextMenu={(e) => openMenu(e, index, ci)}
                       >
-                        {info?.references && value !== null && props.onFollowReference ? (
-                          <span className="fk-cell">
-                            <span className="fk-value">{displayValue(value)}</span>
-                            <button
-                              className="fk-jump"
-                              title={`Open ${info.references.name} where ${info.references.column} = ${displayValue(value)}`}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={() => props.onFollowReference?.(info, value)}
-                            >
-                              ↗
-                            </button>
-                          </span>
-                        ) : (
-                          displayValue(value)
-                        )}
+                        {(() => {
+                          const fk = info?.references && value !== null && props.onFollowReference ? info : null
+                          const cross = value !== null && props.onFollowCrossLink ? props.crossLinks?.get(columns[ci]) : undefined
+                          if (!fk && !cross) return displayValue(value)
+                          return (
+                            <span className="fk-cell">
+                              <span className="fk-value">{displayValue(value)}</span>
+                              <span className="fk-buttons">
+                                {fk && (
+                                  <button
+                                    className="fk-jump"
+                                    title={`Open ${fk.references!.name} where ${fk.references!.column} = ${displayValue(value)}`}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    onClick={() => props.onFollowReference?.(fk, value)}
+                                  >
+                                    ↗
+                                  </button>
+                                )}
+                                {cross && (
+                                  <button
+                                    className={`fk-jump cross env-${cross.env}`}
+                                    title={cross.title}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    onClick={() => props.onFollowCrossLink?.(columns[ci], value)}
+                                  >
+                                    ⇗
+                                  </button>
+                                )}
+                              </span>
+                            </span>
+                          )
+                        })()}
                       </td>
                     )
                   })}
