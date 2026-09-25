@@ -174,6 +174,49 @@ describe('translate', () => {
     expect(() => buildModel(broken, 'mssql')).not.toThrow()
   })
 
+  describe('plan (diagram)', () => {
+    it('describes joins, filters and sorting per table', () => {
+      const plan = run('draft invoices created this week sorted by total gross desc').plan!
+      expect(plan.main.name).toBe('Invoices')
+      expect(plan.main.columns).toEqual(expect.arrayContaining([
+        { name: 'CreatedOn', kind: 'filter', note: '21 Sept 2026 – 27 Sept 2026' },
+        { name: 'TotalGross', kind: 'sort', note: 'sorted ↓' },
+        { name: 'DeletedOn', kind: 'filter', note: 'hides deleted' },
+        { name: 'InvoiceStatusId', kind: 'key' }
+      ]))
+      expect(plan.parents).toHaveLength(1)
+      expect(plan.parents[0]).toMatchObject({ name: 'Lookups', caption: 'via InvoiceStatusId' })
+      expect(plan.parents[0].columns).toContainEqual({ name: 'Label', kind: 'filter', note: '= Draft' })
+      expect(plan.links).toEqual([{ kind: 'join', from: 'dbo.Invoices', fromColumn: 'InvoiceStatusId', to: 'dbo.Lookups#InvoiceStatusId', toColumn: 'Id' }])
+    })
+
+    it('shows child tables as EXISTS links pointing at the main table', () => {
+      const plan = run('customers without documents').plan!
+      expect(plan.children).toHaveLength(1)
+      expect(plan.children[0]).toMatchObject({ name: 'CustomerDocuments', caption: 'must have none' })
+      expect(plan.links[0]).toMatchObject({ kind: 'not-exists', fromColumn: 'CustomerId', to: 'dbo.Customers', toColumn: 'Id' })
+    })
+
+    it('suggests unused related tables with the phrase that adds them', () => {
+      const plan = run('customers').plan!
+      expect(plan.suggestions).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: 'Users', side: 'parent', phrase: 'with account manager' }),
+        expect.objectContaining({ name: 'CustomerDocuments', side: 'child', phrase: 'with documents' })
+      ]))
+      // Suggestions round-trip: using the phrase brings the table in.
+      expect(run('customers with documents').plan!.suggestions.map((s) => s.name)).not.toContain('CustomerDocuments')
+    })
+
+    it('every suggestion phrase brings in the table it names', () => {
+      for (const start of ['customers', 'invoices', 'jobs', 'users', 'lookups']) {
+        for (const s of run(start).plan!.suggestions) {
+          const plan = run(`${start} ${s.phrase}`).plan!
+          expect([...plan.parents, ...plan.children].map((n) => n.name), `${start} ${s.phrase}`).toContain(s.name)
+        }
+      }
+    })
+  })
+
   it('only offers small, category-like columns as value sources', () => {
     const model = buildModel(SCHEMA, 'mssql')
     const invoices = model.tables.find((t) => t.info.name === 'Invoices')!

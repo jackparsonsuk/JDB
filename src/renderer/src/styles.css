@@ -300,3 +300,43 @@ tr:hover .fk-jump { opacity: 1; }
 .ask-placeholder { padding: 12px; font-size: 12px; }
 .ask-actions { display: flex; gap: 6px; justify-content: flex-end; }
 .ask-actions kbd { margin-left: 4px; background: rgba(255,255,255,0.15); border-color: transparent; color: inherit; }
+
+/* Ask view switch + diagram */
+.ask-view-tabs { display: inline-flex; align-self: flex-start; background: var(--bg-3); border-radius: 6px; padding: 2px; gap: 2px; }
+.ask-view-tabs button { border: none; background: none; padding: 2px 12px; font-size: 12px; border-radius: 4px; }
+.ask-view-tabs button.on { background: var(--bg); color: var(--accent); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15); }
+.ask-diagram { flex: 1; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); overflow: auto; min-height: 180px; max-height: 360px; padding: 8px; }
+.diagram { width: 100%; height: auto; display: block; font-family: var(--sans); }
+.dg-move { transition: transform 0.35s ease; }
+.dg-appear { animation: dg-in 0.3s ease; }
+@keyframes dg-in { from { opacity: 0; } to { opacity: 1; } }
+.dg-node { fill: var(--bg-2); stroke: var(--border); }
+.dg-node.main { stroke: var(--accent); stroke-width: 1.5; }
+.dg-head.main { fill: color-mix(in srgb, var(--accent) 22%, var(--bg-2)); }
+.dg-head.parent { fill: color-mix(in srgb, #a371f7 20%, var(--bg-2)); }
+.dg-head.child { fill: color-mix(in srgb, var(--ok) 20%, var(--bg-2)); }
+.dg-title { fill: var(--text); font-weight: 700; font-size: 13px; }
+.dg-caption { fill: var(--text-dim); font-size: 10px; }
+.dg-col { fill: var(--text); font-size: 11.5px; font-family: var(--mono); }
+.dg-col.key { fill: var(--text-dim); }
+.dg-glyph { fill: var(--text-dim); font-size: 11px; }
+.dg-note { font-size: 11px; font-weight: 600; }
+.dg-note.filter, .dg-glyph.filter { fill: var(--ok); }
+.dg-note.sort, .dg-glyph.sort { fill: var(--accent); }
+.dg-note.group, .dg-glyph.group { fill: #a371f7; }
+.dg-note.shown, .dg-glyph.shown { fill: var(--text-dim); }
+.dg-link { fill: none; stroke: var(--text-dim); stroke-width: 1.6; transition: d 0.35s ease; }
+.dg-link.exists { stroke: var(--ok); }
+.dg-link.not-exists { stroke: var(--danger); stroke-dasharray: 5 4; }
+.dg-link.suggestion { stroke: var(--border); stroke-dasharray: 3 4; stroke-width: 1.2; }
+.dg-arrowhead { fill: var(--text-dim); }
+.dg-link-label { fill: var(--bg); stroke: var(--border); }
+.dg-link-label.exists { stroke: var(--ok); }
+.dg-link-label.not-exists { stroke: var(--danger); }
+.dg-link-text { fill: var(--text-dim); font-size: 10px; font-weight: 600; }
+.dg-suggestion { cursor: pointer; opacity: 0.6; transition: opacity 0.15s; }
+.dg-suggestion:hover { opacity: 1; }
+.dg-suggestion rect { fill: var(--bg); stroke: var(--border); stroke-dasharray: 4 3; }
+.dg-suggestion:hover rect { stroke: var(--accent); stroke-dasharray: none; }
+.dg-suggestion text { fill: var(--text); font-size: 12px; }
+.dg-suggestion .dg-phrase { fill: var(--text-dim); font-size: 10.5px; }

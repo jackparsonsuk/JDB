@@ -1,6 +1,7 @@
 import type { DbKind } from '../types'
 import { formatRangeLabel, isoDate, parseDate, type DateRange } from './dates'
 import { valueSources, type ChildLink, type Model, type ModelColumn, type ModelTable, type ValueSource } from './model'
+import { buildPlan, type Plan } from './plan'
 import { tokenize, type Token } from './tokens'
 import { containsRun, FILLER, sameWords, splitIdentifier, SQL_KEYWORDS, stem } from './words'
 
@@ -21,6 +22,8 @@ export interface TranslateResult {
   notes: string[]
   /** Value lists the caller should load (then translate again) to recognise more words. */
   wanted: ValueSource[]
+  /** Tables and links the query uses, for the diagram view. */
+  plan: Plan | null
 }
 
 /** Loaded values per ValueSource key; null means the column had too many distinct values to use. */
@@ -31,14 +34,14 @@ const DEFAULT_LIMIT = 1000
 // ---- Query model ---------------------------------------------------------------------------
 
 /** A column on the main table, or on a parent joined through one of its foreign keys. */
-interface Target {
+export interface Target {
   column: ModelColumn
   via?: ModelColumn
 }
 
-type Literal = { text: string; numeric: boolean }
+export type Literal = { text: string; numeric: boolean }
 
-type Condition =
+export type Condition =
   | { kind: 'compare'; target: Target; op: string; value: Literal }
   | { kind: 'in'; target: Target; values: Literal[]; negate: boolean }
   | { kind: 'like'; target: Target; pattern: string; negate: boolean }
@@ -46,7 +49,7 @@ type Condition =
   | { kind: 'range'; target: Target; range: DateRange }
   | { kind: 'exists'; link: ChildLink; negate: boolean }
 
-interface Query {
+export interface Query {
   table: ModelTable
   conditions: Condition[]
   shown: ModelColumn[]
@@ -113,29 +116,34 @@ function rankColumn(c: ModelColumn): number {
 }
 
 /** Matches a child table (one with a FK to `table`) against the words at tokens[i]. */
-function matchChild(table: ModelTable, tokens: Token[], i: number): { link: ChildLink; length: number } | null {
-  for (let n = 3; n >= 1; n--) {
+/** Longest phrase tried when matching table or column names ("fnol question set status"). */
+const MAX_PHRASE = 6
+
+function matchChild(table: ModelTable, tokens: Token[], i: number): { link: ChildLink; length: number; exact: boolean } | null {
+  for (let n = MAX_PHRASE; n >= 1; n--) {
     const phrase = phraseAt(tokens, i, n)
     if (!phrase || (n === 1 && FILLER.has(tokens[i].lower))) continue
-    // "invoices with invoice type": the word "invoice" alone says nothing about InvoiceLines.
-    if (phrase.every((w) => table.words.includes(w))) continue
+    // "invoices with invoice type": the word "invoice" alone says nothing about InvoiceLines,
+    // so a phrase made only of the main table's own words must name the child exactly.
+    const ownWordsOnly = phrase.every((w) => table.words.includes(w))
     const scored = table.children
       .map((link) => {
         const words = link.table.words
         const own = words.filter((w) => !table.words.includes(w))
-        const score = sameWords(own, phrase) || sameWords(words, phrase) ? 3 : containsRun(words, phrase) ? 1 : 0
+        const exact = sameWords(words, phrase) || (!ownWordsOnly && sameWords(own, phrase))
+        const score = exact ? 3 : !ownWordsOnly && containsRun(words, phrase) ? 1 : 0
         return { link, score, size: words.length }
       })
       .filter((s) => s.score > 0)
       .sort((a, b) => b.score - a.score || a.size - b.size)
-    if (scored.length) return { link: scored[0].link, length: n }
+    if (scored.length) return { link: scored[0].link, length: n, exact: scored[0].score === 3 }
   }
   return null
 }
 
 /** Matches a foreign-key column by its own name or its parent table's name, e.g. "customer", "account manager". */
 function matchParent(table: ModelTable, tokens: Token[], i: number): { column: ModelColumn; length: number } | null {
-  for (let n = 3; n >= 1; n--) {
+  for (let n = MAX_PHRASE; n >= 1; n--) {
     const phrase = phraseAt(tokens, i, n)
     if (!phrase || (n === 1 && FILLER.has(tokens[i].lower))) continue
     const found = table.columns.find((c) => c.ref && c.ref.table.display && (sameWords(c.core, phrase) || sameWords(c.ref.table.words, phrase)))
@@ -210,7 +218,7 @@ export function translate(input: string, model: Model, values: ValueCache, now =
 
   const found = findTable(model, tokens)
   if (!found) {
-    return { sql: null, spans: spans(), notes: tokens.length ? ['Mention a table, e.g. "invoices" or "customers".'] : [], wanted: [] }
+    return { sql: null, spans: spans(), notes: tokens.length ? ['Mention a table, e.g. "invoices" or "customers".'] : [], wanted: [], plan: null }
   }
 
   const table = found.table
@@ -379,7 +387,9 @@ export function translate(input: string, model: Model, values: ValueCache, now =
       const parentFirst = matchParent(table, tokens, i + offset)
       const columnFirst = matchColumn(table, tokens, i + offset, used)
       const longest = Math.max(parentFirst?.length ?? 0, columnFirst?.length ?? 0)
-      if (child && child.length >= longest) {
+      // A child wins over a lookup/column only by covering more words, or the same words exactly.
+      const childWins = child && (child.length > longest || (child.length === longest && (child.exact || !parentFirst)))
+      if (child && childWins) {
         q.conditions.push({ kind: 'exists', link: child.link, negate: neg })
         mark(range(i, offset), 'keyword', neg ? 'has none' : 'has at least one')
         mark(range(i + offset, child.length), 'table', `${child.link.table.info.name}.${child.link.column}`)
@@ -504,7 +514,7 @@ export function translate(input: string, model: Model, values: ValueCache, now =
     if (!roles[k] && !FILLER.has(t.lower) && t.type === 'word') notes.push(`Didn't understand "${t.text}"`)
   }
 
-  return { sql: buildSql(q, model.kind), table, spans: spans(), notes: dedupe(notes), wanted }
+  return { sql: buildSql(q, model.kind), table, spans: spans(), notes: dedupe(notes), wanted, plan: buildPlan(q) }
 
   // ---- closures that need the parse state ----
 

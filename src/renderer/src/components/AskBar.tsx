@@ -4,7 +4,18 @@ import { sql, MSSQL, MySQL } from '@codemirror/lang-sql'
 import type { DbKind } from '@shared/types'
 import type { Span } from '@shared/nl/translate'
 import { useNl } from '../lib/useNl'
+import { QueryDiagram } from './QueryDiagram'
 import { useColorScheme } from '../lib/useColorScheme'
+
+const VIEW_KEY = 'jdb.askView'
+
+function savedView(): 'sql' | 'diagram' {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'diagram' ? 'diagram' : 'sql'
+  } catch {
+    return 'sql'
+  }
+}
 
 const EXAMPLES = [
   'invoices created after 12/12/2025',
@@ -25,9 +36,19 @@ interface Props {
 
 export function AskBar({ connectionId, kind, onRun, onEdit }: Props) {
   const [text, setText] = useState('')
+  const [view, setView] = useState<'sql' | 'diagram'>(savedView)
   const scheme = useColorScheme()
   const { result, loading, error } = useNl(connectionId, kind, text)
   const generated = result?.sql ?? ''
+
+  const chooseView = (next: 'sql' | 'diagram'): void => {
+    setView(next)
+    try {
+      localStorage.setItem(VIEW_KEY, next)
+    } catch {
+      // Storage can be unavailable; the choice just won't persist.
+    }
+  }
 
   const onKey = (e: KeyboardEvent): void => {
     if (e.key === 'Enter' && !e.shiftKey && generated) {
@@ -68,19 +89,33 @@ export function AskBar({ connectionId, kind, onRun, onEdit }: Props) {
       </div>
 
       <div className="ask-right">
-        <div className="ask-sql">
-          {generated ? (
-            <CodeMirror
-              value={generated}
-              theme={scheme}
-              editable={false}
-              basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
-              extensions={[sql({ dialect: kind === 'mssql' ? MSSQL : MySQL }), EditorView.lineWrapping]}
-            />
-          ) : (
-            <div className="muted ask-placeholder">The SQL appears here as you type.</div>
-          )}
+        <div className="ask-view-tabs">
+          <button className={view === 'sql' ? 'on' : ''} onClick={() => chooseView('sql')}>SQL</button>
+          <button className={view === 'diagram' ? 'on' : ''} onClick={() => chooseView('diagram')}>Diagram</button>
         </div>
+        {view === 'sql' ? (
+          <div className="ask-sql">
+            {generated ? (
+              <CodeMirror
+                value={generated}
+                theme={scheme}
+                editable={false}
+                basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
+                extensions={[sql({ dialect: kind === 'mssql' ? MSSQL : MySQL }), EditorView.lineWrapping]}
+              />
+            ) : (
+              <div className="muted ask-placeholder">The SQL appears here as you type.</div>
+            )}
+          </div>
+        ) : (
+          <div className="ask-diagram">
+            {result?.plan ? (
+              <QueryDiagram plan={result.plan} onSuggest={(phrase) => setText((t) => `${t.trimEnd()} ${phrase}`)} />
+            ) : (
+              <div className="muted ask-placeholder">Tables and how they connect appear here as you type.</div>
+            )}
+          </div>
+        )}
         <div className="ask-actions">
           <button className="primary" disabled={!generated} onClick={() => onRun(generated)}>▶ Run <kbd>Enter</kbd></button>
           <button disabled={!generated} onClick={() => onEdit(generated)}>Edit in editor</button>
