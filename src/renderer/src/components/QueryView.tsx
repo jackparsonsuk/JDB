@@ -40,6 +40,34 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
   const [showHistory, setShowHistory] = useState(false)
   const [showAsk, setShowAsk] = useState(!tab.initialSql)
   const viewRef = useRef<EditorView | null>(null)
+  /** The run in flight, so Cancel can stop it on the server. */
+  const runRef = useRef<{ id: string; controller: AbortController } | null>(null)
+
+  const startRun = (): { id: string; signal: AbortSignal } => {
+    const current = { id: crypto.randomUUID(), controller: new AbortController() }
+    runRef.current = current
+    setRunning(true)
+    setRunStarted(Date.now())
+    setError(null)
+    return { id: current.id, signal: current.controller.signal }
+  }
+
+  const cancel = useCallback(() => {
+    const current = runRef.current
+    if (!current || current.controller.signal.aborted) return
+    current.controller.abort()
+    window.api.cancelQuery(current.id).catch(() => undefined)
+  }, [])
+
+  // Esc cancels from anywhere in the tab, as long as something is running.
+  useEffect(() => {
+    if (!running || !active) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') cancel()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [running, active, cancel])
 
   useEffect(() => {
     loadTables(tab.connectionId)
@@ -65,11 +93,9 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
       if (!ok) return
     }
 
-    setRunning(true)
-    setRunStarted(Date.now())
-    setError(null)
+    const { id } = startRun()
     try {
-      const r = await window.api.runQuery(tab.connectionId, statement)
+      const r = await window.api.runQuery(tab.connectionId, statement, id)
       setResult(r)
       setResultIndex(Math.max(0, r.resultSets.length - 1))
       setSelection(emptySelection)
@@ -77,6 +103,7 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
       setError((e as Error).message)
       setResult(null)
     } finally {
+      runRef.current = null
       setRunning(false)
     }
   }, [conn, running, tab.connectionId])
@@ -90,13 +117,11 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
       return
     }
     if (running) return
-    setRunning(true)
-    setRunStarted(Date.now())
-    setError(null)
+    const current = startRun()
     setStepRuns(null)
     try {
       const { result: merged, runs } = await runFederated(plan, (step) =>
-        setStepLabel(`Step ${step.index} of ${plan.steps.length} · ${step.connectionName}: ${step.description}`))
+        setStepLabel(`Step ${step.index} of ${plan.steps.length} · ${step.connectionName}: ${step.description}`), current)
       setResult(merged)
       setStepRuns(runs)
       setResultIndex(0)
@@ -105,6 +130,7 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
       setError((e as Error).message)
       setResult(null)
     } finally {
+      runRef.current = null
       setRunning(false)
       setStepLabel(null)
     }
@@ -151,10 +177,12 @@ export function QueryView({ tab, active }: { tab: Extract<Tab, { kind: 'query' }
   return (
     <div className="view">
       <div className="toolbar">
-        <button className="primary" onClick={run} disabled={running}>
-          {running ? 'Running…' : '▶ Run'}
-        </button>
-        <span className="muted hint">Ctrl+Enter runs the selection, or everything</span>
+        {running ? (
+          <button className="danger" onClick={cancel} title="Stop the query on the server (Esc)">■ Cancel</button>
+        ) : (
+          <button className="primary" onClick={run}>▶ Run</button>
+        )}
+        <span className="muted hint">{running ? 'Esc cancels the running query' : 'Ctrl+Enter runs the selection, or everything'}</span>
         <div className="toolbar-right">
           <button className={`ghost ${showAsk ? 'on' : ''}`} title="Describe a query in plain English" onClick={() => setShowAsk((s) => !s)}>✦ Ask</button>
           <button className={`ghost ${showHistory ? 'on' : ''}`} onClick={() => setShowHistory((s) => !s)}>History</button>

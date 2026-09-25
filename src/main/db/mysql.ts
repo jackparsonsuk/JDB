@@ -3,7 +3,7 @@ import type {
   CellValue, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
   KeyKind, SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
 } from '@shared/types'
-import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, SAMPLE_SCAN_ROWS, TimeoutError, toCell, type Driver, type SchemaColumnRow } from './driver'
+import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancelledError, SAMPLE_SCAN_ROWS, TimeoutError, toCell, type Driver, type SchemaColumnRow } from './driver'
 import { buildWhere } from './filters'
 
 const quote = (identifier: string): string => `\`${identifier.replace(/`/g, '``')}\``
@@ -15,15 +15,20 @@ export class MysqlDriver implements Driver {
   private readonly pool: mysql.Pool
   private primaryKeys = new Map<string, string[]>()
 
+  private readonly login: mysql.ConnectionOptions
+
   constructor(private readonly config: ConnectionConfig, password: string | undefined) {
-    this.pool = mysql.createPool({
+    this.login = {
       host: config.host,
       port: config.port || 3306,
       user: config.user,
       password,
+      connectTimeout: 20_000
+    }
+    this.pool = mysql.createPool({
+      ...this.login,
       database: config.database || undefined,
       connectionLimit: 4,
-      connectTimeout: 20_000,
       dateStrings: true,
       // Numbers stay numbers unless they exceed JS precision, then they arrive as strings.
       supportBigNumbers: true,
@@ -225,9 +230,29 @@ export class MysqlDriver implements Driver {
     }
   }
 
-  async query(text: string): Promise<QueryResult> {
+  async query(text: string, signal?: AbortSignal): Promise<QueryResult> {
     const started = Date.now()
-    const [results, fields] = await this.pool.query({ sql: text, rowsAsArray: true })
+    // Hold one connection so we know which server thread to kill if the run is cancelled.
+    const connection = await this.pool.getConnection()
+    let kill: Promise<void> | null = null
+    const onAbort = (): void => {
+      kill = this.killQuery(connection.threadId)
+    }
+    let results: unknown
+    let fields: unknown
+    try {
+      if (signal?.aborted) throw new QueryCancelledError()
+      signal?.addEventListener('abort', onAbort, { once: true })
+      ;[results, fields] = await connection.query({ sql: text, rowsAsArray: true })
+    } catch (error) {
+      if (kill) throw new QueryCancelledError()
+      throw error
+    } finally {
+      signal?.removeEventListener('abort', onAbort)
+      // Wait for the KILL to land before the connection goes back to the pool, so it can't hit the next query.
+      if (kill) await kill
+      connection.release()
+    }
 
     // With multipleStatements, several statements return parallel arrays of results and fields.
     // A single SELECT returns a flat FieldPacket[]; non-SELECT statements have undefined fields.
@@ -249,6 +274,19 @@ export class MysqlDriver implements Driver {
       }
     })
     return { resultSets, rowsAffected, durationMs: Date.now() - started }
+  }
+
+  /** KILL QUERY on a separate connection, since every pooled one may be busy with long queries. */
+  private async killQuery(threadId: number): Promise<void> {
+    const connection = await mysql.createConnection(this.login).catch(() => null)
+    if (!connection) return
+    try {
+      await connection.query(`KILL QUERY ${Math.floor(threadId)}`)
+    } catch {
+      // The query may have already finished; nothing to stop.
+    } finally {
+      await connection.end().catch(() => undefined)
+    }
   }
 
   async close(): Promise<void> {

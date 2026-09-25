@@ -86,20 +86,32 @@ export const sampleDistinct = (id: string, table: TableRef, column: string, limi
 export const countMatchingKeys = (id: string, table: TableRef, column: string, values: string[], kind: KeyKind) =>
   withDriver(id, (d) => d.countMatchingKeys(table, column, values, kind))
 
-export async function runQuery(connectionId: string, sql: string): Promise<QueryResult> {
+/** In-flight user queries by the run id the renderer gave them, so they can be cancelled. */
+const runs = new Map<string, AbortController>()
+
+export async function runQuery(connectionId: string, sql: string, runId?: string): Promise<QueryResult> {
   const started = Date.now()
+  const controller = new AbortController()
+  if (runId) runs.set(runId, controller)
   try {
     const result = await withDriver(connectionId, (driver, config) => {
       const keyword = config.readOnly ? findWriteKeyword(sql) : null
       if (keyword) {
         throw new Error(`Blocked: "${config.name}" is read-only and this query contains ${keyword}. Turn off read-only in the connection settings to allow changes.`)
       }
-      return driver.query(sql)
+      return driver.query(sql, controller.signal)
     })
     addHistory({ connectionId, sql, ranAt: new Date().toISOString(), durationMs: result.durationMs })
     return result
   } catch (error) {
     addHistory({ connectionId, sql, ranAt: new Date().toISOString(), durationMs: Date.now() - started, error: String((error as Error).message ?? error) })
     throw error
+  } finally {
+    if (runId && runs.get(runId) === controller) runs.delete(runId)
   }
+}
+
+/** Stops a running query; a no-op if it has already finished. */
+export function cancelQuery(runId: string): void {
+  runs.get(runId)?.abort()
 }

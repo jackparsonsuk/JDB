@@ -14,7 +14,9 @@ export interface Api {
   fetchRows(connectionId: string, request: RowsRequest): Promise<RowsResult>
   describeSchema(connectionId: string): Promise<SchemaTable[]>
   distinctValues(connectionId: string, table: TableRef, column: string, limit: number, via?: ValueLookup): Promise<CellValue[] | null>
-  runQuery(connectionId: string, sql: string): Promise<QueryResult>
+  /** `runId` lets the query be stopped with cancelQuery while it runs. */
+  runQuery(connectionId: string, sql: string, runId?: string): Promise<QueryResult>
+  cancelQuery(runId: string): Promise<void>
   countRelated(connectionId: string, requests: RelatedCountRequest[]): Promise<RelatedCount[]>
   listLinks(): Promise<CrossLink[]>
   saveLinks(links: CrossLink[]): Promise<CrossLink[]>

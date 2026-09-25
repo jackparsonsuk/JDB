@@ -19,7 +19,8 @@ export interface Driver {
   /** Rows where column = value, counting at most cap + 1; rejects with TimeoutError after timeoutMs. */
   countWhere(table: TableRef, column: string, dataType: string, value: string, cap: number, timeoutMs: number): Promise<number>
   fetchRows(request: RowsRequest): Promise<RowsResult>
-  query(sql: string): Promise<QueryResult>
+  /** Runs user SQL; aborting `signal` stops it on the server and rejects with QueryCancelledError. */
+  query(sql: string, signal?: AbortSignal): Promise<QueryResult>
   close(): Promise<void>
 }
 
@@ -80,6 +81,12 @@ export function distinctSource(
 export class TimeoutError extends Error {
   constructor() {
     super('Query timed out')
+  }
+}
+
+export class QueryCancelledError extends Error {
+  constructor() {
+    super('Query cancelled')
   }
 }
 

@@ -5,7 +5,7 @@ import type {
   CellValue, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
   KeyKind, SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
 } from '@shared/types'
-import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, SAMPLE_SCAN_ROWS, TimeoutError, toCell, type Driver, type SchemaColumnRow } from './driver'
+import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancelledError, SAMPLE_SCAN_ROWS, TimeoutError, toCell, type Driver, type SchemaColumnRow } from './driver'
 import { buildWhere } from './filters'
 
 const AZURE_SQL_SCOPE = 'https://database.windows.net/.default'
@@ -305,17 +305,28 @@ export class MssqlDriver implements Driver {
     return { ...set, total: Number(count.recordset[0].total) }
   }
 
-  async query(text: string): Promise<QueryResult> {
+  async query(text: string, signal?: AbortSignal): Promise<QueryResult> {
     const started = Date.now()
     const resultSets: ResultSet[] = []
     const rowsAffected: number[] = []
     // GO is a client-side batch separator, not T-SQL, so split on it like SSMS does.
     for (const batch of text.split(/^\s*GO\s*;?\s*$/im).filter((b) => b.trim())) {
       const request = await this.request()
+      if (signal?.aborted) throw new QueryCancelledError()
       request.arrayRowMode = true
-      const result = await request.query(batch)
-      resultSets.push(...toResultSets(result))
-      rowsAffected.push(...result.rowsAffected)
+      // Sends a TDS attention, which stops the batch server-side and leaves the connection usable.
+      const onAbort = (): void => request.cancel()
+      signal?.addEventListener('abort', onAbort, { once: true })
+      try {
+        const result = await request.query(batch)
+        resultSets.push(...toResultSets(result))
+        rowsAffected.push(...result.rowsAffected)
+      } catch (error) {
+        if ((error as { code?: string }).code === 'ECANCEL') throw new QueryCancelledError()
+        throw error
+      } finally {
+        signal?.removeEventListener('abort', onAbort)
+      }
     }
     return { resultSets, rowsAffected, durationMs: Date.now() - started }
   }

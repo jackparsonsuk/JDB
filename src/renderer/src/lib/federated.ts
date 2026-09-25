@@ -18,7 +18,11 @@ function distinctStrings(values: CellValue[]): string[] {
  * Runs a cross-database plan step by step through the normal (read-only guarded) query path,
  * then merges looked-up columns into the main result so it reads as one grid.
  */
-export async function runFederated(plan: FederatedPlan, onStep: (step: FederatedStep) => void): Promise<{ result: QueryResult; runs: StepRun[] }> {
+export async function runFederated(
+  plan: FederatedPlan,
+  onStep: (step: FederatedStep) => void,
+  run: { id: string; signal: AbortSignal }
+): Promise<{ result: QueryResult; runs: StepRun[] }> {
   const keys = new Map<number, string[]>()
   const runs: StepRun[] = []
   let main: ResultSet | null = null
@@ -26,11 +30,12 @@ export async function runFederated(plan: FederatedPlan, onStep: (step: Federated
   const started = Date.now()
 
   for (const step of plan.steps) {
+    if (run.signal.aborted) throw new Error('Query cancelled')
     onStep(step)
     const t0 = Date.now()
 
     if (step.role === 'keys') {
-      const r = await window.api.runQuery(step.connectionId, step.sql)
+      const r = await window.api.runQuery(step.connectionId, step.sql, run.id)
       const values = distinctStrings((r.resultSets[0]?.rows ?? []).map((row) => row[0]))
       if (values.length > plan.keyLimit) {
         throw new Error(`Step ${step.index} (${step.connectionName}) matched more than ${plan.keyLimit.toLocaleString()} rows. Add a filter to narrow it down.`)
@@ -40,7 +45,7 @@ export async function runFederated(plan: FederatedPlan, onStep: (step: Federated
     } else if (step.role === 'main') {
       let sql = step.sql
       for (const p of step.placeholders) sql = sql.replace(p.token, keyPredicate(p, keys.get(p.step) ?? [], step.kind))
-      const r = await window.api.runQuery(step.connectionId, sql)
+      const r = await window.api.runQuery(step.connectionId, sql, run.id)
       main = r.resultSets[0] ?? { columns: [], rows: [] }
       rowsAffected = r.rowsAffected
       runs.push({ step, durationMs: Date.now() - t0, rows: main.rows.length })
@@ -49,9 +54,10 @@ export async function runFederated(plan: FederatedPlan, onStep: (step: Federated
       const lookup = new Map<string, CellValue[]>()
       const values = source >= 0 ? distinctStrings(main.rows.map((row) => row[source])) : []
       for (let i = 0; i < values.length; i += ENRICH_BATCH) {
+        if (run.signal.aborted) throw new Error('Query cancelled')
         const list = valueList(values.slice(i, i + ENRICH_BATCH), step.enrich.keyType, step.kind)
         if (!list) continue
-        const r = await window.api.runQuery(step.connectionId, step.sql.replace('{{values}}', list))
+        const r = await window.api.runQuery(step.connectionId, step.sql.replace('{{values}}', list), run.id)
         // GUIDs can differ in case between servers, so match keys case-insensitively.
         for (const row of r.resultSets[0]?.rows ?? []) lookup.set(String(row[0]).toLowerCase(), row.slice(1))
       }
