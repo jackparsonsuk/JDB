@@ -1,0 +1,210 @@
+import mysql from 'mysql2/promise'
+import type {
+  CellValue, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
+  SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
+} from '@shared/types'
+import { assembleSchema, distinctSource, toCell, type Driver, type SchemaColumnRow } from './driver'
+import { buildWhere } from './filters'
+
+const quote = (identifier: string): string => `\`${identifier.replace(/`/g, '``')}\``
+const qualified = (table: TableRef): string => `${quote(table.schema)}.${quote(table.name)}`
+
+const SYSTEM_SCHEMAS = ['information_schema', 'mysql', 'performance_schema', 'sys']
+
+export class MysqlDriver implements Driver {
+  private readonly pool: mysql.Pool
+  private primaryKeys = new Map<string, string[]>()
+
+  constructor(private readonly config: ConnectionConfig, password: string | undefined) {
+    this.pool = mysql.createPool({
+      host: config.host,
+      port: config.port || 3306,
+      user: config.user,
+      password,
+      database: config.database || undefined,
+      connectionLimit: 4,
+      connectTimeout: 20_000,
+      dateStrings: true,
+      // Numbers stay numbers unless they exceed JS precision, then they arrive as strings.
+      supportBigNumbers: true,
+      decimalNumbers: false,
+      multipleStatements: true
+    })
+    if (config.readOnly) {
+      // Server-enforced: every statement on these sessions runs in a read-only transaction.
+      this.pool.on('connection', (connection) => {
+        connection.query('SET SESSION TRANSACTION READ ONLY')
+      })
+    }
+  }
+
+  /** Limits schema lookups to the configured database, or every user schema when none is set. */
+  private schemaFilter(column: string): { sql: string; values: string[] } {
+    if (this.config.database) return { sql: `${column} = ?`, values: [this.config.database] }
+    return { sql: `${column} NOT IN (${SYSTEM_SCHEMAS.map(() => '?').join(', ')})`, values: SYSTEM_SCHEMAS }
+  }
+
+  async listTables(): Promise<TableInfo[]> {
+    const filter = this.schemaFilter('table_schema')
+    const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
+      `SELECT table_schema AS s, table_name AS n, table_type AS t, table_rows AS r
+       FROM information_schema.tables WHERE ${filter.sql} ORDER BY table_schema, table_name`,
+      filter.values
+    )
+    return rows.map((row) => ({
+      schema: row.s,
+      name: row.n,
+      type: row.t === 'VIEW' ? 'view' : 'table',
+      rowEstimate: row.r == null ? undefined : Number(row.r)
+    }))
+  }
+
+  async describeTable(table: TableRef): Promise<TableDetails> {
+    const [columnRows] = await this.pool.query<mysql.RowDataPacket[]>(
+      `SELECT c.column_name AS name, c.column_type AS type, c.is_nullable AS nullable,
+              c.column_key AS col_key, c.extra,
+              k.referenced_table_schema AS ref_schema, k.referenced_table_name AS ref_table,
+              k.referenced_column_name AS ref_column
+       FROM information_schema.columns c
+       LEFT JOIN information_schema.key_column_usage k
+         ON k.table_schema = c.table_schema AND k.table_name = c.table_name
+        AND k.column_name = c.column_name AND k.referenced_table_name IS NOT NULL
+       WHERE c.table_schema = ? AND c.table_name = ?
+       ORDER BY c.ordinal_position`,
+      [table.schema, table.name]
+    )
+    const [reverseRows] = await this.pool.query<mysql.RowDataPacket[]>(
+      `SELECT table_schema AS s, table_name AS t, column_name AS c, referenced_column_name AS rc
+       FROM information_schema.key_column_usage
+       WHERE referenced_table_schema = ? AND referenced_table_name = ?
+       ORDER BY table_schema, table_name`,
+      [table.schema, table.name]
+    )
+
+    // A column in several FKs appears once per FK; keep the first.
+    const seen = new Set<string>()
+    const columns: ColumnInfo[] = []
+    for (const c of columnRows) {
+      if (seen.has(c.name)) continue
+      seen.add(c.name)
+      columns.push({
+        name: c.name,
+        dataType: c.type,
+        nullable: c.nullable === 'YES',
+        isPrimaryKey: c.col_key === 'PRI',
+        isIdentity: String(c.extra).includes('auto_increment'),
+        references: c.ref_table ? { schema: c.ref_schema, name: c.ref_table, column: c.ref_column } : undefined
+      })
+    }
+    this.primaryKeys.set(qualified(table), columns.filter((c) => c.isPrimaryKey).map((c) => c.name))
+
+    return {
+      columns,
+      referencedBy: reverseRows.map((r) => ({
+        table: { schema: r.s, name: r.t },
+        column: r.c,
+        referencedColumn: r.rc
+      }))
+    }
+  }
+
+  async describeSchema(): Promise<SchemaTable[]> {
+    const filter = this.schemaFilter('c.table_schema')
+    const [tables, [rows]] = await Promise.all([
+      this.listTables(),
+      this.pool.query<mysql.RowDataPacket[]>(
+        `SELECT c.table_schema AS s, c.table_name AS t, c.column_name AS name, c.column_type AS type,
+                c.is_nullable AS nullable, c.column_key AS col_key, c.extra,
+                k.referenced_table_schema AS ref_schema, k.referenced_table_name AS ref_table,
+                k.referenced_column_name AS ref_column
+         FROM information_schema.columns c
+         LEFT JOIN information_schema.key_column_usage k
+           ON k.table_schema = c.table_schema AND k.table_name = c.table_name
+          AND k.column_name = c.column_name AND k.referenced_table_name IS NOT NULL
+         WHERE ${filter.sql}
+         ORDER BY c.table_schema, c.table_name, c.ordinal_position`,
+        filter.values
+      )
+    ])
+    return assembleSchema(tables, rows.map((r): SchemaColumnRow => ({
+      schema: r.s,
+      table: r.t,
+      column: r.name,
+      dataType: r.type,
+      nullable: r.nullable === 'YES',
+      isPrimaryKey: r.col_key === 'PRI',
+      isIdentity: String(r.extra).includes('auto_increment'),
+      refSchema: r.ref_schema,
+      refTable: r.ref_table,
+      refColumn: r.ref_column
+    })))
+  }
+
+  async distinctValues(table: TableRef, column: string, limit: number, via?: ValueLookup): Promise<CellValue[] | null> {
+    const source = distinctSource(quote, qualified, table, column, via)
+    const [rows] = await this.pool.query<mysql.RowDataPacket[][]>({
+      sql: `SELECT DISTINCT ${source.expr} FROM ${source.from} LIMIT ${Math.floor(limit) + 1}`,
+      rowsAsArray: true
+    })
+    const values = rows.map((row) => toCell(row[0]))
+    return values.length > limit ? null : values
+  }
+
+  async fetchRows(req: RowsRequest): Promise<RowsResult> {
+    const key = qualified(req.table)
+    if (!this.primaryKeys.has(key)) await this.describeTable(req.table)
+    const pk = this.primaryKeys.get(key) ?? []
+
+    const where = buildWhere(req.filters, quote, () => '?')
+    const orderBy = req.orderBy
+      ? `ORDER BY ${quote(req.orderBy)} ${req.orderDir === 'desc' ? 'DESC' : 'ASC'}`
+      : pk.length ? `ORDER BY ${pk.map(quote).join(', ')}` : ''
+    const offset = Math.max(0, Math.floor(req.offset))
+    const limit = Math.max(1, Math.floor(req.limit))
+
+    const [[rows, fields], [countRows]] = await Promise.all([
+      this.pool.query<mysql.RowDataPacket[][]>({
+        sql: `SELECT * FROM ${key} ${where.sql} ${orderBy} LIMIT ${limit} OFFSET ${offset}`,
+        values: where.values,
+        rowsAsArray: true
+      }),
+      this.pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS total FROM ${key} ${where.sql}`, where.values)
+    ])
+
+    return {
+      columns: fields.map((f) => f.name),
+      rows: rows.map((row) => row.map(toCell)),
+      total: Number(countRows[0].total)
+    }
+  }
+
+  async query(text: string): Promise<QueryResult> {
+    const started = Date.now()
+    const [results, fields] = await this.pool.query({ sql: text, rowsAsArray: true })
+
+    // With multipleStatements, several statements return parallel arrays of results and fields.
+    // A single SELECT returns a flat FieldPacket[]; non-SELECT statements have undefined fields.
+    const multi = Array.isArray(fields) && (fields as unknown[]).some((f) => f === undefined || Array.isArray(f))
+    const resultList = (multi ? results : [results]) as unknown[]
+    const fieldList = (multi ? fields : [fields]) as (mysql.FieldPacket[] | undefined)[]
+
+    const resultSets: ResultSet[] = []
+    const rowsAffected: number[] = []
+    resultList.forEach((result, i) => {
+      if (Array.isArray(result)) {
+        resultSets.push({
+          columns: (fieldList[i] ?? []).map((f) => f.name),
+          rows: (result as unknown[][]).map((row) => row.map(toCell))
+        })
+        rowsAffected.push(result.length)
+      } else if (result && typeof result === 'object' && 'affectedRows' in result) {
+        rowsAffected.push((result as mysql.ResultSetHeader).affectedRows)
+      }
+    })
+    return { resultSets, rowsAffected, durationMs: Date.now() - started }
+  }
+
+  async close(): Promise<void> {
+    await this.pool.end()
+  }
+}

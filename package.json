@@ -1,0 +1,41 @@
+{
+  "name": "jdb",
+  "productName": "JDB",
+  "version": "0.1.0",
+  "description": "A streamlined database viewer",
+  "main": "./out/main/index.js",
+  "author": "Jack Parsons",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "start": "electron-vite preview",
+    "dist": "electron-vite build && electron-builder --win",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.13.3",
+    "mssql": "^12.7.2",
+    "mysql2": "^3.24.4"
+  },
+  "devDependencies": {
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
+    "@types/mssql": "^12.3.0",
+    "@types/node": "^26.6.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@uiw/react-codemirror": "^4.25.12",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6",
+    "vitest": "^5.0.2"
+  }
+}

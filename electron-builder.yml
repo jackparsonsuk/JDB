@@ -1,0 +1,12 @@
+appId: com.activategroup.jdb
+productName: JDB
+directories:
+  output: dist
+files:
+  - out/**
+  - package.json
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

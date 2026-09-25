@@ -1,0 +1,289 @@
+import sql from 'mssql'
+import { InteractiveBrowserCredential, type AccessToken } from '@azure/identity'
+import type {
+  CellValue, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
+  SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
+} from '@shared/types'
+import { assembleSchema, distinctSource, toCell, type Driver, type SchemaColumnRow } from './driver'
+import { buildWhere } from './filters'
+
+const AZURE_SQL_SCOPE = 'https://database.windows.net/.default'
+const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000
+
+const quote = (identifier: string): string => `[${identifier.replace(/]/g, ']]')}]`
+const qualified = (table: TableRef): string => `${quote(table.schema)}.${quote(table.name)}`
+
+/** One credential per tenant so the browser sign-in is only needed once per app session. */
+const browserCredentials = new Map<string, InteractiveBrowserCredential>()
+
+function browserCredential(tenantId?: string): InteractiveBrowserCredential {
+  const key = tenantId ?? ''
+  let credential = browserCredentials.get(key)
+  if (!credential) {
+    credential = new InteractiveBrowserCredential({ tenantId: tenantId || undefined })
+    browserCredentials.set(key, credential)
+  }
+  return credential
+}
+
+export class MssqlDriver implements Driver {
+  private pool: sql.ConnectionPool | null = null
+  private token: AccessToken | null = null
+  private primaryKeys = new Map<string, string[]>()
+
+  constructor(
+    private readonly config: ConnectionConfig,
+    private readonly password: string | undefined
+  ) {}
+
+  private async buildConfig(): Promise<sql.config> {
+    const base: sql.config = {
+      server: this.config.host,
+      port: this.config.port || 1433,
+      database: this.config.database || undefined,
+      connectionTimeout: 20_000,
+      requestTimeout: 120_000,
+      options: {
+        encrypt: true,
+        trustServerCertificate: this.config.trustServerCertificate ?? false,
+        appName: 'JDB'
+      }
+    }
+
+    switch (this.config.authType) {
+      case 'sql':
+        return { ...base, user: this.config.user, password: this.password }
+      case 'entra-default':
+        return { ...base, authentication: { type: 'azure-active-directory-default', options: {} } }
+      case 'entra-browser': {
+        this.token = await browserCredential(this.config.tenantId).getToken(AZURE_SQL_SCOPE)
+        return {
+          ...base,
+          authentication: { type: 'azure-active-directory-access-token', options: { token: this.token.token } }
+        }
+      }
+    }
+  }
+
+  private tokenExpiring(): boolean {
+    return this.token !== null && this.token.expiresOnTimestamp - Date.now() < TOKEN_REFRESH_MARGIN_MS
+  }
+
+  private async getPool(): Promise<sql.ConnectionPool> {
+    if (this.pool && this.tokenExpiring()) {
+      // Pooled connections reuse the token they were created with, so rebuild before it lapses.
+      await this.pool.close().catch(() => undefined)
+      this.pool = null
+    }
+    if (!this.pool) {
+      const pool = new sql.ConnectionPool(await this.buildConfig())
+      await pool.connect()
+      this.pool = pool
+    }
+    return this.pool
+  }
+
+  private async request(): Promise<sql.Request> {
+    return (await this.getPool()).request()
+  }
+
+  async listTables(): Promise<TableInfo[]> {
+    const result = await (await this.request()).query(`
+      SELECT s.name AS [schema], o.name, o.type, SUM(p.rows) AS row_estimate
+      FROM sys.objects o
+      JOIN sys.schemas s ON s.schema_id = o.schema_id
+      LEFT JOIN sys.partitions p ON p.object_id = o.object_id AND p.index_id IN (0, 1)
+      WHERE o.type IN ('U', 'V') AND o.is_ms_shipped = 0
+      GROUP BY s.name, o.name, o.type
+      ORDER BY s.name, o.name`)
+    return result.recordset.map((row) => ({
+      schema: row.schema,
+      name: row.name,
+      type: row.type.trim() === 'V' ? 'view' : 'table',
+      rowEstimate: row.row_estimate == null ? undefined : Number(row.row_estimate)
+    }))
+  }
+
+  async describeTable(table: TableRef): Promise<TableDetails> {
+    const request = await this.request()
+    request.input('name', sql.NVarChar, qualified(table))
+    const result = await request.query(`
+      DECLARE @id INT = OBJECT_ID(@name);
+      SELECT c.name, COALESCE(TYPE_NAME(c.user_type_id), TYPE_NAME(c.system_type_id), 'unknown') AS type_name, c.max_length, c.precision, c.scale,
+             c.is_nullable, c.is_identity,
+             CAST(CASE WHEN EXISTS (
+               SELECT 1 FROM sys.indexes i
+               JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+               WHERE i.object_id = c.object_id AND i.is_primary_key = 1 AND ic.column_id = c.column_id
+             ) THEN 1 ELSE 0 END AS BIT) AS is_pk
+      FROM sys.columns c WHERE c.object_id = @id ORDER BY c.column_id;
+
+      SELECT pc.name AS column_name, rs.name AS ref_schema, rt.name AS ref_table, rc.name AS ref_column
+      FROM sys.foreign_key_columns fkc
+      JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+      JOIN sys.tables rt ON rt.object_id = fkc.referenced_object_id
+      JOIN sys.schemas rs ON rs.schema_id = rt.schema_id
+      JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+      WHERE fkc.parent_object_id = @id;
+
+      SELECT ps.name AS child_schema, pt.name AS child_table, pc.name AS child_column, rc.name AS ref_column
+      FROM sys.foreign_key_columns fkc
+      JOIN sys.tables pt ON pt.object_id = fkc.parent_object_id
+      JOIN sys.schemas ps ON ps.schema_id = pt.schema_id
+      JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+      JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+      WHERE fkc.referenced_object_id = @id
+      ORDER BY ps.name, pt.name;`)
+
+    const [columnRows, fkRows, reverseRows] = result.recordsets as unknown as Record<string, any>[][]
+    const fks = new Map(fkRows.map((fk) => [fk.column_name, fk]))
+    const columns: ColumnInfo[] = columnRows.map((c) => {
+      const fk = fks.get(c.name)
+      return {
+        name: c.name,
+        dataType: formatType(c.type_name, c.max_length, c.precision, c.scale),
+        nullable: c.is_nullable,
+        isPrimaryKey: c.is_pk,
+        isIdentity: c.is_identity,
+        references: fk ? { schema: fk.ref_schema, name: fk.ref_table, column: fk.ref_column } : undefined
+      }
+    })
+    this.primaryKeys.set(qualified(table), columns.filter((c) => c.isPrimaryKey).map((c) => c.name))
+
+    return {
+      columns,
+      referencedBy: reverseRows.map((r) => ({
+        table: { schema: r.child_schema, name: r.child_table },
+        column: r.child_column,
+        referencedColumn: r.ref_column
+      }))
+    }
+  }
+
+  async describeSchema(): Promise<SchemaTable[]> {
+    const [tables, result] = await Promise.all([
+      this.listTables(),
+      (await this.request()).query(`
+        SELECT s.name AS [schema], o.name AS [table], c.name AS [column],
+               COALESCE(TYPE_NAME(c.user_type_id), TYPE_NAME(c.system_type_id), 'unknown') AS type_name, c.max_length, c.precision, c.scale,
+               c.is_nullable, c.is_identity,
+               CAST(CASE WHEN EXISTS (
+                 SELECT 1 FROM sys.indexes i
+                 JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+                 WHERE i.object_id = c.object_id AND i.is_primary_key = 1 AND ic.column_id = c.column_id
+               ) THEN 1 ELSE 0 END AS BIT) AS is_pk,
+               rs.name AS ref_schema, rt.name AS ref_table, rc.name AS ref_column
+        FROM sys.objects o
+        JOIN sys.schemas s ON s.schema_id = o.schema_id
+        JOIN sys.columns c ON c.object_id = o.object_id
+        LEFT JOIN sys.foreign_key_columns fkc ON fkc.parent_object_id = o.object_id AND fkc.parent_column_id = c.column_id
+        LEFT JOIN sys.tables rt ON rt.object_id = fkc.referenced_object_id
+        LEFT JOIN sys.schemas rs ON rs.schema_id = rt.schema_id
+        LEFT JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+        WHERE o.type IN ('U', 'V') AND o.is_ms_shipped = 0
+        ORDER BY s.name, o.name, c.column_id`)
+    ])
+    const rows: SchemaColumnRow[] = result.recordset.map((r) => ({
+      schema: r.schema,
+      table: r.table,
+      column: r.column,
+      dataType: formatType(r.type_name, r.max_length, r.precision, r.scale),
+      nullable: r.is_nullable,
+      isPrimaryKey: r.is_pk,
+      isIdentity: r.is_identity,
+      refSchema: r.ref_schema,
+      refTable: r.ref_table,
+      refColumn: r.ref_column
+    }))
+    return assembleSchema(tables, rows)
+  }
+
+  async distinctValues(table: TableRef, column: string, limit: number, via?: ValueLookup): Promise<CellValue[] | null> {
+    const source = distinctSource(quote, qualified, table, column, via)
+    const request = await this.request()
+    request.arrayRowMode = true
+    const result = await request.query(
+      `SELECT DISTINCT TOP ${Math.floor(limit) + 1} ${source.expr} FROM ${source.from}`
+    )
+    const values = (result.recordset as unknown as unknown[][]).map((row) => toCell(row[0]))
+    return values.length > limit ? null : values
+  }
+
+  async fetchRows(req: RowsRequest): Promise<RowsResult> {
+    const key = qualified(req.table)
+    if (!this.primaryKeys.has(key)) await this.describeTable(req.table)
+    const pk = this.primaryKeys.get(key) ?? []
+
+    const where = buildWhere(req.filters, quote, (i) => `@p${i}`)
+    const orderBy = req.orderBy
+      ? `${quote(req.orderBy)} ${req.orderDir === 'desc' ? 'DESC' : 'ASC'}`
+      : pk.length ? pk.map(quote).join(', ') : '(SELECT NULL)'
+
+    const bind = async (): Promise<sql.Request> => {
+      const request = await this.request()
+      where.values.forEach((value, i) => request.input(`p${i}`, sql.NVarChar, value))
+      return request
+    }
+
+    const dataRequest = await bind()
+    dataRequest.arrayRowMode = true
+    const offset = Math.max(0, Math.floor(req.offset))
+    const limit = Math.max(1, Math.floor(req.limit))
+    const [data, count] = await Promise.all([
+      dataRequest.query(
+        `SELECT * FROM ${key} ${where.sql} ORDER BY ${orderBy} OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`
+      ),
+      (await bind()).query(`SELECT COUNT_BIG(*) AS total FROM ${key} ${where.sql}`)
+    ])
+
+    const set = toResultSets(data)[0] ?? { columns: [], rows: [] }
+    return { ...set, total: Number(count.recordset[0].total) }
+  }
+
+  async query(text: string): Promise<QueryResult> {
+    const started = Date.now()
+    const resultSets: ResultSet[] = []
+    const rowsAffected: number[] = []
+    // GO is a client-side batch separator, not T-SQL, so split on it like SSMS does.
+    for (const batch of text.split(/^\s*GO\s*;?\s*$/im).filter((b) => b.trim())) {
+      const request = await this.request()
+      request.arrayRowMode = true
+      const result = await request.query(batch)
+      resultSets.push(...toResultSets(result))
+      rowsAffected.push(...result.rowsAffected)
+    }
+    return { resultSets, rowsAffected, durationMs: Date.now() - started }
+  }
+
+  async close(): Promise<void> {
+    await this.pool?.close()
+    this.pool = null
+  }
+}
+
+function toResultSets(result: sql.IResult<any>): ResultSet[] {
+  // In arrayRowMode mssql exposes column metadata per recordset on result.columns.
+  const columnSets = (result as unknown as { columns?: { name: string }[][] }).columns ?? []
+  return (result.recordsets as unknown as unknown[][][]).map((rows, i) => ({
+    columns: (columnSets[i] ?? []).map((c) => c.name),
+    rows: rows.map((row) => row.map(toCell))
+  }))
+}
+
+function formatType(name: string, maxLength: number, precision: number, scale: number): string {
+  switch (name) {
+    case 'nvarchar':
+    case 'nchar':
+      return `${name}(${maxLength === -1 ? 'max' : maxLength / 2})`
+    case 'varchar':
+    case 'char':
+    case 'varbinary':
+    case 'binary':
+      return `${name}(${maxLength === -1 ? 'max' : maxLength})`
+    case 'decimal':
+    case 'numeric':
+      return `${name}(${precision},${scale})`
+    default:
+      return name
+  }
+}
