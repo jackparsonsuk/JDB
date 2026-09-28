@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ConnectionConfig, TableInfo } from '@shared/types'
 import { useAppState } from '../state'
 import { fuzzyScore } from '../lib/fuzzy'
+import { appVersion } from '../lib/version'
 import { formatCount } from '../lib/format'
 
 export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig): void; onNew(): void; onLinks(c: ConnectionConfig): void }) {
@@ -16,7 +17,10 @@ export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig
         {connections.map((c) => <ConnectionNode key={c.id} connection={c} onEdit={() => onEdit(c)} onLinks={() => onLinks(c)} />)}
         {!connections.length && <div className="muted pad">No connections yet.</div>}
       </div>
-      <div className="sidebar-foot muted">Ctrl+K to jump anywhere</div>
+      <div className="sidebar-foot muted">
+        <span>Ctrl+K to jump anywhere</span>
+        <span className="version" title="JDB version">{appVersion}</span>
+      </div>
     </nav>
   )
 }

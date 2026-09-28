@@ -11,6 +11,7 @@ import { ConnectionDialog } from './components/ConnectionDialog'
 import { CommandPalette } from './components/CommandPalette'
 import { ToastHost } from './components/Toast'
 import { LinksDialog } from './components/LinksDialog'
+import { appVersion } from './lib/version'
 
 export function App() {
   const { layout, activeTabId, setActiveTab, closeTab, moveTab, focusPane, connections, openQuery, initialRatio, rememberRatio } = useAppState()
@@ -253,7 +254,7 @@ function tabTitle(tab: Tab): string {
 function Welcome({ onPalette }: { onPalette(): void }) {
   return (
     <div className="welcome">
-      <h1>JDB</h1>
+      <h1>JDB <span className="welcome-version muted">{appVersion}</span></h1>
       <p className="muted">Open a connection on the left, or press <kbd>Ctrl</kbd> <kbd>K</kbd> to jump straight to a table.</p>
       <ul className="shortcuts">
         <li><kbd>Ctrl K</kbd> Jump to table / command</li>

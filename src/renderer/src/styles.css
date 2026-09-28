@@ -105,7 +105,9 @@ kbd {
 .sidebar-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; }
 .brand { font-weight: 700; letter-spacing: 0.5px; }
 .sidebar-list { flex: 1; overflow-y: auto; }
-.sidebar-foot { padding: 8px 12px; font-size: 11px; border-top: 1px solid var(--border); }
+.sidebar-foot { padding: 8px 12px; font-size: 11px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 8px; }
+.sidebar-foot .version { white-space: nowrap; }
+.welcome-version { font-size: 13px; font-weight: normal; }
 
 .conn-row { display: flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; user-select: none; }
 .conn-row:hover { background: var(--bg-hover); }
