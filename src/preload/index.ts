@@ -32,6 +32,7 @@ const api: Api = {
   listHistory: () => call('history:list'),
   loadSession: () => call('session:load'),
   saveSession: (session) => ipcRenderer.send('session:save', session),
+  signOutEntra: () => call('entra:signOut'),
   getTheme: () => call('theme:get'),
   setTheme: (theme) => call('theme:set', theme),
   copy: (text) => call('clipboard:write', text)

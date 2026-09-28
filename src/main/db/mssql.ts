@@ -1,5 +1,5 @@
 import sql from 'mssql'
-import { InteractiveBrowserCredential, type AccessToken } from '@azure/identity'
+import type { AccessToken } from '@azure/identity'
 import { keyKind } from '@shared/links'
 import type {
   CellValue, ColumnFilter, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
@@ -7,25 +7,13 @@ import type {
 } from '@shared/types'
 import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancelledError, SAMPLE_SCAN_ROWS, TimeoutError, toCell, type Driver, type SchemaColumnRow } from './driver'
 import { buildWhere } from './filters'
+import { getEntraToken } from './entra'
 
 const AZURE_SQL_SCOPE = 'https://database.windows.net/.default'
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000
 
 const quote = (identifier: string): string => `[${identifier.replace(/]/g, ']]')}]`
 const qualified = (table: TableRef): string => `${quote(table.schema)}.${quote(table.name)}`
-
-/** One credential per tenant so the browser sign-in is only needed once per app session. */
-const browserCredentials = new Map<string, InteractiveBrowserCredential>()
-
-function browserCredential(tenantId?: string): InteractiveBrowserCredential {
-  const key = tenantId ?? ''
-  let credential = browserCredentials.get(key)
-  if (!credential) {
-    credential = new InteractiveBrowserCredential({ tenantId: tenantId || undefined })
-    browserCredentials.set(key, credential)
-  }
-  return credential
-}
 
 export class MssqlDriver implements Driver {
   private pool: sql.ConnectionPool | null = null
@@ -58,7 +46,8 @@ export class MssqlDriver implements Driver {
       case 'entra-default':
         return { ...base, authentication: { type: 'azure-active-directory-default', options: {} } }
       case 'entra-browser': {
-        this.token = await browserCredential(this.config.tenantId).getToken(AZURE_SQL_SCOPE)
+        // Silent from the saved sign-in when possible; opens the browser only when it has to.
+        this.token = await getEntraToken(AZURE_SQL_SCOPE, this.config.tenantId || undefined)
         return {
           ...base,
           authentication: { type: 'azure-active-directory-access-token', options: { token: this.token.token } }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../state'
 import { setTheme, THEME_ICONS, THEME_LABELS, useTheme } from '../lib/theme'
+import { toast } from './Toast'
 import { fuzzyScore } from '../lib/fuzzy'
 
 interface Item {
@@ -80,6 +81,19 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
       }
     }
     out.push({ key: 'new', label: 'New connection…', detail: '', icon: '＋', haystack: 'new connection add', bias: -10, run: onNewConnection })
+    if (connections.some((c) => c.authType === 'entra-browser')) {
+      out.push({
+        key: 'entra-signout',
+        label: 'Sign out of Entra',
+        detail: 'forget the saved Microsoft sign-in; the next connection asks again',
+        icon: '⎋',
+        haystack: 'sign out log out entra azure microsoft account switch',
+        bias: -10,
+        run: () => {
+          window.api.signOutEntra().then(() => toast('Signed out of Entra'), (e) => toast(`Sign-out failed: ${(e as Error).message}`))
+        }
+      })
+    }
     for (const option of ['system', 'light', 'dark'] as const) {
       if (option === theme) continue
       out.push({

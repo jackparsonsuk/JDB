@@ -1,5 +1,5 @@
 import { app, safeStorage } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import type { ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, SavedSession, ThemeSetting } from '@shared/types'
@@ -163,4 +163,28 @@ export function getTheme(): ThemeSetting {
 export function setTheme(theme: ThemeSetting): void {
   if (!THEMES.has(theme)) throw new Error(`Unknown theme: ${theme}`)
   writeJson('settings.json', { ...readJson<Settings>('settings.json', {}), theme })
+}
+
+const TOKEN_CACHE = 'entra-cache.bin'
+
+/** The Entra token cache (MSAL's serialised JSON), or null if there isn't one or it can't be decrypted. */
+export function readTokenCache(): string | null {
+  const path = dataFile(TOKEN_CACHE)
+  if (!existsSync(path) || !safeStorage.isEncryptionAvailable()) return null
+  try {
+    return safeStorage.decryptString(readFileSync(path))
+  } catch {
+    return null
+  }
+}
+
+/** Saves the cache encrypted with the OS keychain; null clears it. Never stored unencrypted. */
+export function writeTokenCache(data: string | null): void {
+  const path = dataFile(TOKEN_CACHE)
+  if (data === null) {
+    if (existsSync(path)) rmSync(path)
+    return
+  }
+  if (!safeStorage.isEncryptionAvailable()) return
+  writeFileSync(path, safeStorage.encryptString(data))
 }

@@ -29,6 +29,8 @@ export interface Api {
   /** The last saved session, unchecked; pass it through parseSession. */
   loadSession(): Promise<unknown>
   saveSession(session: SavedSession): void
+  /** Forgets saved Entra sign-ins and disconnects, so the next connection signs in again. */
+  signOutEntra(): Promise<void>
   getTheme(): Promise<ThemeSetting>
   setTheme(theme: ThemeSetting): Promise<void>
   copy(text: string): Promise<void>

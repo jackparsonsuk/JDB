@@ -4,6 +4,7 @@ import * as db from './db'
 import * as store from './store'
 import { discoverLinks, verifyLink } from './links'
 import { countRelated } from './explore'
+import { signOutEntra } from './db/entra'
 
 /**
  * Registers a handler that returns { ok, value } or { ok: false, error } rather than throwing,
@@ -59,6 +60,11 @@ export function registerIpc(): void {
     } catch {
       // Losing a session save only means the next launch opens an older layout.
     }
+  })
+  handle('entra:signOut', async () => {
+    await signOutEntra()
+    // Open connections keep working until their token lapses; drop them so the next use signs in again.
+    await db.disconnectAll()
   })
   handle('theme:get', () => store.getTheme())
   // nativeTheme drives prefers-color-scheme in the renderer and the native title bar.
