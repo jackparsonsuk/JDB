@@ -1,6 +1,6 @@
 import mysql from 'mysql2/promise'
 import type {
-  CellValue, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
+  CellValue, ColumnFilter, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
   KeyKind, SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
 } from '@shared/types'
 import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancelledError, SAMPLE_SCAN_ROWS, TimeoutError, toCell, type Driver, type SchemaColumnRow } from './driver'
@@ -214,19 +214,31 @@ export class MysqlDriver implements Driver {
     const offset = Math.max(0, Math.floor(req.offset))
     const limit = Math.max(1, Math.floor(req.limit))
 
-    const [[rows, fields], [countRows]] = await Promise.all([
-      this.pool.query<mysql.RowDataPacket[][]>({
-        sql: `SELECT * FROM ${key} ${where.sql} ${orderBy} LIMIT ${limit} OFFSET ${offset}`,
-        values: where.values,
-        rowsAsArray: true
-      }),
-      this.pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS total FROM ${key} ${where.sql}`, where.values)
-    ])
+    // One extra row says whether there's a next page without counting the table.
+    const [rows, fields] = await this.pool.query<mysql.RowDataPacket[][]>({
+      sql: `SELECT * FROM ${key} ${where.sql} ${orderBy} LIMIT ${limit + 1} OFFSET ${offset}`,
+      values: where.values,
+      rowsAsArray: true
+    })
 
     return {
       columns: fields.map((f) => f.name),
-      rows: rows.map((row) => row.map(toCell)),
-      total: Number(countRows[0].total)
+      rows: rows.slice(0, limit).map((row) => row.map(toCell)),
+      hasMore: rows.length > limit
+    }
+  }
+
+  async countRows(table: TableRef, filters: ColumnFilter[], timeoutMs: number): Promise<number> {
+    const where = buildWhere(filters, quote, () => '?')
+    try {
+      const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
+        `SELECT /*+ MAX_EXECUTION_TIME(${Math.floor(timeoutMs)}) */ COUNT(*) AS total FROM ${qualified(table)} ${where.sql}`,
+        where.values
+      )
+      return Number(rows[0].total)
+    } catch (error) {
+      if ((error as { errno?: number }).errno === 3024) throw new TimeoutError()
+      throw error
     }
   }
 

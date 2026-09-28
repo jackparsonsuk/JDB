@@ -3,14 +3,23 @@ import type { ConnectionConfig, TableInfo } from '@shared/types'
 import { useAppState } from '../state'
 import { fuzzyScore } from '../lib/fuzzy'
 import { appVersion } from '../lib/version'
+import { setTheme, useColorScheme } from '../lib/theme'
 import { formatCount } from '../lib/format'
 
 export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig): void; onNew(): void; onLinks(c: ConnectionConfig): void }) {
   const { connections } = useAppState()
+  const scheme = useColorScheme()
   return (
     <nav className="sidebar">
       <div className="sidebar-head">
         <span className="brand">JDB</span>
+        <button
+          className="icon"
+          title={`Switch to ${scheme === 'dark' ? 'light' : 'dark'} mode (Ctrl+K "theme" to follow Windows)`}
+          onClick={() => setTheme(scheme === 'dark' ? 'light' : 'dark')}
+        >
+          {scheme === 'dark' ? '☀' : '☾'}
+        </button>
         <button className="icon" title="New connection" onClick={onNew}>＋</button>
       </div>
       <div className="sidebar-list">

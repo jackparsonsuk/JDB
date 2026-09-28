@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../state'
+import { setTheme, THEME_ICONS, THEME_LABELS, useTheme } from '../lib/theme'
 import { fuzzyScore } from '../lib/fuzzy'
 
 interface Item {
@@ -18,6 +19,7 @@ const MAX_RESULTS = 60
 
 export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(): void; onNewConnection(): void; onLinks(connectionId: string): void }) {
   const { connections, tables, loadTables, openTable, openQuery } = useAppState()
+  const theme = useTheme()
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
@@ -78,8 +80,20 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
       }
     }
     out.push({ key: 'new', label: 'New connection…', detail: '', icon: '＋', haystack: 'new connection add', bias: -10, run: onNewConnection })
+    for (const option of ['system', 'light', 'dark'] as const) {
+      if (option === theme) continue
+      out.push({
+        key: `theme:${option}`,
+        label: `Theme: ${THEME_LABELS[option]}`,
+        detail: option === 'system' ? 'follow Windows' : '',
+        icon: THEME_ICONS[option],
+        haystack: `theme appearance colour color ${option} mode`,
+        bias: -10,
+        run: () => setTheme(option)
+      })
+    }
     return out
-  }, [connections, tables, openTable, openQuery, loadTables, onNewConnection, onLinks])
+  }, [connections, tables, openTable, openQuery, loadTables, onNewConnection, onLinks, theme])
 
   const results = useMemo(() => {
     if (!query.trim()) return items.slice(0, MAX_RESULTS)

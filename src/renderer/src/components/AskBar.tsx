@@ -6,7 +6,7 @@ import type { Span, TranslateResult } from '@shared/nl/translate'
 import { linkedConnections, useNl } from '../lib/useNl'
 import { useAppState } from '../state'
 import { QueryDiagram } from './QueryDiagram'
-import { useColorScheme } from '../lib/useColorScheme'
+import { useColorScheme } from '../lib/theme'
 
 const VIEW_KEY = 'jdb.askView'
 

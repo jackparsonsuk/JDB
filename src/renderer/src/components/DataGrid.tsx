@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import type { CellValue, ColumnInfo, DbKind, FilterOp, TableRef } from '@shared/types'
 import { COPY_FORMATS, displayValue, formatRows, type CopyFormat } from '../lib/format'
 import { useOpenLink } from '../lib/openLink'
@@ -7,7 +7,23 @@ import { toast } from './Toast'
 
 const ROW_HEIGHT = 26
 const OVERSCAN = 12
+/** The row window moves in steps this big, so scrolling only re-renders every few rows. */
+const ROW_BLOCK = 8
+/** Columns this far either side of the viewport are rendered too, so horizontal scrolls don't flash. */
+const COLUMN_OVERSCAN_PX = 600
 const ROW_NUMBER_WIDTH = 52
+/** Cells are at most 360px wide, so drawing more text than this only costs layout time. */
+const MAX_CELL_CHARS = 300
+
+interface GridWindow {
+  firstRow: number
+  lastRow: number
+  firstColumn: number
+  lastColumn: number
+}
+
+const sameWindow = (a: GridWindow, b: GridWindow): boolean =>
+  a.firstRow === b.firstRow && a.lastRow === b.lastRow && a.firstColumn === b.firstColumn && a.lastColumn === b.lastColumn
 
 export interface Selection {
   rows: Set<number>
@@ -48,9 +64,9 @@ export function DataGrid(props: Props) {
   const { columns, rows, columnInfo, selection, onSelectionChange } = props
   const link = useOpenLink()
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [scrollTop, setScrollTop] = useState(0)
-  const [viewportHeight, setViewportHeight] = useState(600)
   const [widths, setWidths] = useState<number[]>([])
+  /** Rows and columns currently rendered; only changes when the viewport crosses a step. */
+  const [view, setView] = useState<GridWindow>({ firstRow: 0, lastRow: 40, firstColumn: 0, lastColumn: 30 })
   const [menu, setMenu] = useState<MenuState | null>(null)
 
   // Size columns from their header and a sample of content whenever the column set changes.
@@ -66,13 +82,49 @@ export function DataGrid(props: Props) {
     // Content changes within the same columns shouldn't reset widths the user dragged.
   }, [columnKey])
 
+  /** Left edge of each column, after the row number gutter. */
+  const offsets = useMemo(() => {
+    const out: number[] = []
+    let x = 0
+    for (const w of widths) {
+      out.push(x)
+      x += w
+    }
+    return out
+  }, [widths])
+
+  const updateView = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const rowCount = rows.length
+    const topBlock = Math.floor(el.scrollTop / ROW_HEIGHT / ROW_BLOCK) * ROW_BLOCK
+    const bottomBlock = Math.ceil((el.scrollTop + el.clientHeight) / ROW_HEIGHT / ROW_BLOCK) * ROW_BLOCK
+    const left = el.scrollLeft - ROW_NUMBER_WIDTH - COLUMN_OVERSCAN_PX
+    const right = el.scrollLeft + el.clientWidth + COLUMN_OVERSCAN_PX
+    let firstColumn = 0
+    while (firstColumn < widths.length - 1 && offsets[firstColumn] + widths[firstColumn] < left) firstColumn++
+    let lastColumn = firstColumn
+    while (lastColumn < widths.length && offsets[lastColumn] < right) lastColumn++
+    const next: GridWindow = {
+      firstRow: Math.max(0, topBlock - OVERSCAN),
+      lastRow: Math.min(rowCount, bottomBlock + OVERSCAN),
+      firstColumn,
+      lastColumn: widths.length === columns.length ? lastColumn : columns.length
+    }
+    setView((prev) => (sameWindow(prev, next) ? prev : next))
+  }, [rows.length, widths, offsets, columns.length])
+
+  useLayoutEffect(() => {
+    updateView()
+  }, [updateView])
+
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const observer = new ResizeObserver(() => setViewportHeight(el.clientHeight))
+    const observer = new ResizeObserver(() => updateView())
     observer.observe(el)
     return () => observer.disconnect()
-  }, [])
+  }, [updateView])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 })
@@ -89,9 +141,17 @@ export function DataGrid(props: Props) {
     }
   }, [menu])
 
-  const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
-  const last = Math.min(rows.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN)
-  const totalWidth = ROW_NUMBER_WIDTH + widths.reduce((a, b) => a + b, 0)
+  const first = Math.min(view.firstRow, rows.length)
+  const last = Math.min(view.lastRow, rows.length)
+  const contentWidth = widths.reduce((a, b) => a + b, 0)
+  const totalWidth = ROW_NUMBER_WIDTH + contentWidth
+  // Before widths are measured every column renders; afterwards only those near the viewport.
+  const measured = widths.length === columns.length && columns.length > 0
+  const firstColumn = measured ? Math.min(view.firstColumn, columns.length) : 0
+  const lastColumn = measured ? Math.min(view.lastColumn, columns.length) : columns.length
+  const leftPad = measured && firstColumn < widths.length ? offsets[firstColumn] : 0
+  const rightPad = measured && lastColumn < widths.length ? contentWidth - offsets[lastColumn] : 0
+  const visibleColumns = columns.slice(firstColumn, lastColumn)
 
   const selectedIndexes = useMemo(() => [...selection.rows].sort((a, b) => a - b), [selection.rows])
 
@@ -167,6 +227,16 @@ export function DataGrid(props: Props) {
     setMenu({ x: event.clientX, y: event.clientY, row, column })
   }
 
+  const handlers = useRef<RowHandlers>(null!)
+  handlers.current = {
+    selectRow,
+    openMenu,
+    onRowDoubleClick: props.onRowDoubleClick,
+    referenceTarget: props.referenceTarget,
+    crossLinkTarget: props.crossLinkTarget,
+    link
+  }
+
   const menuRows = menu && selection.rows.has(menu.row) ? selectedIndexes : menu ? [menu.row] : []
   const menuValue = menu ? rows[menu.row]?.[menu.column] : null
   const menuColumn = menu ? columns[menu.column] : ''
@@ -179,17 +249,21 @@ export function DataGrid(props: Props) {
         className="grid-scroll"
         tabIndex={0}
         onKeyDown={onKeyDown}
-        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        onScroll={updateView}
       >
         <table className="grid" style={{ width: totalWidth }}>
           <colgroup>
             <col style={{ width: ROW_NUMBER_WIDTH }} />
-            {widths.map((w, i) => <col key={i} style={{ width: w }} />)}
+            {leftPad > 0 && <col style={{ width: leftPad }} />}
+            {visibleColumns.map((_, i) => <col key={firstColumn + i} style={{ width: widths[firstColumn + i] }} />)}
+            {rightPad > 0 && <col style={{ width: rightPad }} />}
           </colgroup>
           <thead>
             <tr>
               <th className="rownum">#</th>
-              {columns.map((name, ci) => {
+              {leftPad > 0 && <th className="spacer" />}
+              {visibleColumns.map((name, i) => {
+                const ci = firstColumn + i
                 const info = columnInfo?.get(name)
                 const sorted = props.sort?.column === name ? props.sort.dir : null
                 return (
@@ -209,67 +283,30 @@ export function DataGrid(props: Props) {
                   </th>
                 )
               })}
+              {rightPad > 0 && <th className="spacer" />}
             </tr>
           </thead>
           <tbody>
             {first > 0 && <tr style={{ height: first * ROW_HEIGHT }} />}
             {rows.slice(first, last).map((row, offset) => {
               const index = first + offset
-              const selected = selection.rows.has(index)
               return (
-                <tr
+                <GridRow
                   key={index}
-                  className={`${selected ? 'selected' : ''} ${selection.active === index ? 'active' : ''}`}
-                  onMouseDown={(e) => e.button === 0 && selectRow(index, e)}
-                  onDoubleClick={() => props.onRowDoubleClick?.(index)}
-                >
-                  <td className="rownum">{(props.rowOffset ?? 0) + index + 1}</td>
-                  {row.map((value, ci) => {
-                    const info = columnInfo?.get(columns[ci])
-                    return (
-                      <td
-                        key={ci}
-                        className={cellClass(value)}
-                        onContextMenu={(e) => openMenu(e, index, ci)}
-                      >
-                        {(() => {
-                          const fk = info?.references && value !== null && props.referenceTarget ? props.referenceTarget(info, value) : null
-                          const crossInfo = value !== null ? props.crossLinks?.get(columns[ci]) : undefined
-                          const crossTarget = crossInfo ? props.crossLinkTarget?.(columns[ci], value) : undefined
-                          const cross = crossInfo && crossTarget ? { ...crossInfo, target: crossTarget } : null
-                          if (!fk && !cross) return displayValue(value)
-                          return (
-                            <span className="fk-cell">
-                              <span className="fk-value">{displayValue(value)}</span>
-                              <span className="fk-buttons">
-                                {fk && (
-                                  <button
-                                    className="fk-jump"
-                                    title={`Open ${info!.references!.name} where ${info!.references!.column} = ${displayValue(value)}\nShift+click or drag to open beside`}
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                    {...link(fk)}
-                                  >
-                                    ↗
-                                  </button>
-                                )}
-                                {cross && (
-                                  <button
-                                    className={`fk-jump cross env-${cross.env}`}
-                                    title={`${cross.title}\nShift+click or drag to open beside`}
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                    {...link(cross.target)}
-                                  >
-                                    ⇗
-                                  </button>
-                                )}
-                              </span>
-                            </span>
-                          )
-                        })()}
-                      </td>
-                    )
-                  })}
-                </tr>
+                  row={row}
+                  index={index}
+                  rowNumber={(props.rowOffset ?? 0) + index + 1}
+                  selected={selection.rows.has(index)}
+                  active={selection.active === index}
+                  columns={columns}
+                  firstColumn={firstColumn}
+                  lastColumn={lastColumn}
+                  leftPad={leftPad > 0}
+                  rightPad={rightPad > 0}
+                  columnInfo={columnInfo}
+                  crossLinks={props.crossLinks}
+                  handlers={handlers}
+                />
               )
             })}
             {last < rows.length && <tr style={{ height: (rows.length - last) * ROW_HEIGHT }} />}
@@ -311,6 +348,105 @@ export function DataGrid(props: Props) {
       )}
     </div>
   )
+}
+
+/** Callbacks rows need; kept in a ref so they don't defeat GridRow's memo by changing each render. */
+interface RowHandlers {
+  selectRow(index: number, event: ReactMouseEvent): void
+  openMenu(event: ReactMouseEvent, row: number, column: number): void
+  onRowDoubleClick?(index: number): void
+  referenceTarget?(column: ColumnInfo, value: CellValue): OpenTarget
+  crossLinkTarget?(column: string, value: CellValue): OpenTarget | undefined
+  link: ReturnType<typeof useOpenLink>
+}
+
+interface RowProps {
+  row: CellValue[]
+  index: number
+  rowNumber: number
+  selected: boolean
+  active: boolean
+  columns: string[]
+  firstColumn: number
+  lastColumn: number
+  leftPad: boolean
+  rightPad: boolean
+  columnInfo?: Map<string, ColumnInfo>
+  crossLinks?: Map<string, { title: string; env: string }>
+  handlers: { current: RowHandlers }
+}
+
+/** One grid row. Memoised, so moving the scroll window only renders the rows that come into view. */
+const GridRow = memo(function GridRow(props: RowProps) {
+  const { row, index, columns, columnInfo, handlers } = props
+  const h = handlers.current
+  const cells = []
+  for (let ci = props.firstColumn; ci < props.lastColumn; ci++) {
+    const value = row[ci]
+    const info = columnInfo?.get(columns[ci])
+    cells.push(
+      <td key={ci} className={cellClass(value)} onContextMenu={(e) => h.openMenu(e, index, ci)}>
+        <CellContent value={value} column={columns[ci]} info={info} crossInfo={value !== null ? props.crossLinks?.get(columns[ci]) : undefined} handlers={h} />
+      </td>
+    )
+  }
+  return (
+    <tr
+      className={`${props.selected ? 'selected' : ''} ${props.active ? 'active' : ''}`}
+      onMouseDown={(e) => e.button === 0 && h.selectRow(index, e)}
+      onDoubleClick={() => h.onRowDoubleClick?.(index)}
+    >
+      <td className="rownum">{props.rowNumber}</td>
+      {props.leftPad && <td className="spacer" />}
+      {cells}
+      {props.rightPad && <td className="spacer" />}
+    </tr>
+  )
+})
+
+function CellContent({ value, column, info, crossInfo, handlers }: {
+  value: CellValue
+  column: string
+  info?: ColumnInfo
+  crossInfo?: { title: string; env: string }
+  handlers: RowHandlers
+}) {
+  const text = clip(displayValue(value))
+  const fk = info?.references && value !== null && handlers.referenceTarget ? handlers.referenceTarget(info, value) : null
+  const crossTarget = crossInfo ? handlers.crossLinkTarget?.(column, value) : undefined
+  const cross = crossInfo && crossTarget ? { ...crossInfo, target: crossTarget } : null
+  if (!fk && !cross) return <>{text}</>
+  return (
+    <span className="fk-cell">
+      <span className="fk-value">{text}</span>
+      <span className="fk-buttons">
+        {fk && (
+          <button
+            className="fk-jump"
+            title={`Open ${info!.references!.name} where ${info!.references!.column} = ${text}\nShift+click or drag to open beside`}
+            onMouseDown={(e) => e.stopPropagation()}
+            {...handlers.link(fk)}
+          >
+            ↗
+          </button>
+        )}
+        {cross && (
+          <button
+            className={`fk-jump cross env-${cross.env}`}
+            title={`${cross.title}\nShift+click or drag to open beside`}
+            onMouseDown={(e) => e.stopPropagation()}
+            {...handlers.link(cross.target)}
+          >
+            ⇗
+          </button>
+        )}
+      </span>
+    </span>
+  )
+}
+
+function clip(text: string): string {
+  return text.length > MAX_CELL_CHARS ? `${text.slice(0, MAX_CELL_CHARS)}…` : text
 }
 
 function cellClass(value: CellValue): string {

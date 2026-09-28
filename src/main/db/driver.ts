@@ -1,5 +1,5 @@
 import type {
-  CellValue, ColumnInfo, QueryResult, RowsRequest, RowsResult, SchemaTable, TableDetails, TableInfo, TableRef,
+  CellValue, ColumnFilter, ColumnInfo, QueryResult, RowsRequest, RowsResult, SchemaTable, TableDetails, TableInfo, TableRef,
   KeyKind, ValueLookup
 } from '@shared/types'
 
@@ -19,6 +19,8 @@ export interface Driver {
   /** Rows where column = value, counting at most cap + 1; rejects with TimeoutError after timeoutMs. */
   countWhere(table: TableRef, column: string, dataType: string, value: string, cap: number, timeoutMs: number): Promise<number>
   fetchRows(request: RowsRequest): Promise<RowsResult>
+  /** Rows matching the filters; rejects with TimeoutError after timeoutMs. */
+  countRows(table: TableRef, filters: ColumnFilter[], timeoutMs: number): Promise<number>
   /** Runs user SQL; aborting `signal` stops it on the server and rejects with QueryCancelledError. */
   query(sql: string, signal?: AbortSignal): Promise<QueryResult>
   close(): Promise<void>

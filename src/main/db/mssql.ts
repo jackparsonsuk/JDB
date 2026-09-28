@@ -2,7 +2,7 @@ import sql from 'mssql'
 import { InteractiveBrowserCredential, type AccessToken } from '@azure/identity'
 import { keyKind } from '@shared/links'
 import type {
-  CellValue, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
+  CellValue, ColumnFilter, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
   KeyKind, SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
 } from '@shared/types'
 import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancelledError, SAMPLE_SCAN_ROWS, TimeoutError, toCell, type Driver, type SchemaColumnRow } from './driver'
@@ -29,6 +29,7 @@ function browserCredential(tenantId?: string): InteractiveBrowserCredential {
 
 export class MssqlDriver implements Driver {
   private pool: sql.ConnectionPool | null = null
+  private connecting: Promise<sql.ConnectionPool> | null = null
   private token: AccessToken | null = null
   private primaryKeys = new Map<string, string[]>()
 
@@ -73,15 +74,24 @@ export class MssqlDriver implements Driver {
   private async getPool(): Promise<sql.ConnectionPool> {
     if (this.pool && this.tokenExpiring()) {
       // Pooled connections reuse the token they were created with, so rebuild before it lapses.
-      await this.pool.close().catch(() => undefined)
+      const old = this.pool
       this.pool = null
+      await old.close().catch(() => undefined)
     }
-    if (!this.pool) {
-      const pool = new sql.ConnectionPool(await this.buildConfig())
-      await pool.connect()
-      this.pool = pool
+    if (this.pool) return this.pool
+    // Callers arriving while a connection is being made share it. Otherwise each builds its own
+    // pool and signs in separately, and a sign-in that never completes leaves its caller hanging.
+    if (!this.connecting) {
+      this.connecting = (async () => {
+        const pool = new sql.ConnectionPool(await this.buildConfig())
+        await pool.connect()
+        this.pool = pool
+        return pool
+      })().finally(() => {
+        this.connecting = null
+      })
     }
-    return this.pool
+    return this.connecting
   }
 
   private async request(): Promise<sql.Request> {
@@ -284,25 +294,44 @@ export class MssqlDriver implements Driver {
       ? `${quote(req.orderBy)} ${req.orderDir === 'desc' ? 'DESC' : 'ASC'}`
       : pk.length ? pk.map(quote).join(', ') : '(SELECT NULL)'
 
-    const bind = async (): Promise<sql.Request> => {
-      const request = await this.request()
-      where.values.forEach((value, i) => request.input(`p${i}`, sql.NVarChar, value))
-      return request
-    }
-
-    const dataRequest = await bind()
-    dataRequest.arrayRowMode = true
+    const request = await this.request()
+    where.values.forEach((value, i) => request.input(`p${i}`, sql.NVarChar, value))
+    request.arrayRowMode = true
     const offset = Math.max(0, Math.floor(req.offset))
     const limit = Math.max(1, Math.floor(req.limit))
-    const [data, count] = await Promise.all([
-      dataRequest.query(
-        `SELECT * FROM ${key} ${where.sql} ORDER BY ${orderBy} OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`
-      ),
-      (await bind()).query(`SELECT COUNT_BIG(*) AS total FROM ${key} ${where.sql}`)
-    ])
+    // One extra row says whether there's a next page without counting the table.
+    const data = await request.query(
+      `SELECT * FROM ${key} ${where.sql} ORDER BY ${orderBy} OFFSET ${offset} ROWS FETCH NEXT ${limit + 1} ROWS ONLY`
+    )
 
     const set = toResultSets(data)[0] ?? { columns: [], rows: [] }
-    return { ...set, total: Number(count.recordset[0].total) }
+    return { columns: set.columns, rows: set.rows.slice(0, limit), hasMore: set.rows.length > limit }
+  }
+
+  async countRows(table: TableRef, filters: ColumnFilter[], timeoutMs: number): Promise<number> {
+    const key = qualified(table)
+    if (!filters.length) {
+      // A table's row count is kept in its partition metadata, so there's no need to scan it.
+      // Views have no partitions and fall through to a real count.
+      const meta = await (await this.request()).input('t', sql.NVarChar, key).query(
+        `SELECT SUM(rows) AS total FROM sys.partitions WHERE object_id = OBJECT_ID(@t) AND index_id IN (0, 1)`
+      )
+      const total = meta.recordset[0]?.total
+      if (total != null) return Number(total)
+    }
+    const where = buildWhere(filters, quote, (i) => `@p${i}`)
+    const request = await this.request()
+    where.values.forEach((value, i) => request.input(`p${i}`, sql.NVarChar, value))
+    const timer = setTimeout(() => request.cancel(), timeoutMs)
+    try {
+      const result = await request.query(`SELECT COUNT_BIG(*) AS total FROM ${key} ${where.sql}`)
+      return Number(result.recordset[0].total)
+    } catch (error) {
+      if ((error as { code?: string }).code === 'ECANCEL') throw new TimeoutError()
+      throw error
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   async query(text: string, signal?: AbortSignal): Promise<QueryResult> {

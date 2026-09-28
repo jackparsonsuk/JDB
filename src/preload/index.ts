@@ -18,6 +18,7 @@ const api: Api = {
   listTables: (id) => call('db:tables', id),
   describeTable: (id, table) => call('db:describe', id, table),
   fetchRows: (id, request) => call('db:rows', id, request),
+  countRows: (id, table, filters) => call('db:count', id, table, filters),
   describeSchema: (id) => call('db:schema', id),
   distinctValues: (id, table, column, limit, via) => call('db:distinct', id, table, column, limit, via),
   runQuery: (id, sql, runId) => call('db:query', id, sql, runId),
@@ -31,6 +32,8 @@ const api: Api = {
   listHistory: () => call('history:list'),
   loadSession: () => call('session:load'),
   saveSession: (session) => ipcRenderer.send('session:save', session),
+  getTheme: () => call('theme:get'),
+  setTheme: (theme) => call('theme:set', theme),
   copy: (text) => call('clipboard:write', text)
 }
 

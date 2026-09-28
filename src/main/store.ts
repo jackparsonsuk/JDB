@@ -2,7 +2,7 @@ import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, SavedSession } from '@shared/types'
+import type { ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, SavedSession, ThemeSetting } from '@shared/types'
 
 interface StoredConnection extends ConnectionConfig {
   /** Password encrypted with the OS keychain (DPAPI on Windows), base64 encoded. */
@@ -147,4 +147,20 @@ export function loadSession(): unknown {
 
 export function saveSession(session: SavedSession): void {
   writeJson('session.json', session)
+}
+
+interface Settings {
+  theme?: ThemeSetting
+}
+
+const THEMES: ReadonlySet<string> = new Set<ThemeSetting>(['system', 'light', 'dark'])
+
+export function getTheme(): ThemeSetting {
+  const theme = readJson<Settings>('settings.json', {}).theme
+  return theme && THEMES.has(theme) ? theme : 'system'
+}
+
+export function setTheme(theme: ThemeSetting): void {
+  if (!THEMES.has(theme)) throw new Error(`Unknown theme: ${theme}`)
+  writeJson('settings.json', { ...readJson<Settings>('settings.json', {}), theme })
 }

@@ -1,7 +1,7 @@
-import type { ConnectionConfig, KeyKind, QueryResult, RowsRequest, SchemaTable, TableRef, ValueLookup } from '@shared/types'
+import type { ColumnFilter, ConnectionConfig, KeyKind, QueryResult, RowsRequest, SchemaTable, TableRef, ValueLookup } from '@shared/types'
 import { findWriteKeyword } from '@shared/sqlGuard'
 import { addHistory, getConnection } from '../store'
-import type { Driver } from './driver'
+import { TimeoutError, type Driver } from './driver'
 import { MssqlDriver } from './mssql'
 import { MysqlDriver } from './mysql'
 
@@ -62,6 +62,16 @@ export async function testConnection(config: ConnectionConfig, password?: string
 export const listTables = (id: string) => withDriver(id, (d) => d.listTables())
 export const describeTable = (id: string, table: TableRef) => withDriver(id, (d) => d.describeTable(table))
 export const fetchRows = (id: string, request: RowsRequest) => withDriver(id, (d) => d.fetchRows(request))
+
+/** Counts stop after this long; a huge table then shows its estimate instead. */
+const COUNT_TIMEOUT_MS = 10_000
+
+/** The number of rows matching the filters, or null if counting took too long. */
+export const countRows = (id: string, table: TableRef, filters: ColumnFilter[]) =>
+  withDriver(id, (d) => d.countRows(table, filters, COUNT_TIMEOUT_MS).catch((error) => {
+    if (error instanceof TimeoutError) return null
+    throw error
+  }))
 export const describeSchema = (id: string) => withDriver(id, (d) => d.describeSchema())
 
 /** Schema reads are one big query; keep them per connection until it reconnects. */

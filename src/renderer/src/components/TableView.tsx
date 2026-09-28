@@ -53,6 +53,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    const started = performance.now()
     window.api
       .fetchRows(tab.connectionId, {
         table: tab.table,
@@ -64,6 +65,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
       })
       .then((r) => {
         if (cancelled) return
+        setTimings((t) => ({ ...t, rows: performance.now() - started }))
         setResult(r)
         setError(null)
         setSelection(emptySelection)
@@ -74,6 +76,30 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
       cancelled = true
     }
   }, [tab.connectionId, tab.table, filters, sort, page, pageSize, reloadKey])
+
+  /**
+   * Rows matching the filters, counted separately from the page because a big table can take
+   * seconds to count. undefined while counting; null if it took too long.
+   */
+  const [count, setCount] = useState<number | null | undefined>(undefined)
+  /** How long the last page and count took, shown on hover to see where the time goes. */
+  const [timings, setTimings] = useState<{ rows?: number; count?: number }>({})
+  useEffect(() => {
+    let cancelled = false
+    setCount(undefined)
+    const started = performance.now()
+    window.api
+      .countRows(tab.connectionId, tab.table, filters)
+      .then((n) => {
+        if (cancelled) return
+        setTimings((t) => ({ ...t, count: performance.now() - started }))
+        setCount(n)
+      })
+      .catch(() => !cancelled && setCount(null))
+    return () => {
+      cancelled = true
+    }
+  }, [tab.connectionId, tab.table, filters, reloadKey])
 
   const refresh = useCallback(() => setReloadKey((k) => k + 1), [])
 
@@ -142,17 +168,35 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
   }
 
   if (!conn) return null
-  /** "Loading rows 101–200 of 37,392" using the last exact count, or the sidebar's estimate on first load. */
+  /** The database's own row estimate, which only describes the unfiltered table. */
+  const estimate = filters.length ? undefined : tables[tab.connectionId]?.tables.find((t) => t.schema === tab.table.schema && t.name === tab.table.name)?.rowEstimate
+  // The last page also gives the total away, before (or instead of) the count.
+  const total = typeof count === 'number' ? count : result && !result.hasMore ? page * pageSize + result.rows.length : undefined
+  const countLabel = (): { text: string; title?: string } => {
+    if (total !== undefined) return { text: `${formatCount(total)} rows` }
+    if (estimate !== undefined) {
+      return count === undefined
+        ? { text: `~${formatCount(estimate)} rows`, title: 'Estimated; counting…' }
+        : { text: `~${formatCount(estimate)} rows`, title: 'Too many to count quickly; this is the database estimate' }
+    }
+    if (count === undefined) return { text: 'counting rows…' }
+    const seen = page * pageSize + (result?.rows.length ?? 0)
+    return { text: `${formatCount(seen)}+ rows`, title: 'Too many to count quickly' }
+  }
+
+  /** "Loading rows 101–200 of 37,392" using the count if known, else the estimate. */
   const loadingLabel = (): string => {
-    const known = result?.total ?? tables[tab.connectionId]?.tables.find((t) => t.schema === tab.table.schema && t.name === tab.table.name)?.rowEstimate
-    const exact = result?.total !== undefined
+    const known = total ?? estimate
+    const exact = total !== undefined
     const from = page * pageSize + 1
     const to = known !== undefined ? Math.min(known, page * pageSize + pageSize) : page * pageSize + pageSize
     if (known === 0 && exact) return 'Loading…'
     return `Loading rows ${formatCount(from)}–${formatCount(Math.max(from, to))}${known !== undefined ? ` of ${exact ? '' : '~'}${formatCount(known)}` : ''}…`
   }
-  const total = result?.total ?? 0
-  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const pageCount = total === undefined ? undefined : Math.max(1, Math.ceil(total / pageSize))
+  const counted = countLabel()
+  const seconds = (ms: number | undefined): string => (ms === undefined ? '…' : `${(ms / 1000).toFixed(2)}s`)
+  const countTitle = [counted.title, `Page: ${seconds(timings.rows)} · Count: ${seconds(timings.count)}`].filter(Boolean).join('\n')
   const activeRow = selection.active !== null ? visibleRows[selection.active] : undefined
   const columnNames = result?.columns ?? details?.columns.map((c) => c.name) ?? []
 
@@ -162,7 +206,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
         <div className="toolbar-title">
           <span className="muted">{tab.table.schema}.</span>
           <strong>{tab.table.name}</strong>
-          <span className="count">{loading ? 'loading…' : `${formatCount(total)} rows`}</span>
+          <span className="count" title={countTitle}>{loading ? 'loading…' : counted.text}</span>
         </div>
 
         <div className="filters">
@@ -258,9 +302,14 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
         <div className="pager">
           <button className="ghost" disabled={page === 0} onClick={() => setPage(0)}>«</button>
           <button className="ghost" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>‹</button>
-          <span>Page {page + 1} of {formatCount(pageCount)}</span>
-          <button className="ghost" disabled={page + 1 >= pageCount} onClick={() => setPage((p) => p + 1)}>›</button>
-          <button className="ghost" disabled={page + 1 >= pageCount} onClick={() => setPage(pageCount - 1)}>»</button>
+          <span>Page {page + 1}{pageCount !== undefined ? ` of ${formatCount(pageCount)}` : ''}</span>
+          <button className="ghost" disabled={!result?.hasMore} onClick={() => setPage((p) => p + 1)}>›</button>
+          <button
+            className="ghost"
+            disabled={pageCount === undefined || page + 1 >= pageCount}
+            title={pageCount === undefined ? 'Waiting for the row count' : undefined}
+            onClick={() => pageCount !== undefined && setPage(pageCount - 1)}
+          >»</button>
           <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0) }}>
             {PAGE_SIZES.map((s) => <option key={s} value={s}>{s} / page</option>)}
           </select>

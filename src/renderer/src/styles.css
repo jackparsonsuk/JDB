@@ -22,8 +22,26 @@
   color-scheme: dark;
 }
 
+/* Light tokens: an explicit choice (data-theme, set by lib/theme) wins over the Windows setting. */
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --bg-2: #f6f7f9;
+  --bg-3: #eceef2;
+  --bg-hover: #e4e7ec;
+  --border: #d9dde3;
+  --text: #1f2328;
+  --text-dim: #656d76;
+  --accent: #0969da;
+  --accent-soft: rgba(9, 105, 218, 0.1);
+  --selected: rgba(9, 105, 218, 0.14);
+  --null: #9aa1ab;
+  --num: #0550ae;
+  --env-test: #bf8700;
+  color-scheme: light;
+}
+
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #ffffff;
     --bg-2: #f6f7f9;
     --bg-3: #eceef2;
@@ -40,6 +58,8 @@
     color-scheme: light;
   }
 }
+
+:root[data-theme="dark"] { color-scheme: dark; }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
@@ -102,7 +122,8 @@ kbd {
 .app { display: flex; height: 100%; }
 
 .sidebar { width: 270px; min-width: 200px; display: flex; flex-direction: column; background: var(--bg-2); border-right: 1px solid var(--border); }
-.sidebar-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; }
+.sidebar-head { display: flex; align-items: center; gap: 2px; padding: 10px 12px; }
+.sidebar-head .brand { margin-right: auto; }
 .brand { font-weight: 700; letter-spacing: 0.5px; }
 .sidebar-list { flex: 1; overflow-y: auto; }
 .sidebar-foot { padding: 8px 12px; font-size: 11px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 8px; }
@@ -210,6 +231,7 @@ body.resizing-cols { cursor: col-resize; user-select: none; }
 .grid tbody tr.active td.rownum { color: var(--accent); font-weight: 700; }
 .grid td.null { color: var(--null); font-style: italic; }
 .grid td.num { color: var(--num); text-align: right; }
+.grid th.spacer, .grid td.spacer { padding: 0; border-right: none; }
 .grid-empty { padding: 30px; text-align: center; color: var(--text-dim); }
 
 .fk-cell { display: flex; align-items: center; justify-content: space-between; gap: 4px; }

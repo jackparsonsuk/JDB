@@ -1,7 +1,8 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, nativeTheme, shell } from 'electron'
 import { join } from 'path'
 import { registerIpc } from './ipc'
 import { disconnectAll } from './db'
+import { getTheme } from './store'
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -10,7 +11,8 @@ function createWindow(): void {
     minWidth: 900,
     minHeight: 600,
     show: false,
-    backgroundColor: '#15171c',
+    // Matches --bg so the window doesn't flash the wrong colour before the page paints.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#15171c' : '#ffffff',
     title: 'JDB',
     autoHideMenuBar: true,
     webPreferences: {
@@ -35,6 +37,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  nativeTheme.themeSource = getTheme()
   registerIpc()
   createWindow()
   app.on('activate', () => {

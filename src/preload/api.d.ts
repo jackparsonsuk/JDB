@@ -1,6 +1,6 @@
 import type {
-  CellValue, ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RowsRequest, RowsResult, SavedSession,
-  SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
+  CellValue, ColumnFilter, ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RowsRequest, RowsResult, SavedSession,
+  SchemaTable, TableDetails, TableInfo, TableRef, ThemeSetting, ValueLookup
 } from '../shared/types'
 
 export interface Api {
@@ -12,6 +12,8 @@ export interface Api {
   listTables(connectionId: string): Promise<TableInfo[]>
   describeTable(connectionId: string, table: TableRef): Promise<TableDetails>
   fetchRows(connectionId: string, request: RowsRequest): Promise<RowsResult>
+  /** Rows matching the filters, or null if counting took too long (a huge table). */
+  countRows(connectionId: string, table: TableRef, filters: ColumnFilter[]): Promise<number | null>
   describeSchema(connectionId: string): Promise<SchemaTable[]>
   distinctValues(connectionId: string, table: TableRef, column: string, limit: number, via?: ValueLookup): Promise<CellValue[] | null>
   /** `runId` lets the query be stopped with cancelQuery while it runs. */
@@ -27,6 +29,8 @@ export interface Api {
   /** The last saved session, unchecked; pass it through parseSession. */
   loadSession(): Promise<unknown>
   saveSession(session: SavedSession): void
+  getTheme(): Promise<ThemeSetting>
+  setTheme(theme: ThemeSetting): Promise<void>
   copy(text: string): Promise<void>
 }
 

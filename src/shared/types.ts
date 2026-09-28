@@ -100,7 +100,8 @@ export interface ResultSet {
 }
 
 export interface RowsResult extends ResultSet {
-  total: number
+  /** Whether rows exist past this page. The total is counted separately (countRows), as it can be slow. */
+  hasMore: boolean
 }
 
 export interface QueryResult {
@@ -189,3 +190,6 @@ export interface SavedSession {
   /** Share of the width the left pane takes when split. */
   ratio: number
 }
+
+/** 'system' follows the Windows light/dark setting. */
+export type ThemeSetting = 'system' | 'light' | 'dark'

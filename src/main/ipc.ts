@@ -1,5 +1,5 @@
-import { clipboard, ipcMain } from 'electron'
-import type { ConnectionConfig, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RowsRequest, SavedSession, TableRef, ValueLookup } from '@shared/types'
+import { clipboard, ipcMain, nativeTheme } from 'electron'
+import type { ColumnFilter, ConnectionConfig, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RowsRequest, SavedSession, TableRef, ThemeSetting, ValueLookup } from '@shared/types'
 import * as db from './db'
 import * as store from './store'
 import { discoverLinks, verifyLink } from './links'
@@ -36,6 +36,7 @@ export function registerIpc(): void {
   handle('db:tables', (id: string) => db.listTables(id))
   handle('db:describe', (id: string, table: TableRef) => db.describeTable(id, table))
   handle('db:rows', (id: string, request: RowsRequest) => db.fetchRows(id, request))
+  handle('db:count', (id: string, table: TableRef, filters: ColumnFilter[]) => db.countRows(id, table, filters))
   handle('db:schema', (id: string) => db.cachedSchema(id))
   handle('db:distinct', (id: string, table: TableRef, column: string, limit: number, via?: ValueLookup) =>
     db.distinctValues(id, table, column, limit, via))
@@ -58,6 +59,12 @@ export function registerIpc(): void {
     } catch {
       // Losing a session save only means the next launch opens an older layout.
     }
+  })
+  handle('theme:get', () => store.getTheme())
+  // nativeTheme drives prefers-color-scheme in the renderer and the native title bar.
+  handle('theme:set', (theme: ThemeSetting) => {
+    store.setTheme(theme)
+    nativeTheme.themeSource = theme
   })
   handle('clipboard:write', (text: string) => clipboard.writeText(text))
 }
