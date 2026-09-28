@@ -1,0 +1,86 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+JDB is a desktop database viewer (Electron + React + TypeScript, built with electron-vite) for SQL Server / Azure SQL and MySQL. It is a DBeaver replacement focused on reading data safely; writes are deliberately guarded.
+
+## Commands
+
+```bash
+npm run dev          # dev app with renderer hot reload
+npm run build        # production build into out/
+npm run start        # run the built app
+npm run typecheck    # tsc for both node (main/preload/shared) and web (renderer/shared) projects
+npm test             # vitest, all tests
+npx vitest run src/shared/nl/translate.test.ts             # one file
+npx vitest run src/shared/nl/translate.test.ts -t "EXISTS"  # tests matching a name
+npm run dist         # Windows NSIS installer into dist/
+npm run deploy       # build and copy over the locally installed app, then relaunch it
+```
+
+There is no linter configured. Tests live next to the code as `*.test.ts` and only cover `src/shared` (pure logic).
+
+Renderer changes hot-reload, but changes under `src/main` or `src/preload` need the Electron app fully restarted.
+
+### Installed app
+
+The user runs an installed copy day to day (per-user NSIS install in `%LOCALAPPDATA%\Programs\JDB`). After finishing a feature or fix they'd want to use, once typecheck and tests pass, run `npm run deploy` (`scripts/deploy-local.mjs`) so the installed app picks it up. It closes a running JDB (gracefully first, so the session saves), mirrors `dist/win-unpacked` over the install while keeping installer-only files (`Uninstall JDB.exe`, `elevate.exe`), and relaunches. Say so before running it, since it closes the user's open app. Use `npm run dist` only for a first install or to hand an installer to colleagues. The dev and installed apps share the same userData folder (`%APPDATA%\JDB`), so connections, links, history and the saved session are common to both. There is no auto-update yet; if one is added, Azure Blob Storage with electron-updater was the preferred option.
+
+## Architecture
+
+### Process split
+
+- `src/main`: Node/Electron main process. Owns all database drivers, file storage and credentials.
+- `src/preload`: exposes `window.api` (typed in `src/preload/api.d.ts`) via `contextBridge`. The renderer has no Node access.
+- `src/renderer`: React UI.
+- `src/shared`: pure TypeScript used by both sides and by tests. It must not import Electron or Node APIs. Imported as `@shared/...` (alias in `electron.vite.config.ts` and both tsconfigs).
+
+IPC handlers in `src/main/ipc.ts` return `{ ok, value } | { ok: false, error }` instead of throwing, because Electron mangles thrown errors; `src/preload/index.ts` unwraps them back into exceptions. Adding a call means touching `ipc.ts`, `preload/index.ts` and `preload/api.d.ts`, and usually `main/db/index.ts`.
+
+### Databases (`src/main/db`)
+
+`Driver` (`driver.ts`) is implemented by `mssql.ts` (via `mssql`/tedious, with SQL login, Entra browser sign-in or Entra default credentials) and `mysql.ts` (via `mysql2`). Every new capability needs both implementations. `db/index.ts` caches one driver per connection, drops it on connection errors so the next call reconnects, caches whole-schema reads (`cachedSchema`), and applies the read-only guard.
+
+Dialect details that have caused bugs:
+- SQL Server uses `TOP n` and needs `SELECT DISTINCT TOP n`; MySQL uses `LIMIT`.
+- SQL Server date literals are written `'YYYYMMDD'`, because `'YYYY-MM-DD'` can be misread on `datetime` under UK date settings.
+- SQL Server parameters and literals should match the column type (`N'...'` only for `n*char` columns, `BigInt` for ints) so indexes are used.
+- Users on Azure SQL may be unable to see user-defined type names; the schema query falls back to the system type.
+
+### Safety model
+
+- Read-only connections: `runQuery` in `db/index.ts` rejects SQL where `findWriteKeyword` (`src/shared/sqlGuard.ts`) finds a write. MySQL sessions are also set to `READ ONLY` so the server enforces it. The guard deliberately over-blocks rather than risk missing a write.
+- Writable non-local connections confirm writes in the renderer (`QueryView`).
+- TestDB is a shared test database, so anything that scans data must be bounded: sampling scans at most `SAMPLE_SCAN_ROWS`, related-row counts are capped, time-limited and skip large unindexed tables (`src/main/explore.ts`), and cross-database key lists are capped at `KEY_LIMIT`.
+
+### Storage
+
+`src/main/store.ts` keeps `connections.json`, `links.json` and `history.json` in Electron's userData folder. Passwords are encrypted with `safeStorage` (DPAPI) and never sent to the renderer; the renderer only sees `hasPassword`. Two starter connections (Shop, TestDB) are seeded on first run.
+
+### Renderer
+
+`state.tsx` holds app-wide state: connections, loaded table lists, cross-database links, and tabs. There are three tab kinds, `table` (`TableView`), `query` (`QueryView`, with the `AskBar`) and `record` (`RecordView`, the explorer). Tabs stay mounted and are hidden when inactive, so their state survives switching. `DataGrid` is a virtualised table shared by the table, query and explorer views.
+
+### "Ask" engine (`src/shared/nl`)
+
+A rule-based, offline English-to-SQL translator (no LLM, by design). It is driven only by the connected schema, so nothing is hard-coded to particular tables.
+
+1. `model.ts` builds a `Model` from `describeSchema` output: stemmed words for tables and columns, foreign keys (declared, or inferred from names like `CustomerId` to `Customers.Id` with a single-column PK of a compatible type), child links, a display column per table (`src/shared/display.ts`) and a soft-delete column.
+2. `translate.ts` tokenises (`tokens.ts`, dates in `dates.ts` are UK day-first) and walks tokens through an ordered list of handlers (count, limit, sort, negation, `with`/`without`, `for`, parent-column conditions, column conditions, bare dates, bare values). Handler order matters; many bugs were fixed by preferring the longest match.
+3. Words like "draft" are matched against real values. `valueSources` lists small category-like columns and lookup tables; the result's `wanted` tells the caller what to load (`useNl` calls `distinctValues`), then the text is translated again.
+4. Output is either one SQL statement (`buildSql`) or, when linked tables in another database are involved, a step plan (`federated.ts`). `plan.ts` produces the structure drawn by `QueryDiagram`.
+
+### Cross-database links and queries
+
+Databases on different servers can't join natively, so JDB keeps its own registry of links (`CrossLink` in `src/shared/types.ts`).
+
+- Discovery: `src/shared/links.ts` proposes candidates by name (handling tags like `BusinessCMSId` and audit columns like `CreatedByShopUserId`); `src/main/links.ts` samples values and counts matches on the other side, keeping candidates with at least 50% overlap. Links within one connection are rejected in discovery and in the store.
+- Confirmed links drive the grid's jump buttons, the row inspector's "Linked in other databases" section and the record explorer.
+- In the Ask engine, `attachRemote` makes linked tables in other databases parents or children in the model (tagged `remote`), and `applyCrossLinks` removes wrong name-based inferences. Remote tables are only loaded for connections already connected this session, to avoid triggering Entra sign-in prompts.
+- `buildFederated` splits such queries into `keys` steps (filters on the other database, run first), a `main` step with `{{keys:N}}` placeholders, and `enrich` steps that fetch shown columns by key. `src/renderer/src/lib/federated.ts` runs the steps through the normal read-only query path and merges the results into one grid. Sorting or grouping by a remote column is not supported.
+
+## Working in this repo
+
+- The Ask engine's tests use small synthetic schemas; keep real schema dumps and data out of the repo.
+- When changing the Ask engine, check both dialects (the tests cover MySQL and SQL Server output) and that suggestion phrases still round-trip (a test asserts each diagram suggestion's phrase brings in its table).
+- Shell heredocs and inline Python on this Windows/Git Bash setup have silently mangled backslashes in regexes (e.g. `\b` becoming a backspace). Prefer the Edit/Write tools for code containing regex escapes.

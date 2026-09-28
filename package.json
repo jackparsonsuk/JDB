@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "start": "electron-vite preview",
     "dist": "electron-vite build && electron-builder --win",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy": "electron-vite build && electron-builder --win --dir && node scripts/deploy-local.mjs"
   },
   "dependencies": {
     "@azure/identity": "^4.13.3",
