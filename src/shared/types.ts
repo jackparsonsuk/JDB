@@ -168,3 +168,24 @@ export interface HistoryEntry {
   durationMs: number
   error?: string
 }
+
+export interface TableSort {
+  column: string
+  dir: 'asc' | 'desc'
+}
+
+/** A tab as saved between runs: what it shows, not its results. */
+export type SavedTab =
+  | { kind: 'table'; pane: 0 | 1; connectionId: string; table: TableRef; filters: ColumnFilter[]; sort?: TableSort }
+  | { kind: 'query'; pane: 0 | 1; connectionId: string; title: string; sql: string }
+  | { kind: 'record'; pane: 0 | 1; connectionId: string; table: TableRef; key: ColumnFilter[] }
+
+/** The open tabs and split, saved so the app reopens where it was left. */
+export interface SavedSession {
+  tabs: SavedTab[]
+  /** Index into `tabs` of each pane's active tab. */
+  active: [number | null, number | null]
+  focused: 0 | 1
+  /** Share of the width the left pane takes when split. */
+  ratio: number
+}

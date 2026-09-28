@@ -13,12 +13,21 @@ import { ToastHost } from './components/Toast'
 import { LinksDialog } from './components/LinksDialog'
 
 export function App() {
-  const { layout, activeTabId, setActiveTab, closeTab, moveTab, focusPane, connections, openQuery } = useAppState()
+  const { layout, activeTabId, setActiveTab, closeTab, moveTab, focusPane, connections, openQuery, initialRatio, rememberRatio } = useAppState()
   const [editing, setEditing] = useState<ConnectionConfig | null | 'new'>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [linksFor, setLinksFor] = useState<string | null>(null)
   /** Share of the width the left pane takes when split. */
-  const [ratio, setRatio] = useState(0.5)
+  const [ratio, setRatioState] = useState(initialRatio)
+  const setRatio = (next: number): void => {
+    setRatioState(next)
+    rememberRatio(next)
+  }
+  /**
+   * Tabs that have been shown at least once. A tab's view only mounts then, so tabs restored from
+   * the last session don't all connect (and prompt for sign-in) at startup.
+   */
+  const shown = useRef(new Set<string>())
   const panesRef = useRef<HTMLDivElement>(null)
 
   const split = isSplit(layout)
@@ -92,6 +101,8 @@ export function App() {
         {tabs.map((tab) => {
           const visible = layout.active[tab.pane] === tab.id
           const focused = visible && layout.focused === tab.pane
+          if (visible) shown.current.add(tab.id)
+          const mounted = shown.current.has(tab.id)
           return (
             <div
               key={tab.id}
@@ -101,9 +112,9 @@ export function App() {
               hidden={!visible}
               onMouseDownCapture={() => focusPane(tab.pane)}
             >
-              {tab.kind === 'table' && <TableView tab={tab} focused={focused} />}
-              {tab.kind === 'query' && <QueryView tab={tab} active={visible} focused={focused} />}
-              {tab.kind === 'record' && <RecordView tab={tab} />}
+              {mounted && tab.kind === 'table' && <TableView tab={tab} focused={focused} />}
+              {mounted && tab.kind === 'query' && <QueryView tab={tab} active={visible} focused={focused} />}
+              {mounted && tab.kind === 'record' && <RecordView tab={tab} />}
             </div>
           )
         })}

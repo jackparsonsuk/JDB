@@ -36,6 +36,11 @@ export function addTab<T extends PaneTab>(s: Panes<T>, tab: T): Panes<T> {
   return normalise({ tabs: [...s.tabs, tab], active: withActive(s.active, tab.pane, tab.id), focused: tab.pane })
 }
 
+/** Rebuilds a layout from tabs and each pane's active tab, e.g. when restoring a saved session. */
+export function restore<T extends PaneTab>(tabs: T[], active: [string | null, string | null], focused: PaneId): Panes<T> {
+  return normalise({ tabs, active, focused })
+}
+
 export function activate<T extends PaneTab>(s: Panes<T>, id: string): Panes<T> {
   const tab = s.tabs.find((t) => t.id === id)
   if (!tab) return s

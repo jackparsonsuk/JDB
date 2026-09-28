@@ -29,6 +29,8 @@ const api: Api = {
   discoverLinks: (a, b) => call('links:discover', a, b),
   verifyLink: (from, to) => call('links:verify', from, to),
   listHistory: () => call('history:list'),
+  loadSession: () => call('session:load'),
+  saveSession: (session) => ipcRenderer.send('session:save', session),
   copy: (text) => call('clipboard:write', text)
 }
 

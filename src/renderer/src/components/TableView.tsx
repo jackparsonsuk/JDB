@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { CellValue, ColumnFilter, ColumnInfo, FilterOp, RowsResult, TableDetails } from '@shared/types'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CellValue, ColumnFilter, ColumnInfo, FilterOp, RowsResult, TableDetails, TableSort } from '@shared/types'
 import { useAppState, type OpenTarget, type Tab } from '../state'
 import { incomingLinks, outgoingLinks } from '@shared/links'
 import { formatCount, selectSql } from '../lib/format'
@@ -24,11 +24,11 @@ const emptySelection: Selection = { rows: new Set(), active: null }
 
 /** `focused`: this tab is showing in the focused pane, so it owns the keyboard. */
 export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' }>; focused: boolean }) {
-  const { connection, openQuery, openRecord, links, tables } = useAppState()
+  const { connection, openQuery, openRecord, links, tables, rememberTab } = useAppState()
   const conn = connection(tab.connectionId)
   const [details, setDetails] = useState<TableDetails | null>(null)
   const [filters, setFilters] = useState<ColumnFilter[]>(tab.initialFilters)
-  const [sort, setSort] = useState<{ column: string; dir: 'asc' | 'desc' } | undefined>()
+  const [sort, setSort] = useState<TableSort | undefined>(tab.initialSort)
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(100)
   const [result, setResult] = useState<RowsResult | null>(null)
@@ -39,6 +39,12 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
   const [draft, setDraft] = useState<ColumnFilter | null>(null)
   const [quickFind, setQuickFind] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
+
+  const firstRemember = useRef(true)
+  useEffect(() => {
+    if (firstRemember.current) firstRemember.current = false
+    else rememberTab(tab.id, { filters, sort: sort ?? null })
+  }, [tab.id, filters, sort, rememberTab])
 
   useEffect(() => {
     window.api.describeTable(tab.connectionId, tab.table).then(setDetails).catch(() => setDetails(null))

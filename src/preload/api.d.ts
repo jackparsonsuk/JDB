@@ -1,5 +1,5 @@
 import type {
-  CellValue, ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RowsRequest, RowsResult,
+  CellValue, ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RowsRequest, RowsResult, SavedSession,
   SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
 } from '../shared/types'
 
@@ -24,6 +24,9 @@ export interface Api {
   discoverLinks(connectionA: string, connectionB: string): Promise<LinkCandidate[]>
   verifyLink(from: LinkEnd, to: LinkEnd): Promise<LinkOverlap>
   listHistory(): Promise<HistoryEntry[]>
+  /** The last saved session, unchecked; pass it through parseSession. */
+  loadSession(): Promise<unknown>
+  saveSession(session: SavedSession): void
   copy(text: string): Promise<void>
 }
 

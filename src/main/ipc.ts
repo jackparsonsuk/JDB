@@ -1,5 +1,5 @@
 import { clipboard, ipcMain } from 'electron'
-import type { ConnectionConfig, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RowsRequest, TableRef, ValueLookup } from '@shared/types'
+import type { ConnectionConfig, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RowsRequest, SavedSession, TableRef, ValueLookup } from '@shared/types'
 import * as db from './db'
 import * as store from './store'
 import { discoverLinks, verifyLink } from './links'
@@ -50,5 +50,14 @@ export function registerIpc(): void {
   handle('links:verify', (from: LinkEnd, to: LinkEnd) => verifyLink(from, to))
 
   handle('history:list', () => store.listHistory())
+  handle('session:load', () => store.loadSession())
+  // Fire-and-forget so the last save still lands while the window is closing.
+  ipcMain.on('session:save', (_event, session: SavedSession) => {
+    try {
+      store.saveSession(session)
+    } catch {
+      // Losing a session save only means the next launch opens an older layout.
+    }
+  })
   handle('clipboard:write', (text: string) => clipboard.writeText(text))
 }

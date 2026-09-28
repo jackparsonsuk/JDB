@@ -2,7 +2,7 @@ import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry } from '@shared/types'
+import type { ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, SavedSession } from '@shared/types'
 
 interface StoredConnection extends ConnectionConfig {
   /** Password encrypted with the OS keychain (DPAPI on Windows), base64 encoded. */
@@ -138,4 +138,13 @@ export function listHistory(): HistoryEntry[] {
 export function addHistory(entry: Omit<HistoryEntry, 'id'>): void {
   const history = [{ ...entry, id: randomUUID() }, ...listHistory()].slice(0, MAX_HISTORY)
   writeJson('history.json', history)
+}
+
+/** Returned as stored; the renderer checks it with parseSession, since it may be stale. */
+export function loadSession(): unknown {
+  return readJson<unknown>('session.json', null)
+}
+
+export function saveSession(session: SavedSession): void {
+  writeJson('session.json', session)
 }

@@ -16,10 +16,15 @@ const emptySelection: Selection = { rows: new Set(), active: null }
 
 /** `active`: the tab is showing in its pane; `focused`: and that pane has the keyboard. */
 export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 'query' }>; active: boolean; focused: boolean }) {
-  const { connection, tables, loadTables } = useAppState()
+  const { connection, tables, loadTables, rememberTab } = useAppState()
   const conn = connection(tab.connectionId)
   const scheme = useColorScheme()
   const [text, setText] = useState(tab.initialSql)
+  const firstText = useRef(true)
+  useEffect(() => {
+    if (firstText.current) firstText.current = false
+    else rememberTab(tab.id, { sql: text })
+  }, [tab.id, text, rememberTab])
   const [result, setResult] = useState<QueryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
