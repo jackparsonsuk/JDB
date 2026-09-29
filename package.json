@@ -1,7 +1,7 @@
 {
   "name": "jdb",
   "productName": "JDB",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "A streamlined database viewer",
   "main": "./out/main/index.js",
   "author": "Jack Parsons",
@@ -18,7 +18,7 @@
     "test": "vitest run",
     "icon": "electron scripts/make-icon.cjs",
     "deploy": "electron-vite build && electron-builder --win --dir && node scripts/deploy-local.mjs",
-    "release": "electron-vite build && electron-builder --win --publish always"
+    "release": "electron-vite build && electron-builder --win --publish always && node scripts/publish-release.mjs"
   },
   "dependencies": {
     "@azure/identity": "^4.13.3",

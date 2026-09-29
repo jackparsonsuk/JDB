@@ -21,5 +21,5 @@ publish:
   provider: github
   owner: jackparsonsUK
   repo: jdb-releases
-  # Publish straight away rather than as a draft, so installs pick it up without a trip to GitHub.
-  releaseType: release
+  # Uploaded as a draft; scripts/publish-release.mjs publishes it once every file is there.
+  releaseType: draft
