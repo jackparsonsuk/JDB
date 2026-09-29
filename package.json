@@ -1,7 +1,7 @@
 {
   "name": "jdb",
   "productName": "JDB",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A streamlined database viewer",
   "main": "./out/main/index.js",
   "author": "Jack Parsons",
@@ -22,7 +22,9 @@
     "mysql2": "^3.24.4"
   },
   "devDependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/language": "^6.12.4",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.13",
     "@types/mssql": "^12.3.0",

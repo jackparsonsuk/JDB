@@ -275,7 +275,8 @@ tr:hover .fk-jump { opacity: 1; }
 .result-tabs { display: flex; align-items: center; gap: 2px; padding: 4px 8px; border-bottom: 1px solid var(--border); }
 .result-tabs button { background: none; border: none; font-size: 12px; }
 .result-tabs button.on { background: var(--accent-soft); color: var(--accent); }
-.result-meta { margin-left: auto; font-size: 12px; }
+.result-meta { margin-left: auto; font-size: 12px; display: flex; align-items: center; gap: 10px; }
+.result-tabs button.result-export { border: 1px solid var(--border); border-radius: 5px; padding: 1px 8px; }
 
 .history { width: 320px; border-left: 1px solid var(--border); background: var(--bg-2); display: flex; flex-direction: column; }
 .history header { padding: 8px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid var(--border); font-size: 12px; }
@@ -321,6 +322,7 @@ tr:hover .fk-jump { opacity: 1; }
 .toasts { position: fixed; bottom: 40px; right: 16px; display: flex; flex-direction: column; gap: 6px; z-index: 60; }
 .toast { background: var(--bg-3); border: 1px solid var(--border); padding: 8px 14px; border-radius: 7px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); font-size: 12px; max-width: 420px; }
 .toast.error { border-color: var(--danger); color: var(--danger); }
+.toast-action { margin-left: 10px; padding: 2px 8px; font-size: 12px; }
 
 /* Ask bar */
 .ask { display: flex; gap: 12px; padding: 10px; border-bottom: 1px solid var(--border); background: var(--bg-2); min-height: 150px; }

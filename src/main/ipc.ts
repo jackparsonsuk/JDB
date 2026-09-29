@@ -1,10 +1,11 @@
 import { clipboard, ipcMain, nativeTheme } from 'electron'
-import type { ColumnFilter, ConnectionConfig, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RowsRequest, SavedSession, TableRef, ThemeSetting, ValueLookup } from '@shared/types'
+import type { CellValue, ColumnFilter, ConnectionConfig, DbKind, TableExportRequest, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RowsRequest, SavedSession, TableRef, ThemeSetting, ValueLookup } from '@shared/types'
 import * as db from './db'
 import * as store from './store'
 import { discoverLinks, verifyLink } from './links'
 import { countRelated } from './explore'
 import { signOutEntra } from './db/entra'
+import { exportRows, exportTable, showExported } from './export'
 
 /**
  * Registers a handler that returns { ok, value } or { ok: false, error } rather than throwing,
@@ -43,6 +44,10 @@ export function registerIpc(): void {
     db.distinctValues(id, table, column, limit, via))
   handle('db:query', (id: string, sql: string, runId?: string) => db.runQuery(id, sql, runId))
   handle('db:cancel', (runId: string) => db.cancelQuery(runId))
+
+  handle('export:rows', (columns: string[], rows: CellValue[][], kind: DbKind, name: string) => exportRows(columns, rows, kind, name))
+  handle('export:table', (id: string, kind: DbKind, request: TableExportRequest) => exportTable(id, kind, request))
+  handle('export:show', (path: string) => showExported(path))
 
   handle('db:countRelated', (id: string, requests: RelatedCountRequest[]) => countRelated(id, requests))
   handle('links:list', () => store.listLinks())

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import CodeMirror, { type EditorView, keymap, Prec } from '@uiw/react-codemirror'
+import CodeMirror, { type EditorView, type Extension, keymap, Prec } from '@uiw/react-codemirror'
 import { sql, MSSQL, MySQL } from '@codemirror/lang-sql'
 import type { HistoryEntry, QueryResult } from '@shared/types'
 import { findWriteKeyword } from '@shared/sqlGuard'
@@ -11,6 +11,10 @@ import { RowInspector } from './RowInspector'
 import { AskBar } from './AskBar'
 import { runFederated, type StepRun } from '../lib/federated'
 import type { TranslateResult } from '@shared/nl/translate'
+import type { Model } from '@shared/nl/model'
+import { localModel } from '../lib/useNl'
+import { sqlAssist, sqlNamespace } from '../lib/sqlAssist'
+import { runExport } from '../lib/exporting'
 
 const emptySelection: Selection = { rows: new Set(), active: null }
 
@@ -79,15 +83,22 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     loadTables(tab.connectionId)
   }, [tab.connectionId, loadTables])
 
-  // Table names feed autocompletion; both bare and schema-qualified names are offered.
-  const schema = useMemo(() => {
-    const out: Record<string, string[]> = {}
-    for (const t of tables[tab.connectionId]?.tables ?? []) {
-      out[t.name] = []
-      out[`${t.schema}.${t.name}`] = []
-    }
-    return out
-  }, [tables, tab.connectionId])
+  // The full schema (columns and keys) feeds autocompletion once it has loaded; until then, table names only.
+  const [model, setModel] = useState<Model | null>(null)
+  useEffect(() => {
+    if (!conn) return
+    let live = true
+    localModel(conn).then((m) => live && setModel(m), () => undefined)
+    return () => { live = false }
+  }, [conn])
+  const tableList = tables[tab.connectionId]?.tables
+  const language = useMemo(() => {
+    const dialect = conn?.kind === 'mssql' ? MSSQL : MySQL
+    const { schema, defaultSchema } = sqlNamespace(tableList ?? [], model)
+    const extensions: Extension[] = [sql({ dialect, schema, defaultSchema, upperCaseKeywords: true })]
+    if (model) extensions.push(dialect.language.data.of({ autocomplete: sqlAssist(model) }))
+    return extensions
+  }, [conn?.kind, tableList, model])
 
   const execute = useCallback(async (sqlText: string) => {
     const statement = sqlText.trim()
@@ -212,7 +223,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
               value={text}
               height="100%"
               theme={scheme}
-              extensions={[sql({ dialect: conn.kind === 'mssql' ? MSSQL : MySQL, schema, upperCaseKeywords: true }), runKeymap]}
+              extensions={[...language, runKeymap]}
               onChange={setText}
               onCreateEditor={(view) => {
                 viewRef.current = view
@@ -248,6 +259,15 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
                   </span>
                 )}
                 <span className="muted result-meta">
+                  {set && (
+                    <button
+                      className="result-export"
+                      title="Save this result set to a file (Excel, CSV, JSON…)"
+                      onClick={() => runExport(() => window.api.exportRows(set.columns, set.rows, conn.kind, `${conn.name} results`))}
+                    >
+                      Export
+                    </button>
+                  )}
                   {formatDuration(result.durationMs)}
                   {result.resultSets.length === 0 && ` · ${result.rowsAffected.reduce((a, b) => a + b, 0)} rows affected`}
                 </span>

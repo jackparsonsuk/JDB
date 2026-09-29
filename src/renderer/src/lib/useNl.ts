@@ -43,6 +43,11 @@ function engineFor(connection: ConnectionConfig, remotes: ConnectionConfig[]): {
   return { key, engine }
 }
 
+/** The connection's own model (no linked databases), shared with the Ask engine's cache; used by SQL autocompletion. */
+export function localModel(connection: ConnectionConfig): Promise<Model> {
+  return engineFor(connection, []).engine.model
+}
+
 /** Drops cached schemas involving a connection, e.g. after reconnecting or editing it. */
 export function forgetNlEngine(connectionId: string): void {
   for (const key of [...engines.keys()]) {

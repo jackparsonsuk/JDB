@@ -51,7 +51,7 @@ Dialect details that have caused bugs:
 
 - Read-only connections: `runQuery` in `db/index.ts` rejects SQL where `findWriteKeyword` (`src/shared/sqlGuard.ts`) finds a write. MySQL sessions are also set to `READ ONLY` so the server enforces it. The guard deliberately over-blocks rather than risk missing a write.
 - Writable non-local connections confirm writes in the renderer (`QueryView`).
-- TestDB is a shared test database, so anything that scans data must be bounded: sampling scans at most `SAMPLE_SCAN_ROWS`, related-row counts are capped, time-limited and skip large unindexed tables (`src/main/explore.ts`), and cross-database key lists are capped at `KEY_LIMIT`.
+- TestDB is a shared test database, so anything that scans data must be bounded: sampling scans at most `SAMPLE_SCAN_ROWS`, related-row counts are capped, time-limited and skip large unindexed tables (`src/main/explore.ts`), and cross-database key lists are capped at `KEY_LIMIT`. Table exports (`src/main/export.ts`) page through `fetchRows` and stop at `EXPORT_ROW_LIMIT`.
 
 ### Storage
 
@@ -60,6 +60,10 @@ Dialect details that have caused bugs:
 ### Renderer
 
 `state.tsx` holds app-wide state: connections, loaded table lists, cross-database links, and tabs. There are three tab kinds, `table` (`TableView`), `query` (`QueryView`, with the `AskBar`) and `record` (`RecordView`, the explorer). Tabs stay mounted and are hidden when inactive, so their state survives switching. `DataGrid` is a virtualised table shared by the table, query and explorer views.
+
+SQL editor autocompletion: lang-sql completes tables and `alias.column` from the schema namespace; `lib/sqlAssist.ts` adds bare column names from the tables the statement mentions and whole join clauses after `JOIN`, using the Ask engine's `Model` (so inferred keys count). The parsing is in `src/shared/sqlComplete.ts`.
+
+Exports: the save dialog's chosen extension picks the format (xlsx, csv, tsv, json, md, sql). Row formatting lives in `src/shared/rows.ts` so both processes use it; `src/shared/xlsx.ts` writes the workbook XML and `src/main/zip.ts` zips it, with no spreadsheet dependency.
 
 ### "Ask" engine (`src/shared/nl`)
 

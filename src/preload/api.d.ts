@@ -1,5 +1,5 @@
 import type {
-  CellValue, ColumnFilter, ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RowsRequest, RowsResult, SavedSession,
+  CellValue, ColumnFilter, ConnectionConfig, DbKind, ExportResult, TableExportRequest, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RowsRequest, RowsResult, SavedSession,
   SchemaTable, TableDetails, TableInfo, TableRef, ThemeSetting, ValueLookup
 } from '../shared/types'
 
@@ -19,6 +19,12 @@ export interface Api {
   /** `runId` lets the query be stopped with cancelQuery while it runs. */
   runQuery(connectionId: string, sql: string, runId?: string): Promise<QueryResult>
   cancelQuery(runId: string): Promise<void>
+  /** Asks where to save and writes the rows; null if the dialog was cancelled. The file's extension picks the format. */
+  exportRows(columns: string[], rows: CellValue[][], kind: DbKind, suggestedName: string): Promise<ExportResult | null>
+  /** Like exportRows, but fetches every row matching the table view, up to the export cap. */
+  exportTable(connectionId: string, kind: DbKind, request: TableExportRequest): Promise<ExportResult | null>
+  /** Opens Explorer with the exported file selected. */
+  showExported(path: string): Promise<void>
   countRelated(connectionId: string, requests: RelatedCountRequest[]): Promise<RelatedCount[]>
   listLinks(): Promise<CrossLink[]>
   saveLinks(links: CrossLink[]): Promise<CrossLink[]>

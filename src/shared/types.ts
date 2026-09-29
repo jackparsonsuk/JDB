@@ -161,6 +161,17 @@ export type RelatedCount =
   | { status: 'timeout' }
   | { status: 'error'; message: string }
 
+/** A table view to save to a file: every row matching its filters, in its sort order, up to the export cap. */
+export type TableExportRequest = Omit<RowsRequest, 'limit' | 'offset'>
+
+/** Where an export went; null from the API when the save dialog was cancelled. */
+export interface ExportResult {
+  path: string
+  rows: number
+  /** More rows matched than the export cap, so only the first `rows` were saved. */
+  truncated: boolean
+}
+
 export interface HistoryEntry {
   id: string
   connectionId: string

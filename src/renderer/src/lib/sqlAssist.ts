@@ -1,0 +1,65 @@
+import type { Completion, CompletionSource } from '@codemirror/autocomplete'
+import { syntaxTree } from '@codemirror/language'
+import type { SQLNamespace } from '@codemirror/lang-sql'
+import type { Model } from '@shared/nl/model'
+import type { TableInfo } from '@shared/types'
+import { columnOptions, defaultSchema, joinOptions, mentionedTables, resolveMentions, statementAt } from '@shared/sqlComplete'
+
+/**
+ * The namespace lang-sql completes from: schema → table → columns. Before the full schema has loaded,
+ * the table list alone still completes table names.
+ */
+export function sqlNamespace(tables: TableInfo[], model: Model | null): { schema: SQLNamespace; defaultSchema?: string } {
+  const out: Record<string, Record<string, Completion[]>> = {}
+  if (model) {
+    for (const t of model.tables) {
+      ;(out[t.info.schema] ??= {})[t.info.name] = t.columns.map((c) => ({ label: c.info.name, detail: c.info.dataType, type: 'property' }))
+    }
+    return { schema: out, defaultSchema: defaultSchema(model) }
+  }
+  for (const t of tables) (out[t.schema] ??= {})[t.name] = []
+  const counts = new Map<string, number>()
+  for (const t of tables) counts.set(t.schema, (counts.get(t.schema) ?? 0) + 1)
+  const common = tables.some((t) => t.schema === 'dbo') ? 'dbo' : [...counts].sort((a, b) => b[1] - a[1])[0]?.[0]
+  return { schema: out, defaultSchema: common }
+}
+
+const WORD = /[\w$#@]*$/
+
+/**
+ * Completes what lang-sql's schema completion can't: bare column names from the tables the statement
+ * uses (before any "alias." is typed), and whole join clauses that follow foreign keys after JOIN.
+ */
+export function sqlAssist(model: Model): CompletionSource {
+  return (context) => {
+    const node = syntaxTree(context.state).resolveInner(context.pos, -1)
+    if (/String|Comment/.test(node.name)) return null
+    const word = context.matchBefore(WORD)
+    if (!word) return null
+    const doc = context.state.doc.toString()
+    // "alias.col" is lang-sql's job; it resolves aliases itself.
+    if (doc[word.from - 1] === '.') return null
+    const { text, offset } = statementAt(doc, context.pos)
+    const before = doc.slice(offset, word.from)
+    const mentions = mentionedTables(text)
+
+    if (/\bJOIN\s+$/i.test(before)) {
+      const others = mentions.filter((m) => m.from + offset !== word.from)
+      const options = joinOptions(model, resolveMentions(others, model))
+      return options.length
+        ? { from: word.from, options: options.map((o) => ({ label: o.label, detail: o.detail, type: 'class', boost: o.inferred ? 4 : 5 })) }
+        : null
+    }
+    // After FROM and friends a table name is wanted, which lang-sql already offers.
+    if (/\b(FROM|UPDATE|INTO|APPLY)\s+$/i.test(before)) return null
+    if (!word.text && !context.explicit) return null
+
+    const resolved = resolveMentions(mentions, model)
+    if (!resolved.length) return null
+    return {
+      from: word.from,
+      options: columnOptions(resolved, model.kind).map((o) => ({ label: o.label, apply: o.apply, detail: o.detail, type: 'property', boost: 10 })),
+      validFor: /^[\w$#@]*$/
+    }
+  }
+}

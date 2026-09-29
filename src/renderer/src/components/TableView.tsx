@@ -7,6 +7,7 @@ import { DataGrid, type Selection } from './DataGrid'
 import { RowInspector } from './RowInspector'
 import { recordKey } from './RecordView'
 import { toast } from './Toast'
+import { runExport } from '../lib/exporting'
 
 const PAGE_SIZES = [50, 100, 250, 500]
 const OPS: { op: FilterOp; label: string; needsValue: boolean }[] = [
@@ -39,6 +40,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
   const [draft, setDraft] = useState<ColumnFilter | null>(null)
   const [quickFind, setQuickFind] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
+  const [exporting, setExporting] = useState(false)
 
   const firstRemember = useRef(true)
   useEffect(() => {
@@ -250,6 +252,18 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
             onClick={() => openQuery(tab.connectionId, selectSql(conn.kind, tab.table, filters, sort?.column, sort?.dir, pageSize))}
           >
             SQL
+          </button>
+          <button
+            className="ghost"
+            title="Save every row matching the filters, in this order, to a file (Excel, CSV, JSON…)"
+            disabled={exporting}
+            onClick={async () => {
+              setExporting(true)
+              await runExport(() => window.api.exportTable(tab.connectionId, conn.kind, { table: tab.table, filters, orderBy: sort?.column, orderDir: sort?.dir }))
+              setExporting(false)
+            }}
+          >
+            {exporting ? 'Exporting…' : 'Export'}
           </button>
           <button className="ghost" title="Refresh (F5)" onClick={refresh}>⟳</button>
           <button
