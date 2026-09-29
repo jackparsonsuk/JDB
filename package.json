@@ -1,7 +1,7 @@
 {
   "name": "jdb",
   "productName": "JDB",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "A streamlined database viewer",
   "main": "./out/main/index.js",
   "author": "Jack Parsons",
