@@ -6,6 +6,7 @@ import { toast } from './Toast'
 import { fuzzyScore } from '../lib/fuzzy'
 import { toggleSlop, useSlop } from '../lib/slop'
 import { checkForUpdates } from '../lib/useUpdate'
+import { openWhatsNew } from '../lib/whatsNew'
 
 interface Item {
   key: string
@@ -142,6 +143,15 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
       haystack: 'check for updates update upgrade new version release',
       bias: -10,
       run: checkForUpdates
+    })
+    out.push({
+      key: 'whats-new',
+      label: "What's new",
+      detail: 'release notes for each version',
+      icon: '✎',
+      haystack: "whats new what's new release notes changelog changes version",
+      bias: -10,
+      run: () => openWhatsNew()
     })
     for (const option of ['system', 'light', 'dark'] as const) {
       if (option === theme) continue

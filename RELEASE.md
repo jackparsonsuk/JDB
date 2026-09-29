@@ -6,8 +6,9 @@ Installed copies of JDB update themselves from the public [jdb-releases](https:/
 
 1. Make sure `npm run typecheck` and `npm test` pass, and that the change works in the installed app (`npm run deploy`).
 2. Bump `version` in `package.json`. The new version must be higher than the latest release, and each version can only be released once.
-3. Commit and push to `main`.
-4. Tag the commit and push the tag. GitHub Actions (`.github/workflows/release.yml`) then runs the typecheck and tests and publishes the release:
+3. Add a `## X.Y.Z` section to the top of [CHANGELOG.md](CHANGELOG.md) with a `- ` bullet per change. Write for the people using JDB, not for developers: the app shows these notes after it updates, and they become the GitHub release description. The release stops if the section is missing or empty.
+4. Commit and push to `main`.
+5. Tag the commit and push the tag. GitHub Actions (`.github/workflows/release.yml`) then runs the typecheck and tests and publishes the release:
 
    ```bash
    git tag vX.Y.Z
@@ -18,7 +19,7 @@ Installed copies of JDB update themselves from the public [jdb-releases](https:/
 
    To release from your own machine instead (for example if Actions is down), run `npm run release`. It needs `GH_TOKEN` set locally.
 
-5. Check that the run succeeded (locally it prints `Published vX.Y.Z: <link>`), and that the release on GitHub has all three files:
+6. Check that the run succeeded (locally it prints `Published vX.Y.Z: <link>`), and that the release on GitHub has all three files:
    - `JDB-Setup-X.Y.Z.exe`
    - `JDB-Setup-X.Y.Z.exe.blockmap`
    - `latest.yml`
@@ -27,7 +28,7 @@ The whole run takes a few minutes, most of it building the installer and uploadi
 
 ## What `npm run release` does
 
-1. `node scripts/release.mjs prepare` creates a **draft** release for the version. It stops if that version is already published, or if more than one draft for it exists.
+1. `node scripts/release.mjs prepare` reads this version's notes from CHANGELOG.md, then creates a **draft** release with them as the description. It stops if the notes are missing, if that version is already published, or if more than one draft for it exists.
 2. `electron-vite build` and `electron-builder --win --publish always` build the installer and upload the three files into that draft.
 3. `node scripts/release.mjs publish` checks that the draft has all three files, then publishes it and marks it as the latest release. If any file is missing, it leaves the draft unpublished, so nothing reaches users.
 

@@ -13,6 +13,8 @@ import { CommandPalette } from './components/CommandPalette'
 import { toast, ToastHost } from './components/Toast'
 import { LinksDialog } from './components/LinksDialog'
 import { SlopLayer } from './components/SlopLayer'
+import { WhatsNewDialog } from './components/WhatsNewDialog'
+import { announceUpdate } from './lib/whatsNew'
 import { appVersion } from './lib/version'
 
 const SIDEBAR_DEFAULT = 270
@@ -88,6 +90,11 @@ export function App() {
    */
   const shown = useRef(new Set<string>())
   const panesRef = useRef<HTMLDivElement>(null)
+
+  // After an update, offer the release notes for what changed.
+  useEffect(() => {
+    announceUpdate()
+  }, [])
 
   const split = isSplit(layout)
   const tabs = layout.tabs
@@ -209,6 +216,7 @@ export function App() {
         />
       )}
       {linksFor && <LinksDialog connectionId={linksFor} onClose={() => setLinksFor(null)} />}
+      <WhatsNewDialog />
       <ToastHost />
       <SlopLayer />
     </div>
