@@ -21,5 +21,5 @@ publish:
   provider: github
   owner: jackparsonsUK
   repo: jdb-releases
-  # Uploaded as a draft; scripts/publish-release.mjs publishes it once every file is there.
+  # Uploaded as a draft; scripts/release.mjs creates it first and publishes it once every file is there.
   releaseType: draft
