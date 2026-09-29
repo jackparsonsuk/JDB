@@ -5,8 +5,11 @@ directories:
 files:
   - out/**
   - package.json
+  # The window icon, which the main process loads from here.
+  - resources/**
 win:
   target: nsis
+  icon: build/icon.ico
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

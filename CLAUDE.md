@@ -16,6 +16,7 @@ npx vitest run src/shared/nl/translate.test.ts             # one file
 npx vitest run src/shared/nl/translate.test.ts -t "EXISTS"  # tests matching a name
 npm run dist         # Windows NSIS installer into dist/
 npm run deploy       # build and copy over the locally installed app, then relaunch it
+npm run icon         # redraw build/icon.ico and resources/icon.png (green "JDB") from scripts/make-icon.cjs
 ```
 
 There is no linter configured. Tests live next to the code as `*.test.ts` and only cover `src/shared` (pure logic).

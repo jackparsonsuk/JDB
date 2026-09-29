@@ -13,6 +13,7 @@
     "start": "electron-vite preview",
     "dist": "electron-vite build && electron-builder --win",
     "test": "vitest run",
+    "icon": "electron scripts/make-icon.cjs",
     "deploy": "electron-vite build && electron-builder --win --dir && node scripts/deploy-local.mjs"
   },
   "dependencies": {

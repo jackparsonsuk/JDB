@@ -3,6 +3,8 @@ import { join } from 'path'
 import { registerIpc } from './ipc'
 import { disconnectAll, rollbackAll } from './db'
 import { getTheme } from './store'
+// Copied next to the built main process; the packaged exe gets build/icon.ico from electron-builder.
+import icon from '../../resources/icon.png?asset'
 
 /** Unsaved work the renderer has reported, listed when closing would lose it. */
 let unsavedWork: string[] = []
@@ -20,6 +22,7 @@ function createWindow(): void {
     // Matches --bg so the window doesn't flash the wrong colour before the page paints.
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#15171c' : '#ffffff',
     title: 'JDB',
+    icon,
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -61,6 +64,10 @@ function createWindow(): void {
     window.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
+
+// Matches the appId the installer gives its shortcuts, so the window groups with the pinned taskbar
+// button (and uses its icon). Dev runs keep Electron's own id so they don't join the installed app.
+if (app.isPackaged) app.setAppUserModelId('com.activategroup.jdb')
 
 app.whenReady().then(() => {
   nativeTheme.themeSource = getTheme()
