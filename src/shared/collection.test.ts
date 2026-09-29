@@ -6,7 +6,7 @@ const shop: ConnectionConfig = {
   id: 'q', name: 'Shop', kind: 'mysql', host: 'localhost', port: 3306, database: 'Shop', user: 'root',
   authType: 'sql', env: 'local', readOnly: false, hasPassword: true, folder: 'Local'
 }
-const crn: ConnectionConfig = {
+const jobs: ConnectionConfig = {
   id: 'c', name: 'Jobs', kind: 'mssql', host: 'x.database.windows.net', port: 1433, database: 'Jobs', user: '',
   authType: 'entra-browser', env: 'test', readOnly: true
 }
@@ -18,7 +18,7 @@ const link: CrossLink = {
 
 describe('connection collections', () => {
   it('round-trips connections and the links between them, without ids or passwords', () => {
-    const file = buildCollection([shop, crn], [link], new Date('2026-09-29T00:00:00Z'))
+    const file = buildCollection([shop, jobs], [link], new Date('2026-09-29T00:00:00Z'))
     const text = JSON.stringify(file)
     expect(text).not.toContain('hasPassword')
     expect(text).not.toContain('"id"')

@@ -5,6 +5,9 @@
   "description": "A streamlined database viewer",
   "main": "./out/main/index.js",
   "author": "Jack Parsons",
+  "license": "MIT",
+  "repository": "github:jackparsonsUK/jdb",
+  "homepage": "https://github.com/jackparsonsUK/jdb",
   "private": true,
   "scripts": {
     "dev": "electron-vite dev",
@@ -14,11 +17,13 @@
     "dist": "electron-vite build && electron-builder --win",
     "test": "vitest run",
     "icon": "electron scripts/make-icon.cjs",
-    "deploy": "electron-vite build && electron-builder --win --dir && node scripts/deploy-local.mjs"
+    "deploy": "electron-vite build && electron-builder --win --dir && node scripts/deploy-local.mjs",
+    "release": "electron-vite build && electron-builder --win --publish always"
   },
   "dependencies": {
     "@azure/identity": "^4.13.3",
     "@azure/msal-node": "^6.0.1",
+    "electron-updater": "^6.8.9",
     "mssql": "^12.7.2",
     "mysql2": "^3.24.4"
   },

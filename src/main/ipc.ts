@@ -7,6 +7,7 @@ import { countRelated } from './explore'
 import { signOutEntra } from './db/entra'
 import { exportRows, exportTable, showExported } from './export'
 import { exportConnections, importConnections } from './collections'
+import { installUpdate, readyUpdate } from './updater'
 
 /**
  * Registers a handler that returns { ok, value } or { ok: false, error } rather than throwing,
@@ -91,4 +92,6 @@ export function registerIpc(): void {
     nativeTheme.themeSource = theme
   })
   handle('clipboard:write', (text: string) => clipboard.writeText(text))
+  handle('update:ready', () => readyUpdate())
+  handle('update:install', () => installUpdate())
 }

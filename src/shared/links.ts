@@ -4,7 +4,7 @@ import { splitIdentifier, stem } from './nl/words'
 
 /**
  * Words that mark a column as pointing at another system rather than describing it,
- * e.g. BusinessCMSId, CrnJobRoadsideId, CreatedByShopUserId. Connection names are added per run.
+ * e.g. BusinessCMSId, LegacyJobId, CreatedByShopUserId. Connection names are added per run.
  */
 const SYSTEM_TAGS = ['cms', 'crn', 'ext', 'external', 'legacy', 'remote', 'source', 'origin']
 /** Audit prefixes: CreatedByShopUserId still points at a user. */
@@ -67,7 +67,7 @@ function singleKey(table: ModelTable): ColumnInfo | null {
 /**
  * Name-based candidates for columns in `a` that refer to tables in `b`.
  * Columns with a declared foreign key in their own database are skipped; inferred ones are not,
- * because naming inference can pick the wrong local table (Shop Orders.JobId -> Hangfire Job).
+ * because naming inference can pick the wrong local table (Shop Orders.JobId -> a job scheduler's Job).
  */
 export function candidatesBetween(
   a: { connectionId: string; name: string; model: Model },

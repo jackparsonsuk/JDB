@@ -66,6 +66,12 @@ export interface Api {
   getTheme(): Promise<ThemeSetting>
   setTheme(theme: ThemeSetting): Promise<void>
   copy(text: string): Promise<void>
+  /** The version of a downloaded update waiting to install, or null. */
+  readyUpdate(): Promise<string | null>
+  /** Quits and installs the downloaded update. */
+  installUpdate(): Promise<void>
+  /** Called when an update finishes downloading; returns an unsubscribe. */
+  onUpdateReady(listener: (version: string) => void): () => void
 }
 
 declare global {

@@ -3,6 +3,7 @@ import { join } from 'path'
 import { registerIpc } from './ipc'
 import { disconnectAll, rollbackAll } from './db'
 import { getTheme } from './store'
+import { startUpdater } from './updater'
 // Copied next to the built main process; the packaged exe gets build/icon.ico from electron-builder.
 import icon from '../../resources/icon.png?asset'
 
@@ -67,12 +68,13 @@ function createWindow(): void {
 
 // Matches the appId the installer gives its shortcuts, so the window groups with the pinned taskbar
 // button (and uses its icon). Dev runs keep Electron's own id so they don't join the installed app.
-if (app.isPackaged) app.setAppUserModelId('com.activategroup.jdb')
+if (app.isPackaged) app.setAppUserModelId('com.jackparsonsuk.jdb')
 
 app.whenReady().then(() => {
   nativeTheme.themeSource = getTheme()
   registerIpc()
   createWindow()
+  startUpdater()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

@@ -183,7 +183,7 @@ export interface LinkOverlap {
 }
 
 /**
- * A link between databases that can't join natively, e.g. Shop Orders.JobId -> TestDB Job.Id.
+ * A link between databases that can't join natively, e.g. Shop Orders.JobId -> Jobs Job.Id.
  * `from` holds the reference; `to` is the key it points at.
  */
 export interface CrossLink {

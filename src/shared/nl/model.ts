@@ -158,7 +158,7 @@ export function buildModel(schema: SchemaTable[], kind: DbKind): Model {
 
 /**
  * A confirmed cross-database link says where a column really points, so drop any local
- * foreign key that was only inferred from its name (Shop Orders.JobId is not Hangfire's Job).
+ * foreign key that was only inferred from its name (Shop Orders.JobId is not the job scheduler's Job).
  */
 /**
  * Wires confirmed cross-database links into a model: a linked column's parent becomes the table in the

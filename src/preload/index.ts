@@ -50,7 +50,14 @@ const api: Api = {
   signOutEntra: () => call('entra:signOut'),
   getTheme: () => call('theme:get'),
   setTheme: (theme) => call('theme:set', theme),
-  copy: (text) => call('clipboard:write', text)
+  copy: (text) => call('clipboard:write', text),
+  readyUpdate: () => call('update:ready'),
+  installUpdate: () => call('update:install'),
+  onUpdateReady: (listener) => {
+    const handler = (_event: unknown, version: string): void => listener(version)
+    ipcRenderer.on('update:ready', handler)
+    return () => ipcRenderer.off('update:ready', handler)
+  }
 }
 
 contextBridge.exposeInMainWorld('api', api)

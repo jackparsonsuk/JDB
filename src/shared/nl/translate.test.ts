@@ -157,7 +157,7 @@ describe('translate', () => {
   it('handles booleans and text operators', () => {
     expect(sql('active users')).toContain('u.[IsActive] = 1')
     expect(sql('inactive users')).toContain('u.[IsActive] = 0')
-    expect(sql('users where email contains activate')).toContain("u.[Email] LIKE '%activate%'")
+    expect(sql('users where email contains example')).toContain("u.[Email] LIKE '%example%'")
     expect(sql('users with no email')).toContain("(u.[Email] IS NULL OR u.[Email] = '')")
   })
 

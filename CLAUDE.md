@@ -16,6 +16,7 @@ npx vitest run src/shared/nl/translate.test.ts             # one file
 npx vitest run src/shared/nl/translate.test.ts -t "EXISTS"  # tests matching a name
 npm run dist         # Windows NSIS installer into dist/
 npm run deploy       # build and copy over the locally installed app, then relaunch it
+npm run release      # build and publish a GitHub Release (needs GH_TOKEN); installed apps auto-update from it
 npm run icon         # redraw build/icon.ico and resources/icon.png (green "JDB") from scripts/make-icon.cjs
 ```
 
@@ -25,7 +26,9 @@ Renderer changes hot-reload, but changes under `src/main` or `src/preload` need 
 
 ### Installed app
 
-The user runs an installed copy day to day (per-user NSIS install in `%LOCALAPPDATA%\Programs\JDB`). After finishing a feature or fix they'd want to use, once typecheck and tests pass, run `npm run deploy` (`scripts/deploy-local.mjs`) so the installed app picks it up. It closes a running JDB (gracefully first, so the session saves), mirrors `dist/win-unpacked` over the install while keeping installer-only files (`Uninstall JDB.exe`, `elevate.exe`), and relaunches. Say so before running it, since it closes the user's open app. Use `npm run dist` only for a first install or to hand an installer to colleagues. The dev and installed apps share the same userData folder (`%APPDATA%\JDB`), so connections, links, history and the saved session are common to both. There is no auto-update yet; if one is added, Azure Blob Storage with electron-updater was the preferred option.
+The user runs an installed copy day to day (per-user NSIS install in `%LOCALAPPDATA%\Programs\JDB`). After finishing a feature or fix they'd want to use, once typecheck and tests pass, run `npm run deploy` (`scripts/deploy-local.mjs`) so the installed app picks it up. It closes a running JDB (gracefully first, so the session saves), mirrors `dist/win-unpacked` over the install while keeping installer-only files (`Uninstall JDB.exe`, `elevate.exe`), and relaunches. Say so before running it, since it closes the user's open app. Use `npm run dist` only for a first install. The dev and installed apps share the same userData folder (`%APPDATA%\JDB`), so connections, links, history and the saved session are common to both.
+
+The repo is open source (MIT) at github.com/jackparsonsUK/jdb, so keep company-specific names, servers and data out of code, comments and tests. Colleagues get updates through `electron-updater` (`src/main/updater.ts`): packaged apps check GitHub Releases at startup and every 4 hours, download in the background, and install on quit or from the sidebar's "Restart to update". `npm run release` publishes a release; bump `version` first, and only release when the user asks, since it ships to everyone. `nsis.guid` in `electron-builder.yml` is pinned to the id from the old appId so earlier installs upgrade in place; don't remove it.
 
 ## Architecture
 
@@ -55,7 +58,7 @@ Dialect details that have caused bugs:
 - Read-only connections: `runQuery` in `db/index.ts` rejects SQL where `findWriteKeyword` (`src/shared/sqlGuard.ts`) finds a write. MySQL sessions are also set to `READ ONLY` so the server enforces it. The guard deliberately over-blocks rather than risk missing a write.
 - Writable non-local connections confirm writes in the renderer (`QueryView`), except on prod, where a write instead starts a staged transaction (`lib/useTransaction.ts`, `TransactionBar`). Staged transactions live in `db/index.ts` (`beginTransaction` etc.), each on a connection of its own via `Driver.begin()`; runs inside one reject COMMIT/ROLLBACK and, on MySQL, statements that commit implicitly (`sqlGuard.ts`). They are rolled back when the tab closes, the page reloads or the connection drops. Tabs with something to lose register it with `useCloseWarning` (`state.tsx`); closing the tab asks, and closing the window asks too: the renderer reports the warnings to main (`setUnsavedWork`) and blocks `beforeunload`, and main's `will-prevent-unload` handler shows the dialog.
 - Table grid edits (`lib/useTableEdits.ts`) are staged by primary key and saved through `applyChanges`, one transaction where every statement must match exactly one row or all is rolled back. Literals are written per column type in `src/shared/edits.ts`. Tables without a primary key, views and read-only connections can't be edited.
-- TestDB is a shared test database, so anything that scans data must be bounded: sampling scans at most `SAMPLE_SCAN_ROWS`, related-row counts are capped, time-limited and skip large unindexed tables (`src/main/explore.ts`), and cross-database key lists are capped at `KEY_LIMIT`. Table exports (`src/main/export.ts`) page through `fetchRows` and stop at `EXPORT_ROW_LIMIT`.
+- Test databases are often shared, so anything that scans data must be bounded: sampling scans at most `SAMPLE_SCAN_ROWS`, related-row counts are capped, time-limited and skip large unindexed tables (`src/main/explore.ts`), and cross-database key lists are capped at `KEY_LIMIT`. Table exports (`src/main/export.ts`) page through `fetchRows` and stop at `EXPORT_ROW_LIMIT`.
 
 - The table designer (`TableDesigner`, a `design` tab) reads `describeDesign` and builds ALTER scripts in `src/shared/design.ts`: on SQL Server one statement per step run in a transaction by `applyDesign`, on MySQL a single ALTER TABLE (DDL commits implicitly there). DDL clears the schema caches, and the renderer's `schemaChanged` makes open views re-read columns.
 

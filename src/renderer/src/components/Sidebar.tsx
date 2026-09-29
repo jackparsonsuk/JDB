@@ -3,6 +3,7 @@ import type { ConnectionConfig, TableInfo } from '@shared/types'
 import { useAppState } from '../state'
 import { fuzzyScore } from '../lib/fuzzy'
 import { appVersion } from '../lib/version'
+import { useUpdate } from '../lib/useUpdate'
 import { setTheme, useColorScheme } from '../lib/theme'
 import { formatCount } from '../lib/format'
 import { toast } from './Toast'
@@ -33,6 +34,7 @@ function writeList(key: string, values: Iterable<string>): void {
 export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig): void; onNew(): void; onLinks(c: ConnectionConfig): void }) {
   const { connections, reloadConnections, setLinks } = useAppState()
   const scheme = useColorScheme()
+  const update = useUpdate()
   const [collapsed, setCollapsed] = useState(() => new Set(readList(COLLAPSED_KEY)))
   /** Folders made with "New folder" that have no connections yet; folders are otherwise implied by connections. */
   const [emptyFolders, setEmptyFolders] = useState(() => readList(EMPTY_FOLDERS_KEY))
@@ -205,7 +207,13 @@ export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig
       </div>
       <div className="sidebar-foot muted">
         <span>Ctrl+K to jump anywhere</span>
-        <span className="version" title="JDB version">{appVersion}</span>
+        {update.version ? (
+          <button className="update" title={`JDB ${update.version} has downloaded; restart to install it`} onClick={update.install}>
+            Restart to update
+          </button>
+        ) : (
+          <span className="version" title="JDB version">{appVersion}</span>
+        )}
       </div>
     </nav>
   )

@@ -4,6 +4,7 @@ import { useAppState } from '../state'
 import { setTheme, THEME_ICONS, THEME_LABELS, useTheme } from '../lib/theme'
 import { toast } from './Toast'
 import { fuzzyScore } from '../lib/fuzzy'
+import { toggleSlop, useSlop } from '../lib/slop'
 
 interface Item {
   key: string
@@ -24,6 +25,7 @@ const COLUMN_QUERY_MIN = 2
 export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(): void; onNewConnection(): void; onLinks(connectionId: string): void }) {
   const { connections, tables, loadTables, openTable, openQuery, open } = useAppState()
   const theme = useTheme()
+  const slop = useSlop()
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
@@ -147,6 +149,20 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
   }, [connections, tables, openTable, openQuery, loadTables, onNewConnection, onLinks, theme])
 
   const results = useMemo(() => {
+    // The slop easter egg only shows when typed in full, so it never turns up in normal searches.
+    if (query.trim().toLowerCase() === 'slop') {
+      return [
+        {
+          key: 'slop',
+          label: slop ? 'Unslop' : '✨ Slop mode ✨',
+          detail: slop ? 'back to the boring, readable UI' : 'reimagine your data journey with next-gen AI synergy',
+          icon: slop ? '🧹' : '🤖',
+          haystack: 'slop',
+          bias: 0,
+          run: () => toast(toggleSlop() ? '🚀✨ Slop mode activated. Your data has never been this delightful! 🎉💯' : 'Slop mode off')
+        }
+      ]
+    }
     if (!query.trim()) return items.slice(0, MAX_RESULTS)
     const pool = query.trim().length >= COLUMN_QUERY_MIN ? [...items, ...columnItems] : items
     return pool
@@ -155,7 +171,7 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
       .sort((a, b) => b.score - a.score)
       .slice(0, MAX_RESULTS)
       .map((x) => x.item)
-  }, [items, columnItems, query])
+  }, [items, columnItems, query, slop])
 
   useEffect(() => setIndex(0), [query])
 

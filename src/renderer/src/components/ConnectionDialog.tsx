@@ -84,7 +84,7 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConf
         <h2>{initial ? 'Edit connection' : 'New connection'}</h2>
 
         <div className="form">
-          <label>Name<input autoFocus value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. TestDB" /></label>
+          <label>Name<input autoFocus value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Orders (test)" /></label>
 
           <label>Type
             <select value={form.kind} onChange={(e) => setKind(e.target.value as DbKind)}>

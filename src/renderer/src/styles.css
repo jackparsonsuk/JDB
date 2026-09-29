@@ -133,6 +133,7 @@ kbd {
 .sidebar-list { flex: 1; overflow-y: auto; }
 .sidebar-foot { padding: 8px 12px; font-size: 11px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 8px; }
 .sidebar-foot .version { white-space: nowrap; }
+.sidebar-foot .update { padding: 1px 8px; font-size: 11px; white-space: nowrap; color: var(--accent); border-color: var(--accent); }
 .welcome-version { font-size: 13px; font-weight: normal; }
 
 .conn-row { display: flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; user-select: none; }
@@ -587,3 +588,96 @@ tr:hover .fk-jump { opacity: 1; }
 .grid-stats.whole { border-color: var(--accent); }
 .grid-stats.whole .grid-stats-scope { color: var(--accent); }
 .grid-stats .small-button { padding: 1px 8px; font-size: 11px; color: var(--accent); }
+
+/* Slop mode (lib/slop.ts): an easter egg typed into the command palette. Maximum AI-generated energy. */
+@property --slop-hue { syntax: '<number>'; inherits: true; initial-value: 0; }
+@keyframes slop-hue { to { --slop-hue: 360; } }
+@keyframes slop-pan { to { background-position: 400% 50%; } }
+@keyframes slop-float { from { transform: translateY(110vh) rotate(0deg); } to { transform: translateY(-15vh) rotate(720deg); } }
+@keyframes slop-marquee { to { transform: translateX(-50%); } }
+@keyframes slop-bob { 50% { transform: translateY(-8px) rotate(-6deg); } }
+@keyframes slop-pop { from { transform: scale(0.4); opacity: 0; } }
+@keyframes slop-glow { 50% { box-shadow: 0 0 18px hsl(calc(var(--slop-hue) + 180) 100% 60%), inset 0 0 8px hsl(var(--slop-hue) 100% 60% / 0.5); } }
+
+html.slop {
+  animation: slop-hue 6s linear infinite;
+  --bg: hsl(calc(var(--slop-hue) + 260) 70% 9%);
+  --bg-2: hsl(calc(var(--slop-hue) + 280) 65% 13% / 0.85);
+  --bg-3: hsl(calc(var(--slop-hue) + 300) 60% 20% / 0.85);
+  --bg-hover: hsl(calc(var(--slop-hue) + 320) 80% 30%);
+  --border: hsl(calc(var(--slop-hue) + 180) 100% 60%);
+  --text: #fff6ff;
+  --text-dim: hsl(calc(var(--slop-hue) + 60) 100% 80%);
+  --accent: hsl(calc(var(--slop-hue) + 120) 100% 60%);
+  --accent-soft: hsl(calc(var(--slop-hue) + 120) 100% 60% / 0.25);
+  --selected: hsl(calc(var(--slop-hue) + 30) 100% 60% / 0.35);
+  --num: hsl(calc(var(--slop-hue) + 200) 100% 75%);
+  --sans: 'Comic Sans MS', 'Segoe Print', cursive;
+  --mono: 'Comic Sans MS', 'Segoe Print', cursive;
+  color-scheme: dark;
+}
+html.slop body {
+  background: linear-gradient(120deg, #ff00cc, #3333ff, #00ffcc, #ffcc00, #ff00cc);
+  background-size: 400% 400%;
+  animation: slop-pan 12s linear infinite;
+}
+html.slop .app { padding-top: 26px; backdrop-filter: blur(2px); }
+html.slop .brand {
+  font-size: 0;
+}
+html.slop .brand::after {
+  content: '✨ JDB.ai 🚀';
+  font-size: 16px;
+  background: linear-gradient(90deg, #ff4ecd, #ffe14e, #4effa1, #4ec9ff, #b44eff, #ff4ecd);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: slop-pan 3s linear infinite;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
+}
+html.slop button { border-radius: 999px; border-width: 2px; animation: slop-glow 2s ease-in-out infinite; }
+html.slop button.primary {
+  background: linear-gradient(90deg, #ff4ecd, #ffe14e, #4effa1, #4ec9ff, #b44eff);
+  background-size: 300% 100%;
+  animation: slop-pan 4s linear infinite, slop-glow 2s ease-in-out infinite;
+  color: #1a0033;
+  font-weight: 800;
+}
+html.slop button.primary::before { content: '✨ '; }
+html.slop button:hover:not(:disabled) { transform: scale(1.06) rotate(-1deg); }
+html.slop .tab.on { box-shadow: 0 0 14px var(--accent); }
+html.slop .toolbar-title, html.slop .section-title, html.slop .record-title {
+  background: linear-gradient(90deg, #ff4ecd, #ffe14e, #4effa1, #4ec9ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 800;
+}
+html.slop .palette, html.slop .dialog, html.slop .toast, html.slop .menu {
+  border: 2px solid var(--border);
+  border-radius: 22px;
+  box-shadow: 0 0 40px hsl(var(--slop-hue) 100% 60% / 0.7), 0 0 90px hsl(calc(var(--slop-hue) + 120) 100% 60% / 0.4);
+}
+html.slop .palette-input::placeholder { color: var(--text-dim); }
+html.slop .palette-item.on { background: linear-gradient(90deg, hsl(var(--slop-hue) 100% 50% / 0.5), transparent); }
+html.slop input, html.slop select { border-radius: 14px; }
+html.slop ::selection { background: #ff4ecd; color: #fff; }
+
+.slop-layer { position: fixed; inset: 0; pointer-events: none; z-index: 70; overflow: hidden; }
+.slop-floater { position: absolute; top: 0; animation-name: slop-float; animation-timing-function: linear; animation-iteration-count: infinite; opacity: 0.55; filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.6)); }
+.slop-marquee {
+  position: absolute; top: 0; left: 0; right: 0; height: 26px; overflow: hidden; white-space: nowrap;
+  background: linear-gradient(90deg, #ff00cc, #7a00ff, #00c3ff, #00ff95, #ffcc00, #ff00cc);
+  background-size: 300% 100%;
+  animation: slop-pan 8s linear infinite;
+  color: #fff; font: 700 13px/26px 'Comic Sans MS', cursive; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+.slop-marquee-track { display: inline-block; animation: slop-marquee 40s linear infinite; }
+.slop-assistant { position: absolute; left: 16px; bottom: 36px; display: flex; align-items: flex-end; gap: 8px; }
+.slop-bot { font-size: 44px; animation: slop-bob 1.6s ease-in-out infinite; filter: drop-shadow(0 0 12px #4ec9ff); }
+.slop-bubble {
+  order: 2; max-width: 260px; margin-bottom: 30px; padding: 8px 14px; border-radius: 18px 18px 18px 4px;
+  background: linear-gradient(135deg, #ff4ecd, #7a4eff); color: #fff; font: 600 13px/1.35 'Comic Sans MS', cursive;
+  box-shadow: 0 0 20px rgba(255, 78, 205, 0.7); animation: slop-pop 0.35s cubic-bezier(0.3, 1.6, 0.5, 1);
+}

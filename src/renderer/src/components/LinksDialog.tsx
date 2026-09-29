@@ -10,7 +10,7 @@ interface Group {
   items: LinkCandidate[]
 }
 
-/** Groups candidates like "JobId in 28 tables -> TestDB Job.Id" so they can be reviewed at once. */
+/** Groups candidates like "JobId in 28 tables -> Jobs Job.Id" so they can be reviewed at once. */
 function groupCandidates(candidates: LinkCandidate[]): Group[] {
   const groups = new Map<string, Group>()
   for (const c of candidates) {
@@ -106,7 +106,7 @@ export function LinksDialog({ connectionId, onClose }: { connectionId: string; o
       <div className="dialog links-dialog" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
         <h2>Cross-database links</h2>
         <p className="muted small">
-          Links let JDB jump between databases that can't join each other, e.g. an order in Shop to its job in TestDB.
+          Links let JDB jump between databases that can't join each other, e.g. an order in one database to its job in another.
           Discovery matches column names, then checks real values on both sides. Everything is read-only.
         </p>
 

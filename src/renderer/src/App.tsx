@@ -12,6 +12,7 @@ import { ConnectionDialog } from './components/ConnectionDialog'
 import { CommandPalette } from './components/CommandPalette'
 import { toast, ToastHost } from './components/Toast'
 import { LinksDialog } from './components/LinksDialog'
+import { SlopLayer } from './components/SlopLayer'
 import { appVersion } from './lib/version'
 
 const SIDEBAR_DEFAULT = 270
@@ -209,6 +210,7 @@ export function App() {
       )}
       {linksFor && <LinksDialog connectionId={linksFor} onClose={() => setLinksFor(null)} />}
       <ToastHost />
+      <SlopLayer />
     </div>
   )
 }

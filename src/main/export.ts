@@ -7,7 +7,7 @@ import { xlsxParts } from '@shared/xlsx'
 import { zip } from './zip'
 import * as db from './db'
 
-/** Table exports stop here: TestDB is shared, so even an explicit export stays bounded. */
+/** Table exports stop here: test databases are often shared, so even an explicit export stays bounded. */
 export const EXPORT_ROW_LIMIT = 100_000
 const EXPORT_BATCH = 5000
 
