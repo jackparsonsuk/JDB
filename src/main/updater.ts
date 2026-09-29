@@ -38,5 +38,6 @@ export function readyUpdate(): string | null {
  * if the user cancels there, the update still installs on the next quit.
  */
 export function installUpdate(): void {
-  if (ready) autoUpdater.quitAndInstall()
+  // Silent, and reopen afterwards: the installer isn't one-click, so it would otherwise show its wizard.
+  if (ready) autoUpdater.quitAndInstall(true, true)
 }
