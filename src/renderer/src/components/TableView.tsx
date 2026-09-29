@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CellValue, ColumnFilter, ColumnInfo, FilterOp, RowsResult, TableDetails, TableSort } from '@shared/types'
-import { useAppState, type OpenTarget, type Tab } from '../state'
+import { useAppState, useCloseWarning, type OpenTarget, type Tab } from '../state'
 import { incomingLinks, outgoingLinks } from '@shared/links'
 import { formatCount, selectSql } from '../lib/format'
 import { DataGrid, type Selection } from './DataGrid'
@@ -8,6 +8,9 @@ import { RowInspector } from './RowInspector'
 import { recordKey } from './RecordView'
 import { toast } from './Toast'
 import { runExport } from '../lib/exporting'
+import { useTableEdits } from '../lib/useTableEdits'
+import { SaveChangesDialog } from './SaveChangesDialog'
+import { ColumnFinder } from './ColumnFinder'
 
 const PAGE_SIZES = [50, 100, 250, 500]
 const OPS: { op: FilterOp; label: string; needsValue: boolean }[] = [
@@ -25,7 +28,8 @@ const emptySelection: Selection = { rows: new Set(), active: null }
 
 /** `focused`: this tab is showing in the focused pane, so it owns the keyboard. */
 export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' }>; focused: boolean }) {
-  const { connection, openQuery, openRecord, links, tables, rememberTab } = useAppState()
+  const { connection, openQuery, openRecord, open, links, tables, rememberTab, schemaVersions } = useAppState()
+  const schemaVersion = schemaVersions[tab.connectionId] ?? 0
   const conn = connection(tab.connectionId)
   const [details, setDetails] = useState<TableDetails | null>(null)
   const [filters, setFilters] = useState<ColumnFilter[]>(tab.initialFilters)
@@ -41,6 +45,13 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
   const [quickFind, setQuickFind] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [exporting, setExporting] = useState(false)
+  const [editMode, setEditMode] = useState(false)
+  const [reviewing, setReviewing] = useState<string[] | null>(null)
+  /** Set by the column finder, or by opening this table at a column from Ctrl+K. */
+  const [focusColumn, setFocusColumn] = useState(tab.focusColumn)
+  useEffect(() => {
+    if (tab.focusColumn) setFocusColumn(tab.focusColumn)
+  }, [tab.focusColumn])
 
   const firstRemember = useRef(true)
   useEffect(() => {
@@ -50,7 +61,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
 
   useEffect(() => {
     window.api.describeTable(tab.connectionId, tab.table).then(setDetails).catch(() => setDetails(null))
-  }, [tab.connectionId, tab.table])
+  }, [tab.connectionId, tab.table, schemaVersion])
 
   useEffect(() => {
     let cancelled = false
@@ -77,7 +88,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
     return () => {
       cancelled = true
     }
-  }, [tab.connectionId, tab.table, filters, sort, page, pageSize, reloadKey])
+  }, [tab.connectionId, tab.table, filters, sort, page, pageSize, reloadKey, schemaVersion])
 
   /**
    * Rows matching the filters, counted separately from the page because a big table can take
@@ -150,6 +161,26 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
     return result.rows.filter((row) => row.some((v) => v !== null && String(v).toLowerCase().includes(needle)))
   }, [result, quickFind])
 
+  const columnNames = useMemo(() => result?.columns ?? details?.columns.map((c) => c.name) ?? [], [result, details])
+  const edits = useTableEdits(conn?.kind ?? 'mssql', tab.table, columnNames, details, visibleRows)
+  useCloseWarning(tab.id, edits.count ? `${edits.count} unsaved change${edits.count === 1 ? '' : 's'} to ${tab.table.name} will be lost.` : null)
+  const isView = tables[tab.connectionId]?.tables.find((t) => t.schema === tab.table.schema && t.name === tab.table.name)?.type === 'view'
+  /** Why the grid can't be edited, or null when it can. */
+  const editBlocked = !conn ? 'Not connected'
+    : conn.readOnly ? `${conn.name} is read-only. Turn off read-only in its connection settings to edit.`
+    : isView ? "Views can't be edited here"
+    : details && !details.columns.some((c) => c.isPrimaryKey) ? "This table has no primary key, so edited rows can't be matched safely"
+    : null
+  const canEditNow = editMode && !editBlocked && !!details
+
+  const review = (): void => {
+    try {
+      setReviewing(edits.statements())
+    } catch (e) {
+      toast((e as Error).message)
+    }
+  }
+
   const applyFilters = (next: ColumnFilter[]): void => {
     setFilters(next)
     setPage(0)
@@ -199,8 +230,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
   const counted = countLabel()
   const seconds = (ms: number | undefined): string => (ms === undefined ? '…' : `${(ms / 1000).toFixed(2)}s`)
   const countTitle = [counted.title, `Page: ${seconds(timings.rows)} · Count: ${seconds(timings.count)}`].filter(Boolean).join('\n')
-  const activeRow = selection.active !== null ? visibleRows[selection.active] : undefined
-  const columnNames = result?.columns ?? details?.columns.map((c) => c.name) ?? []
+  const activeRow = selection.active !== null ? edits.rows[selection.active] : undefined
 
   return (
     <div className="view">
@@ -240,12 +270,20 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
         </div>
 
         <div className="toolbar-right">
+          <ColumnFinder columns={columnNames} columnInfo={columnInfo} onPick={(name) => setFocusColumn((f) => ({ name, seq: (f?.seq ?? 0) + 1 }))} />
           <input
             className="search"
             placeholder="Find in page…"
             value={quickFind}
             onChange={(e) => setQuickFind(e.target.value)}
           />
+          <button
+            className="ghost"
+            title={conn.readOnly ? 'Columns, types, keys and indexes' : 'Columns, types, keys and indexes; add, change and drop columns'}
+            onClick={() => open({ kind: 'design', connectionId: tab.connectionId, table: tab.table })}
+          >
+            Design
+          </button>
           <button
             className="ghost"
             title="Open this view as SQL"
@@ -265,6 +303,26 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
           >
             {exporting ? 'Exporting…' : 'Export'}
           </button>
+          <button
+            className={`ghost ${editMode ? 'on' : ''} ${editMode && conn.env === 'prod' ? 'prod-edit' : ''}`}
+            disabled={!!editBlocked}
+            title={editBlocked ?? (editMode ? 'Stop editing (staged changes are kept)' : 'Edit cells, add and delete rows. Nothing is saved until you review and save.')}
+            onClick={() => setEditMode((m) => !m)}
+          >
+            ✎ Edit
+          </button>
+          {canEditNow && (
+            <button
+              className="ghost"
+              title="Add a row; columns you leave unset get their defaults"
+              onClick={() => {
+                const index = edits.addRow()
+                setSelection({ rows: new Set([index]), active: index })
+              }}
+            >
+              + Row
+            </button>
+          )}
           <button className="ghost" title="Refresh (F5)" onClick={refresh}>⟳</button>
           <button
             className={`ghost ${showInspector ? 'on' : ''}`}
@@ -278,11 +336,35 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
 
       {error && <div className="error-bar">{error}</div>}
 
+      {edits.count > 0 && (
+        <div className={`edit-bar env-${conn.env}`}>
+          <span className="env-dot" />
+          <strong>{edits.count} unsaved change{edits.count === 1 ? '' : 's'}</strong>
+          <span className="muted">
+            {editMode ? 'Double-click or F2 to edit · Del deletes rows · right-click for NULL and undo' : 'Turn on Edit to keep changing rows'}
+          </span>
+          <div className="toolbar-right">
+            <button
+              onClick={() => {
+                if (window.confirm(`Discard ${edits.count} unsaved change${edits.count === 1 ? '' : 's'}?`)) edits.discard()
+              }}
+            >
+              Discard
+            </button>
+            <button className="primary" onClick={review}>Review &amp; save…</button>
+          </div>
+        </div>
+      )}
+
       <div className="view-body">
         <DataGrid
           loadingLabel={loading ? loadingLabel() : undefined}
           columns={columnNames}
-          rows={visibleRows}
+          rows={edits.rows}
+          scrollResetKey={visibleRows}
+          marks={edits.marks}
+          editing={canEditNow ? edits.grid : undefined}
+          editHint={editBlocked ?? 'Turn on ✎ Edit in the toolbar to edit values, set NULL, or fill in a new GUID or now/today'}
           rowOffset={quickFind ? 0 : page * pageSize}
           columnInfo={columnInfo}
           sort={sort}
@@ -291,10 +373,11 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
           onSelectionChange={setSelection}
           referenceTarget={referenceTarget}
           crossLinks={crossLinks}
-          onRowDoubleClick={canExplore ? explore : undefined}
+          onRowDoubleClick={canExplore && !canEditNow ? explore : undefined}
           crossLinkTarget={crossLinkTarget}
           onFilter={addFilter}
           copyTarget={{ kind: conn.kind, table: tab.table }}
+          focusColumn={focusColumn}
         />
         {showInspector && activeRow && (
           <RowInspector
@@ -311,6 +394,24 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
           />
         )}
       </div>
+
+      {reviewing && (
+        <SaveChangesDialog
+          connection={conn}
+          statements={reviewing}
+          onClose={() => setReviewing(null)}
+          onSaved={(n) => {
+            setReviewing(null)
+            edits.discard()
+            refresh()
+            toast(`Saved ${n} change${n === 1 ? '' : 's'}`)
+          }}
+          onOpenSql={(sqlText) => {
+            setReviewing(null)
+            openQuery(tab.connectionId, sqlText)
+          }}
+        />
+      )}
 
       <div className="statusbar">
         <div className="pager">
@@ -329,7 +430,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
           </select>
         </div>
         <span className="muted">
-          {selection.rows.size > 1 ? `${selection.rows.size} rows selected · Ctrl+C copies for Excel` : 'Right-click a cell for copy and filter options'}
+          {selection.rows.size > 1 ? `${selection.rows.size} rows selected · Ctrl+C copies for Excel` : canEditNow ? 'Right-click a cell to edit, set NULL, add a GUID or now/today' : 'Right-click a cell for copy and filter options'}
         </span>
         <button
           className="ghost"

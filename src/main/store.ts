@@ -2,7 +2,8 @@ import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, SavedSession, ThemeSetting } from '@shared/types'
+import type { ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, LinkEnd, SavedSession, ThemeSetting } from '@shared/types'
+import { sameDatabase, type ConnectionCollection, type ImportSummary } from '@shared/collection'
 
 interface StoredConnection extends ConnectionConfig {
   /** Password encrypted with the OS keychain (DPAPI on Windows), base64 encoded. */
@@ -107,6 +108,58 @@ export function saveConnection(input: ConnectionInput): ConnectionConfig {
 export function deleteConnection(id: string): void {
   writeJson('connections.json', loadStored().filter((c) => c.id !== id))
   writeJson('links.json', listLinks().filter((l) => l.from.connectionId !== id && l.to.connectionId !== id))
+}
+
+/** Moves connections into a folder; an empty name takes them out of any folder. */
+export function setFolder(ids: string[], folder: string): void {
+  const move = new Set(ids)
+  const name = folder.trim()
+  writeJson('connections.json', loadStored().map((c) => {
+    if (!move.has(c.id)) return c
+    const { folder: _old, ...rest } = c
+    return name ? { ...rest, folder: name } : rest
+  }))
+}
+
+/**
+ * Adds a shared collection's connections and links. Connections already here are matched rather
+ * than duplicated; production ones always arrive read-only so a shared file can't enable writes.
+ */
+export function importCollection(collection: ConnectionCollection): ImportSummary {
+  const stored = loadStored()
+  const idForRef = new Map<string, string>()
+  const summary: ImportSummary = { added: [], existing: [], links: 0, madeReadOnly: [] }
+  const added: StoredConnection[] = []
+  for (const { ref, ...incoming } of collection.connections) {
+    const match = [...stored, ...added].find((c) => sameDatabase(c, incoming))
+    if (match) {
+      idForRef.set(ref, match.id)
+      summary.existing.push(match.name)
+      continue
+    }
+    const readOnly = incoming.readOnly || incoming.env === 'prod'
+    if (readOnly && !incoming.readOnly) summary.madeReadOnly.push(incoming.name)
+    const connection: StoredConnection = { ...incoming, readOnly, id: randomUUID() }
+    added.push(connection)
+    idForRef.set(ref, connection.id)
+    summary.added.push(connection.name)
+  }
+  writeJson('connections.json', [...stored, ...added])
+
+  const existingLinks = listLinks()
+  const key = (from: LinkEnd, to: LinkEnd): string => JSON.stringify([from.connectionId, from.table, from.column, to.connectionId, to.table, to.column])
+  const known = new Set(existingLinks.map((l) => key(l.from, l.to)))
+  const newLinks: CrossLink[] = []
+  for (const l of collection.links) {
+    const from: LinkEnd = { connectionId: idForRef.get(l.from.connection)!, table: l.from.table, column: l.from.column }
+    const to: LinkEnd = { connectionId: idForRef.get(l.to.connection)!, table: l.to.table, column: l.to.column }
+    if (from.connectionId === to.connectionId || known.has(key(from, to))) continue
+    known.add(key(from, to))
+    newLinks.push({ id: randomUUID(), from, to, status: l.status, source: l.source })
+  }
+  if (newLinks.length) saveLinks(newLinks)
+  summary.links = newLinks.length
+  return summary
 }
 
 /** A link within one connection is just a foreign key; never keep one. */

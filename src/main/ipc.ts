@@ -6,6 +6,7 @@ import { discoverLinks, verifyLink } from './links'
 import { countRelated } from './explore'
 import { signOutEntra } from './db/entra'
 import { exportRows, exportTable, showExported } from './export'
+import { exportConnections, importConnections } from './collections'
 
 /**
  * Registers a handler that returns { ok, value } or { ok: false, error } rather than throwing,
@@ -34,16 +35,26 @@ export function registerIpc(): void {
   })
   handle('connections:test', (config: ConnectionConfig, password?: string) => db.testConnection(config, password))
   handle('connections:disconnect', (id: string) => db.disconnect(id))
+  handle('connections:setFolder', (ids: string[], folder: string) => store.setFolder(ids, folder))
+  handle('connections:export', (ids: string[] | null, name: string) => exportConnections(ids, name))
+  handle('connections:import', () => importConnections())
 
   handle('db:tables', (id: string) => db.listTables(id))
   handle('db:describe', (id: string, table: TableRef) => db.describeTable(id, table))
+  handle('db:design', (id: string, table: TableRef) => db.describeDesign(id, table))
+  handle('db:applyDesign', (id: string, statements: string[]) => db.applyDesign(id, statements))
   handle('db:rows', (id: string, request: RowsRequest) => db.fetchRows(id, request))
   handle('db:count', (id: string, table: TableRef, filters: ColumnFilter[]) => db.countRows(id, table, filters))
   handle('db:schema', (id: string) => db.cachedSchema(id))
   handle('db:distinct', (id: string, table: TableRef, column: string, limit: number, via?: ValueLookup) =>
     db.distinctValues(id, table, column, limit, via))
-  handle('db:query', (id: string, sql: string, runId?: string) => db.runQuery(id, sql, runId))
+  handle('db:query', (id: string, sql: string, runId?: string, transactionId?: string) => db.runQuery(id, sql, runId, transactionId))
   handle('db:cancel', (runId: string) => db.cancelQuery(runId))
+  handle('db:applyChanges', (id: string, statements: string[]) => db.applyChanges(id, statements))
+  handle('tx:begin', (id: string) => db.beginTransaction(id))
+  handle('tx:commit', (transactionId: string) => db.commitTransaction(transactionId))
+  handle('tx:rollback', (transactionId: string) => db.rollbackTransaction(transactionId))
+  handle('tx:open', (transactionId: string) => db.transactionOpen(transactionId))
 
   handle('export:rows', (columns: string[], rows: CellValue[][], kind: DbKind, name: string) => exportRows(columns, rows, kind, name))
   handle('export:table', (id: string, kind: DbKind, request: TableExportRequest) => exportTable(id, kind, request))

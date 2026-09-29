@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { SchemaTable } from '@shared/types'
 import { useAppState } from '../state'
 import { setTheme, THEME_ICONS, THEME_LABELS, useTheme } from '../lib/theme'
 import { toast } from './Toast'
@@ -17,13 +18,49 @@ interface Item {
 }
 
 const MAX_RESULTS = 60
+/** Column matches only show once this much is typed; there can be tens of thousands. */
+const COLUMN_QUERY_MIN = 2
 
 export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(): void; onNewConnection(): void; onLinks(connectionId: string): void }) {
-  const { connections, tables, loadTables, openTable, openQuery } = useAppState()
+  const { connections, tables, loadTables, openTable, openQuery, open } = useAppState()
   const theme = useTheme()
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
+
+  // Columns come from each connected database's schema (cached in the main process after the first read).
+  const [schemas, setSchemas] = useState<Record<string, SchemaTable[]>>({})
+  const ready = connections.filter((c) => tables[c.id]?.status === 'ready').map((c) => c.id).join(',')
+  useEffect(() => {
+    let live = true
+    for (const id of ready.split(',').filter(Boolean)) {
+      window.api.describeSchema(id).then((schema) => live && setSchemas((s) => ({ ...s, [id]: schema })), () => undefined)
+    }
+    return () => {
+      live = false
+    }
+  }, [ready])
+
+  const columnItems = useMemo<Item[]>(() => {
+    const out: Item[] = []
+    for (const c of connections) {
+      for (const t of schemas[c.id] ?? []) {
+        for (const col of t.columns) {
+          out.push({
+            key: `col:${c.id}:${t.schema}.${t.name}.${col.name}`,
+            label: col.name,
+            detail: `${t.name}.${col.name} · ${col.dataType} · ${c.name}`,
+            icon: '▥',
+            haystack: `${col.name} ${t.name}.${col.name}`,
+            // Below tables of the same name, above commands.
+            bias: -1,
+            run: () => open({ kind: 'table', connectionId: c.id, table: { schema: t.schema, name: t.name }, filters: [], column: col.name })
+          })
+        }
+      }
+    }
+    return out
+  }, [connections, schemas, open])
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = []
@@ -111,13 +148,14 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
 
   const results = useMemo(() => {
     if (!query.trim()) return items.slice(0, MAX_RESULTS)
-    return items
+    const pool = query.trim().length >= COLUMN_QUERY_MIN ? [...items, ...columnItems] : items
+    return pool
       .map((item) => ({ item, score: fuzzyScore(query, item.label) * 2 + Math.max(0, fuzzyScore(query, item.haystack)) + item.bias }))
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, MAX_RESULTS)
       .map((x) => x.item)
-  }, [items, query])
+  }, [items, columnItems, query])
 
   useEffect(() => setIndex(0), [query])
 
@@ -153,7 +191,7 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
         <input
           autoFocus
           className="palette-input"
-          placeholder="Jump to a table, or run a command…"
+          placeholder="Jump to a table or column, or run a command…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKey}

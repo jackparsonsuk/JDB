@@ -1,11 +1,15 @@
 import type {
   CellValue, ColumnFilter, ColumnInfo, QueryResult, RowsRequest, RowsResult, SchemaTable, TableDetails, TableInfo, TableRef,
-  KeyKind, ValueLookup
+  KeyKind, TableDesign, ValueLookup
 } from '@shared/types'
 
 export interface Driver {
   listTables(): Promise<TableInfo[]>
   describeTable(table: TableRef): Promise<TableDetails>
+  /** Columns with defaults and collations, indexes and foreign keys, for the table designer. */
+  describeDesign(table: TableRef): Promise<TableDesign>
+  /** Forgets cached table metadata (primary keys) after the schema has changed. */
+  forgetCaches(): void
   /** Every column of every table in one pass (tables come from listTables for row estimates). */
   describeSchema(): Promise<SchemaTable[]>
   /** Distinct non-null values of a column, or null when there are more than `limit`. */
@@ -23,7 +27,20 @@ export interface Driver {
   countRows(table: TableRef, filters: ColumnFilter[], timeoutMs: number): Promise<number>
   /** Runs user SQL; aborting `signal` stops it on the server and rejects with QueryCancelledError. */
   query(sql: string, signal?: AbortSignal): Promise<QueryResult>
+  /** Starts a transaction on a connection of its own, held until it is committed or rolled back. */
+  begin(): Promise<DriverTransaction>
   close(): Promise<void>
+}
+
+export interface DriverTransaction {
+  /** False once committed, rolled back, or ended by the server (e.g. a deadlock victim). */
+  readonly open: boolean
+  query(sql: string, signal?: AbortSignal): Promise<QueryResult>
+  /** Runs one statement and returns how many rows it matched. */
+  execute(sql: string): Promise<number>
+  commit(): Promise<void>
+  /** A no-op once the transaction has ended. */
+  rollback(): Promise<void>
 }
 
 /** Row shape both drivers' schema queries return, one row per column (and per FK it belongs to). */

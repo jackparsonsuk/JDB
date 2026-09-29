@@ -12,7 +12,9 @@ export function parseSession(raw: unknown, connectionIds: ReadonlySet<string>): 
   const kept: { tab: SavedTab; from: number }[] = []
   raw.tabs.forEach((value, from) => {
     const tab = parseTab(value)
-    if (tab && connectionIds.has(tab.connectionId)) kept.push({ tab, from })
+    if (!tab || !connectionIds.has(tab.connectionId)) return
+    if (isObject(value) && value.pinned === true) tab.pinned = true
+    kept.push({ tab, from })
   })
   if (!kept.length) return null
 
@@ -45,6 +47,10 @@ function parseTab(value: unknown): SavedTab | null {
       const table = parseTableRef(value.table)
       const key = parseFilters(value.key)
       return table && key.length ? { kind: 'record', pane, connectionId, table, key } : null
+    }
+    case 'design': {
+      const table = parseTableRef(value.table)
+      return table ? { kind: 'design', pane, connectionId, table } : null
     }
     default:
       return null

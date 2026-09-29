@@ -1,7 +1,8 @@
 import type {
   CellValue, ColumnFilter, ConnectionConfig, DbKind, ExportResult, TableExportRequest, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RowsRequest, RowsResult, SavedSession,
-  SchemaTable, TableDetails, TableInfo, TableRef, ThemeSetting, ValueLookup
+  SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ThemeSetting, ValueLookup
 } from '../shared/types'
+import type { ImportSummary } from '../shared/collection'
 
 export interface Api {
   listConnections(): Promise<ConnectionConfig[]>
@@ -9,16 +10,37 @@ export interface Api {
   deleteConnection(id: string): Promise<void>
   testConnection(config: ConnectionConfig, password?: string): Promise<void>
   disconnect(id: string): Promise<void>
+  /** Moves connections into a sidebar folder; '' takes them out of any folder. */
+  setFolder(ids: string[], folder: string): Promise<void>
+  /** Saves connections (all when `ids` is null) and their links to a file to share; no passwords. Null if cancelled. */
+  exportConnections(ids: string[] | null, suggestedName: string): Promise<{ path: string; connections: number; links: number } | null>
+  /** Asks for a connections file and adds what it holds. Null if cancelled. */
+  importConnections(): Promise<ImportSummary | null>
   listTables(connectionId: string): Promise<TableInfo[]>
   describeTable(connectionId: string, table: TableRef): Promise<TableDetails>
+  describeDesign(connectionId: string, table: TableRef): Promise<TableDesign>
+  /** Runs a table designer script: in one transaction on SQL Server, as one ALTER TABLE on MySQL. */
+  applyDesign(connectionId: string, statements: string[]): Promise<number>
   fetchRows(connectionId: string, request: RowsRequest): Promise<RowsResult>
   /** Rows matching the filters, or null if counting took too long (a huge table). */
   countRows(connectionId: string, table: TableRef, filters: ColumnFilter[]): Promise<number | null>
   describeSchema(connectionId: string): Promise<SchemaTable[]>
   distinctValues(connectionId: string, table: TableRef, column: string, limit: number, via?: ValueLookup): Promise<CellValue[] | null>
-  /** `runId` lets the query be stopped with cancelQuery while it runs. */
-  runQuery(connectionId: string, sql: string, runId?: string): Promise<QueryResult>
+  /**
+   * `runId` lets the query be stopped with cancelQuery while it runs. With `transactionId` it runs
+   * inside that transaction, and its changes are kept only once the transaction is committed.
+   */
+  runQuery(connectionId: string, sql: string, runId?: string, transactionId?: string): Promise<QueryResult>
   cancelQuery(runId: string): Promise<void>
+  /** Runs grid edits in one transaction, rolling all back unless each matches exactly one row. Returns how many ran. */
+  applyChanges(connectionId: string, statements: string[]): Promise<number>
+  /** Opens a transaction on a connection of its own and returns its id. Refused on read-only connections. */
+  beginTransaction(connectionId: string): Promise<string>
+  commitTransaction(transactionId: string): Promise<void>
+  /** A no-op if the transaction has already ended. */
+  rollbackTransaction(transactionId: string): Promise<void>
+  /** False once the transaction has ended, including when the server rolled it back after an error. */
+  transactionOpen(transactionId: string): Promise<boolean>
   /** Asks where to save and writes the rows; null if the dialog was cancelled. The file's extension picks the format. */
   exportRows(columns: string[], rows: CellValue[][], kind: DbKind, suggestedName: string): Promise<ExportResult | null>
   /** Like exportRows, but fetches every row matching the table view, up to the export cap. */

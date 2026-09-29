@@ -27,7 +27,8 @@ function blank(): ConnectionConfig {
 }
 
 export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConfig | null; onClose(): void }) {
-  const { reloadConnections, forgetTables } = useAppState()
+  const { connections, reloadConnections, forgetTables } = useAppState()
+  const folders = [...new Set(connections.map((c) => c.folder).filter((f): f is string => !!f))].sort()
   const [form, setForm] = useState<ConnectionConfig>(initial ?? blank())
   const [password, setPassword] = useState<string | undefined>(undefined)
   const [status, setStatus] = useState<{ kind: 'ok' | 'error' | 'busy'; message: string } | null>(null)
@@ -58,7 +59,8 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConf
       setStatus({ kind: 'error', message: 'Name and host are required' })
       return
     }
-    const input: ConnectionInput = { ...form, password }
+    const folder = form.folder?.trim()
+    const input: ConnectionInput = { ...form, folder: folder || undefined, password }
     const saved = await window.api.saveConnection(input)
     forgetTables(saved.id)
     await reloadConnections()
@@ -127,6 +129,17 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConf
           )}
 
           <div className="form-row">
+            <label className="grow">Folder <span className="muted">(optional)</span>
+              <input
+                list="connection-folders"
+                value={form.folder ?? ''}
+                onChange={(e) => set('folder', e.target.value || undefined)}
+                placeholder="e.g. Clients or Local"
+              />
+              <datalist id="connection-folders">
+                {folders.map((f) => <option key={f} value={f} />)}
+              </datalist>
+            </label>
             <label className="grow">Environment
               <select value={form.env} onChange={(e) => set('env', e.target.value as EnvTag)}>
                 <option value="local">Local</option>

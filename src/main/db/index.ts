@@ -1,7 +1,8 @@
+import { randomUUID } from 'crypto'
 import type { ColumnFilter, ConnectionConfig, KeyKind, QueryResult, RowsRequest, SchemaTable, TableRef, ValueLookup } from '@shared/types'
-import { findWriteKeyword } from '@shared/sqlGuard'
+import { findImplicitCommit, findTransactionControl, findWriteKeyword } from '@shared/sqlGuard'
 import { addHistory, getConnection } from '../store'
-import { TimeoutError, type Driver } from './driver'
+import { TimeoutError, type Driver, type DriverTransaction } from './driver'
 import { MssqlDriver } from './mssql'
 import { MysqlDriver } from './mysql'
 
@@ -39,6 +40,7 @@ function isConnectionError(error: unknown): boolean {
 
 export async function disconnect(connectionId: string): Promise<void> {
   schemaCache.delete(connectionId)
+  await Promise.all([...transactions].filter(([, t]) => t.connectionId === connectionId).map(([id]) => rollbackTransaction(id).catch(() => undefined)))
   const entry = drivers.get(connectionId)
   drivers.delete(connectionId)
   await entry?.driver.close().catch(() => undefined)
@@ -61,6 +63,56 @@ export async function testConnection(config: ConnectionConfig, password?: string
 
 export const listTables = (id: string) => withDriver(id, (d) => d.listTables())
 export const describeTable = (id: string, table: TableRef) => withDriver(id, (d) => d.describeTable(table))
+export const describeDesign = (id: string, table: TableRef) => withDriver(id, (d) => d.describeDesign(table))
+
+const SCHEMA_CHANGE = /^(CREATE|ALTER|DROP|RENAME|TRUNCATE|EXEC|EXECUTE|SELECT INTO)$/
+
+/** Drops cached schema and key lists after DDL, so the next read sees the new columns. */
+function forgetSchema(connectionId: string): void {
+  schemaCache.delete(connectionId)
+  drivers.get(connectionId)?.driver.forgetCaches()
+}
+
+/**
+ * Runs a table designer script. SQL Server's DDL is transactional, so its steps run in one
+ * transaction and a failure changes nothing. MySQL commits DDL at once, so the designer gives
+ * it a single ALTER TABLE, which the server applies atomically.
+ */
+export async function applyDesign(connectionId: string, statements: string[]): Promise<number> {
+  const started = Date.now()
+  const sql = statements.join('\n')
+  try {
+    await withDriver(connectionId, async (driver, config) => {
+      if (config.readOnly) throw new Error(`"${config.name}" is read-only. Turn off read-only in the connection settings to change tables.`)
+      if (config.kind === 'mysql') {
+        for (const statement of statements) await driver.query(statement)
+        return
+      }
+      const tx = await driver.begin()
+      try {
+        for (const [i, statement] of statements.entries()) {
+          try {
+            await tx.query(statement)
+          } catch (error) {
+            throw new Error(`Nothing was changed. Step ${i + 1} of ${statements.length} failed: ${(error as Error).message}\n\n${statement}`)
+          }
+        }
+        await tx.commit()
+      } catch (error) {
+        await tx.rollback().catch(() => undefined)
+        throw error
+      }
+    })
+    addHistory({ connectionId, sql, ranAt: new Date().toISOString(), durationMs: Date.now() - started })
+    return statements.length
+  } catch (error) {
+    addHistory({ connectionId, sql, ranAt: new Date().toISOString(), durationMs: Date.now() - started, error: String((error as Error).message ?? error) })
+    throw error
+  } finally {
+    // Even a failed MySQL script may have changed something.
+    forgetSchema(connectionId)
+  }
+}
 export const fetchRows = (id: string, request: RowsRequest) => withDriver(id, (d) => d.fetchRows(request))
 
 /** Counts stop after this long; a huge table then shows its estimate instead. */
@@ -99,7 +151,8 @@ export const countMatchingKeys = (id: string, table: TableRef, column: string, v
 /** In-flight user queries by the run id the renderer gave them, so they can be cancelled. */
 const runs = new Map<string, AbortController>()
 
-export async function runQuery(connectionId: string, sql: string, runId?: string): Promise<QueryResult> {
+/** Runs user SQL; with `transactionId` it runs inside that open transaction instead of committing. */
+export async function runQuery(connectionId: string, sql: string, runId?: string, transactionId?: string): Promise<QueryResult> {
   const started = Date.now()
   const controller = new AbortController()
   if (runId) runs.set(runId, controller)
@@ -109,9 +162,19 @@ export async function runQuery(connectionId: string, sql: string, runId?: string
       if (keyword) {
         throw new Error(`Blocked: "${config.name}" is read-only and this query contains ${keyword}. Turn off read-only in the connection settings to allow changes.`)
       }
-      return driver.query(sql, controller.signal)
+      if (!transactionId) return driver.query(sql, controller.signal)
+      const { tx } = openTransaction(transactionId, connectionId)
+      const control = findTransactionControl(sql, config.kind)
+      if (control) throw new Error(`${control} can't run inside the staged transaction. Use the Commit or Roll back buttons instead.`)
+      const implicit = config.kind === 'mysql' ? findImplicitCommit(sql) : null
+      if (implicit) {
+        throw new Error(`MySQL commits the open transaction before ${implicit}, so it can't be staged. Commit or roll back first, then run it on its own.`)
+      }
+      return tx.query(sql, controller.signal)
     })
     addHistory({ connectionId, sql, ranAt: new Date().toISOString(), durationMs: result.durationMs })
+    const keyword = findWriteKeyword(sql)
+    if (keyword && SCHEMA_CHANGE.test(keyword)) forgetSchema(connectionId)
     return result
   } catch (error) {
     addHistory({ connectionId, sql, ranAt: new Date().toISOString(), durationMs: Date.now() - started, error: String((error as Error).message ?? error) })
@@ -124,4 +187,101 @@ export async function runQuery(connectionId: string, sql: string, runId?: string
 /** Stops a running query; a no-op if it has already finished. */
 export function cancelQuery(runId: string): void {
   runs.get(runId)?.abort()
+}
+
+/** Transactions staged from query tabs, by id. Each holds its own connection until it ends. */
+const transactions = new Map<string, { connectionId: string; tx: DriverTransaction }>()
+
+function openTransaction(id: string, connectionId?: string): { connectionId: string; tx: DriverTransaction } {
+  const entry = transactions.get(id)
+  if (!entry || !entry.tx.open) {
+    transactions.delete(id)
+    throw new Error('The transaction is no longer open. The server rolled it back, so none of its changes were kept.')
+  }
+  if (connectionId && entry.connectionId !== connectionId) throw new Error('That transaction belongs to another connection.')
+  return entry
+}
+
+const logged = (connectionId: string, sql: string, error?: unknown): void =>
+  addHistory({ connectionId, sql, ranAt: new Date().toISOString(), durationMs: 0, ...(error ? { error: String((error as Error).message ?? error) } : {}) })
+
+export async function beginTransaction(connectionId: string): Promise<string> {
+  const tx = await withDriver(connectionId, (driver, config) => {
+    if (config.readOnly) throw new Error(`"${config.name}" is read-only, so there is nothing to commit.`)
+    return driver.begin()
+  })
+  const id = randomUUID()
+  transactions.set(id, { connectionId, tx })
+  logged(connectionId, 'BEGIN TRANSACTION')
+  return id
+}
+
+/** Whether the transaction can still be committed; false once the server has rolled it back. */
+export function transactionOpen(id: string): boolean {
+  return transactions.get(id)?.tx.open ?? false
+}
+
+export async function commitTransaction(id: string): Promise<void> {
+  const { connectionId, tx } = openTransaction(id)
+  transactions.delete(id)
+  try {
+    await tx.commit()
+    logged(connectionId, 'COMMIT')
+  } catch (error) {
+    await tx.rollback().catch(() => undefined)
+    logged(connectionId, 'COMMIT', error)
+    throw new Error(`Commit failed: ${(error as Error).message}\n\nThe transaction has been closed. Check the data to see whether its changes were kept.`)
+  }
+}
+
+/** A no-op when the transaction has already ended. */
+export async function rollbackTransaction(id: string): Promise<void> {
+  const entry = transactions.get(id)
+  if (!entry) return
+  transactions.delete(id)
+  const wasOpen = entry.tx.open
+  await entry.tx.rollback()
+  if (wasOpen) logged(entry.connectionId, 'ROLLBACK')
+}
+
+/** Rolls back every staged transaction, e.g. when the window reloads and forgets them. */
+export async function rollbackAll(): Promise<void> {
+  await Promise.all([...transactions.keys()].map((id) => rollbackTransaction(id).catch(() => undefined)))
+}
+
+/**
+ * Saves edits made in the table grid, all or nothing: every statement must match exactly one
+ * row (they are keyed by primary key), otherwise the whole transaction is rolled back.
+ */
+export async function applyChanges(connectionId: string, statements: string[]): Promise<number> {
+  const started = Date.now()
+  const sql = statements.join('\n')
+  try {
+    await withDriver(connectionId, async (driver, config) => {
+      if (config.readOnly) throw new Error(`"${config.name}" is read-only. Turn off read-only in the connection settings to allow changes.`)
+      const tx = await driver.begin()
+      try {
+        for (const [i, statement] of statements.entries()) {
+          let matched: number
+          try {
+            matched = await tx.execute(statement)
+          } catch (error) {
+            throw new Error(`Nothing was saved. Change ${i + 1} of ${statements.length} failed: ${(error as Error).message}\n\n${statement}`)
+          }
+          if (matched !== 1) {
+            throw new Error(`Nothing was saved. Change ${i + 1} of ${statements.length} matched ${matched} rows instead of 1, so the data may have changed since it was loaded.\n\n${statement}`)
+          }
+        }
+        await tx.commit()
+      } catch (error) {
+        await tx.rollback().catch(() => undefined)
+        throw error
+      }
+    })
+    addHistory({ connectionId, sql, ranAt: new Date().toISOString(), durationMs: Date.now() - started })
+    return statements.length
+  } catch (error) {
+    addHistory({ connectionId, sql, ranAt: new Date().toISOString(), durationMs: Date.now() - started, error: String((error as Error).message ?? error) })
+    throw error
+  }
 }

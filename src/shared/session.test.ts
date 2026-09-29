@@ -67,4 +67,15 @@ describe('parseSession', () => {
     expect(s.active).toEqual(['x', null])
     expect(s.focused).toBe(0)
   })
+
+  it('keeps pinned tabs pinned', () => {
+    const s = parseSession({
+      tabs: [
+        { kind: 'query', pane: 0, connectionId: 'a', title: 'Q', sql: '', pinned: true },
+        { kind: 'query', pane: 0, connectionId: 'a', title: 'R', sql: '', pinned: 'yes' }
+      ],
+      active: [0, null]
+    }, conns)
+    expect(s?.tabs.map((t) => t.pinned)).toEqual([true, undefined])
+  })
 })

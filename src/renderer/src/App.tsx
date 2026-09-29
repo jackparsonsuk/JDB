@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react'
 import type { ConnectionConfig } from '@shared/types'
-import { isSplit, otherPane, tabsIn, type PaneId } from '@shared/panes'
+import { isSplit, otherPane, tabsIn, tabsToClose, type CloseScope, type PaneId } from '@shared/panes'
 import { useAppState, type Tab } from './state'
 import { startDrag, useDragging, type DragPayload } from './lib/openLink'
 import { Sidebar } from './components/Sidebar'
 import { TableView } from './components/TableView'
 import { QueryView } from './components/QueryView'
 import { RecordView } from './components/RecordView'
+import { TableDesigner } from './components/TableDesigner'
 import { ConnectionDialog } from './components/ConnectionDialog'
 import { CommandPalette } from './components/CommandPalette'
-import { ToastHost } from './components/Toast'
+import { toast, ToastHost } from './components/Toast'
 import { LinksDialog } from './components/LinksDialog'
 import { appVersion } from './lib/version'
 
@@ -44,7 +45,9 @@ export function App() {
         setPaletteOpen((open) => !open)
       } else if (mod && key === 'w' && activeTabId) {
         e.preventDefault()
-        closeTab(activeTabId)
+        // Pinned tabs close only from their menu, so a stray Ctrl+W can't lose them.
+        if (activeTab?.pinned) toast('Pinned tab: unpin it, or use Close from its right-click menu')
+        else closeTab(activeTabId)
       } else if (mod && key === 't') {
         e.preventDefault()
         const target = activeTab?.connectionId ?? connections[0]?.id
@@ -116,6 +119,7 @@ export function App() {
               {mounted && tab.kind === 'table' && <TableView tab={tab} focused={focused} />}
               {mounted && tab.kind === 'query' && <QueryView tab={tab} active={visible} focused={focused} />}
               {mounted && tab.kind === 'record' && <RecordView tab={tab} />}
+              {mounted && tab.kind === 'design' && <TableDesigner tab={tab} />}
             </div>
           )
         })}
@@ -140,8 +144,34 @@ export function App() {
 
 /** A pane's tab bar and the environment banner for the tab it shows. */
 function PaneHead({ pane, split }: { pane: PaneId; split: boolean }) {
-  const { layout, setActiveTab, closeTab, focusPane, connection } = useAppState()
+  const { layout, setActiveTab, closeTab, pinTab, reorderTab, focusPane, connection } = useAppState()
+  const [menu, setMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
   const own = tabsIn(layout, pane)
+
+  // Dragging a tab along a tab bar reorders it; the marker shows where it will land.
+  const drag = useDragging()
+  const draggedTab = drag?.kind === 'tab' ? drag.tabId : null
+  /** The tab the dragged one would go before, null for the end, undefined when not over this bar. */
+  const [dropBefore, setDropBefore] = useState<string | null | undefined>(undefined)
+  useEffect(() => {
+    if (!draggedTab) setDropBefore(undefined)
+  }, [draggedTab])
+  const overTab = (e: DragEvent, index: number): void => {
+    if (!draggedTab) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'move'
+    const rect = e.currentTarget.getBoundingClientRect()
+    const after = e.clientX > rect.left + rect.width / 2
+    setDropBefore(after ? own[index + 1]?.id ?? null : own[index].id)
+  }
+  const dropTab = (e: DragEvent): void => {
+    if (!draggedTab || dropBefore === undefined) return
+    e.preventDefault()
+    e.stopPropagation()
+    reorderTab(draggedTab, pane, dropBefore)
+    setDropBefore(undefined)
+  }
   const active = own.find((t) => t.id === layout.active[pane])
   const activeConn = active ? connection(active.connectionId) : undefined
   const focused = layout.focused === pane
@@ -152,29 +182,65 @@ function PaneHead({ pane, split }: { pane: PaneId; split: boolean }) {
       style={{ gridColumn: pane === 0 ? 1 : 3 }}
       onMouseDownCapture={() => focusPane(pane)}
     >
-      <div className="tabbar">
-        {own.map((tab) => {
+      <div
+        className="tabbar"
+        onDragOver={(e) => {
+          // Past the last tab: drop at the end.
+          if (!draggedTab) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          setDropBefore(null)
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropBefore(undefined)
+        }}
+        onDrop={dropTab}
+      >
+        {own.map((tab, index) => {
           const conn = connection(tab.connectionId)
           return (
             <div
               key={tab.id}
-              className={`tab env-${conn?.env ?? 'local'} ${tab.id === active?.id ? 'on' : ''}`}
+              className={[
+                'tab', `env-${conn?.env ?? 'local'}`,
+                tab.id === active?.id && 'on',
+                tab.pinned && 'pinned',
+                tab.id === draggedTab && 'dragging',
+                dropBefore === tab.id && 'drop-before',
+                dropBefore === null && index === own.length - 1 && 'drop-after'
+              ].filter(Boolean).join(' ')}
               draggable
               onDragStart={(e) => startDrag(e, { kind: 'tab', tabId: tab.id }, tabTitle(tab))}
+              onDragOver={(e) => overTab(e, index)}
+              onDrop={dropTab}
               onMouseDown={(e) => {
-                if (e.button === 1) closeTab(tab.id)
-                else setActiveTab(tab.id)
+                if (e.button === 1) {
+                  if (!tab.pinned) closeTab(tab.id)
+                } else if (e.button === 0) {
+                  setActiveTab(tab.id)
+                }
               }}
-              title={`${conn?.name ?? ''} · ${tabTitle(tab)}\nDrag to the other side to split`}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setActiveTab(tab.id)
+                setMenu({ x: e.clientX, y: e.clientY, tabId: tab.id })
+              }}
+              title={`${conn?.name ?? ''} · ${tabTitle(tab)}${tab.pinned ? ' (pinned)' : ''}\nDrag to the other side to split · right-click for more`}
             >
-              <span className="tab-icon">{tab.kind === 'table' ? '▦' : tab.kind === 'record' ? '◉' : '⌨'}</span>
+              <span className="tab-icon">{tab.kind === 'table' ? '▦' : tab.kind === 'record' ? '◉' : tab.kind === 'design' ? '⚙' : '⌨'}</span>
               <span className="tab-title">{tabTitle(tab)}</span>
               <span className="tab-conn">{conn?.name}</span>
-              <button className="icon small" onMouseDown={(e) => e.stopPropagation()} onClick={() => closeTab(tab.id)}>✕</button>
+              {tab.pinned ? (
+                <button className="icon small tab-pin" title="Unpin" onMouseDown={(e) => e.stopPropagation()} onClick={() => pinTab(tab.id, false)}>📌</button>
+              ) : (
+                <button className="icon small" onMouseDown={(e) => e.stopPropagation()} onClick={() => closeTab(tab.id)}>✕</button>
+              )}
             </div>
           )
         })}
       </div>
+
+      {menu && <TabMenu {...menu} onClose={() => setMenu(null)} />}
 
       {activeConn && (
         <div className="env-banner">
@@ -184,6 +250,62 @@ function PaneHead({ pane, split }: { pane: PaneId; split: boolean }) {
           {activeConn.readOnly ? <span className="ro">read-only</span> : <span className="rw">writes allowed</span>}
         </div>
       )}
+    </div>
+  )
+}
+
+/** A tab's right-click menu. Bulk closes act on its own pane and leave pinned tabs open. */
+function TabMenu({ x, y, tabId, onClose }: { x: number; y: number; tabId: string; onClose(): void }) {
+  const { layout, closeTab, closeTabs, pinTab, moveTab } = useAppState()
+  const tab = layout.tabs.find((t) => t.id === tabId)
+  const ref = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState({ left: x, top: y })
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('mousedown', onClose)
+    window.addEventListener('blur', onClose)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onClose)
+      window.removeEventListener('blur', onClose)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+
+  // Keep the menu on screen when opened near the right edge.
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (el) setPosition({ left: Math.min(x, window.innerWidth - el.offsetWidth - 8), top: Math.min(y, window.innerHeight - el.offsetHeight - 8) })
+  }, [x, y])
+
+  if (!tab) return null
+  const count = (scope: CloseScope): number => tabsToClose(layout, tabId, scope).length
+  const others = count('others')
+  const right = count('right')
+  const all = count('all')
+  const act = (run: () => void) => (): void => {
+    onClose()
+    run()
+  }
+  // A lone tab on the left can't split off; one on the right can always go back.
+  const canMove = tab.pane === 1 || tabsIn(layout, 0).length > 1
+
+  return (
+    <div ref={ref} className="menu tab-menu" style={position} onMouseDown={(e) => e.stopPropagation()}>
+      <button onClick={act(() => pinTab(tabId, !tab.pinned))}>{tab.pinned ? 'Unpin tab' : 'Pin tab'}</button>
+      <div className="menu-sep" />
+      <button onClick={act(() => closeTab(tabId))}>Close{!tab.pinned && <kbd>Ctrl+W</kbd>}</button>
+      <button disabled={!others} onClick={act(() => closeTabs(tabId, 'others'))}>Close others{others ? ` (${others})` : ''}</button>
+      <button disabled={!right} onClick={act(() => closeTabs(tabId, 'right'))}>Close to the right{right ? ` (${right})` : ''}</button>
+      <button disabled={!all} onClick={act(() => closeTabs(tabId, 'all'))}>Close all{all ? ` (${all})` : ''}</button>
+      <div className="menu-sep" />
+      <button disabled={!canMove} onClick={act(() => moveTab(tabId, otherPane(tab.pane)))}>
+        Move to {tab.pane === 0 ? 'right' : 'left'} side<kbd>Ctrl+\</kbd>
+      </button>
+      {tabsIn(layout, tab.pane).some((t) => t.pinned) && <div className="menu-label">Pinned tabs stay open when closing several</div>}
     </div>
   )
 }
@@ -247,6 +369,7 @@ function DropZones({ split, ratio }: { split: boolean; ratio: number }) {
 function tabTitle(tab: Tab): string {
   if (tab.kind === 'query') return tab.title
   if (tab.kind === 'record') return `${tab.table.name} ${tab.key.map((k) => k.value).join('·')}`
+  if (tab.kind === 'design') return `${tab.table.name} (design)`
   const filter = tab.initialFilters[0]
   return filter ? `${tab.table.name} (${filter.column}=${filter.value ?? ''})` : tab.table.name
 }

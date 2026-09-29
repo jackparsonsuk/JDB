@@ -1,7 +1,7 @@
 import { app, BrowserWindow, nativeTheme, shell } from 'electron'
 import { join } from 'path'
 import { registerIpc } from './ipc'
-import { disconnectAll } from './db'
+import { disconnectAll, rollbackAll } from './db'
 import { getTheme } from './store'
 
 function createWindow(): void {
@@ -24,6 +24,10 @@ function createWindow(): void {
   })
 
   window.once('ready-to-show', () => window.show())
+  // A reloaded page has forgotten its staged transactions, so none can be committed any more.
+  window.webContents.on('did-start-loading', () => {
+    rollbackAll()
+  })
   window.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: 'deny' }

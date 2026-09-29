@@ -3,9 +3,9 @@ import type { AccessToken } from '@azure/identity'
 import { keyKind } from '@shared/links'
 import type {
   CellValue, ColumnFilter, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
-  KeyKind, SchemaTable, TableDetails, TableInfo, TableRef, ValueLookup
+  DesignColumn, DesignForeignKey, DesignIndex, KeyKind, SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ValueLookup
 } from '@shared/types'
-import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancelledError, SAMPLE_SCAN_ROWS, TimeoutError, toCell, type Driver, type SchemaColumnRow } from './driver'
+import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancelledError, SAMPLE_SCAN_ROWS, TimeoutError, toCell, type Driver, type DriverTransaction, type SchemaColumnRow } from './driver'
 import { buildWhere } from './filters'
 import { getEntraToken } from './entra'
 
@@ -20,6 +20,8 @@ export class MssqlDriver implements Driver {
   private connecting: Promise<sql.ConnectionPool> | null = null
   private token: AccessToken | null = null
   private primaryKeys = new Map<string, string[]>()
+  /** Transactions pin a pooled connection, so the pool mustn't be swapped out under them. */
+  private openTransactions = 0
 
   constructor(
     private readonly config: ConnectionConfig,
@@ -61,8 +63,9 @@ export class MssqlDriver implements Driver {
   }
 
   private async getPool(): Promise<sql.ConnectionPool> {
-    if (this.pool && this.tokenExpiring()) {
+    if (this.pool && this.tokenExpiring() && this.openTransactions === 0) {
       // Pooled connections reuse the token they were created with, so rebuild before it lapses.
+      // Existing connections stay signed in, so a pool holding a transaction waits until it ends.
       const old = this.pool
       this.pool = null
       await old.close().catch(() => undefined)
@@ -158,6 +161,67 @@ export class MssqlDriver implements Driver {
         referencedColumn: r.ref_column
       }))
     }
+  }
+
+  async describeDesign(table: TableRef): Promise<TableDesign> {
+    const request = await this.request()
+    request.input('name', sql.NVarChar, qualified(table))
+    const result = await request.query(`
+      DECLARE @id INT = OBJECT_ID(@name);
+      SELECT c.name, COALESCE(TYPE_NAME(c.user_type_id), TYPE_NAME(c.system_type_id), 'unknown') AS type_name, c.max_length, c.precision, c.scale,
+             c.is_nullable, c.is_identity, c.is_computed, c.collation_name, dc.name AS default_name, dc.definition AS default_definition,
+             cc.definition AS computed_definition,
+             CAST(CASE WHEN EXISTS (
+               SELECT 1 FROM sys.indexes i
+               JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+               WHERE i.object_id = c.object_id AND i.is_primary_key = 1 AND ic.column_id = c.column_id
+             ) THEN 1 ELSE 0 END AS BIT) AS is_pk
+      FROM sys.columns c
+      LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id
+      LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id
+      WHERE c.object_id = @id ORDER BY c.column_id;
+
+      SELECT i.name, i.is_unique, i.is_primary_key, i.type_desc, c.name AS column_name, ic.is_included_column
+      FROM sys.indexes i
+      JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+      JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+      WHERE i.object_id = @id AND i.type > 0
+      ORDER BY i.is_primary_key DESC, i.name, ic.is_included_column, ic.key_ordinal, ic.index_column_id;
+
+      SELECT fk.name, pc.name AS column_name, rs.name AS ref_schema, rt.name AS ref_table, rc.name AS ref_column,
+             fk.delete_referential_action_desc AS on_delete, fk.update_referential_action_desc AS on_update
+      FROM sys.foreign_keys fk
+      JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+      JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+      JOIN sys.tables rt ON rt.object_id = fkc.referenced_object_id
+      JOIN sys.schemas rs ON rs.schema_id = rt.schema_id
+      JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+      WHERE fk.parent_object_id = @id
+      ORDER BY fk.name, fkc.constraint_column_id;`)
+
+    const [columnRows, indexRows, fkRows] = result.recordsets as unknown as Record<string, any>[][]
+    const fkColumns = new Map<string, { schema: string; name: string; column: string }>()
+    for (const fk of fkRows) if (!fkColumns.has(fk.column_name)) fkColumns.set(fk.column_name, { schema: fk.ref_schema, name: fk.ref_table, column: fk.ref_column })
+    const columns: DesignColumn[] = columnRows.map((c) => ({
+      name: c.name,
+      dataType: formatType(c.type_name, c.max_length, c.precision, c.scale),
+      nullable: c.is_nullable,
+      isPrimaryKey: c.is_pk,
+      isIdentity: c.is_identity,
+      references: fkColumns.get(c.name),
+      default: c.default_definition ?? null,
+      ...(c.default_name && { defaultConstraint: c.default_name }),
+      ...(c.default_name && c.default_definition == null && { defaultHidden: true }),
+      // The definition is hidden without VIEW DEFINITION, but the column is still computed.
+      ...(c.is_computed && { computed: c.computed_definition ?? '(definition hidden)' }),
+      ...(c.collation_name && { collation: c.collation_name })
+    }))
+    const { referencedBy } = await this.describeTable(table)
+    return { columns, indexes: groupIndexes(indexRows), foreignKeys: groupForeignKeys(fkRows), referencedBy }
+  }
+
+  forgetCaches(): void {
+    this.primaryKeys.clear()
   }
 
   async describeSchema(): Promise<SchemaTable[]> {
@@ -323,36 +387,81 @@ export class MssqlDriver implements Driver {
     }
   }
 
-  async query(text: string, signal?: AbortSignal): Promise<QueryResult> {
-    const started = Date.now()
-    const resultSets: ResultSet[] = []
-    const rowsAffected: number[] = []
-    // GO is a client-side batch separator, not T-SQL, so split on it like SSMS does.
-    for (const batch of text.split(/^\s*GO\s*;?\s*$/im).filter((b) => b.trim())) {
-      const request = await this.request()
-      if (signal?.aborted) throw new QueryCancelledError()
-      request.arrayRowMode = true
-      // Sends a TDS attention, which stops the batch server-side and leaves the connection usable.
-      const onAbort = (): void => request.cancel()
-      signal?.addEventListener('abort', onAbort, { once: true })
-      try {
-        const result = await request.query(batch)
-        resultSets.push(...toResultSets(result))
-        rowsAffected.push(...result.rowsAffected)
-      } catch (error) {
-        if ((error as { code?: string }).code === 'ECANCEL') throw new QueryCancelledError()
-        throw error
-      } finally {
-        signal?.removeEventListener('abort', onAbort)
+  query(text: string, signal?: AbortSignal): Promise<QueryResult> {
+    return runBatches(() => this.request(), text, signal)
+  }
+
+  async begin(): Promise<DriverTransaction> {
+    const transaction = new sql.Transaction(await this.getPool())
+    await transaction.begin()
+    this.openTransactions++
+    let open = true
+    const end = (): void => {
+      if (!open) return
+      open = false
+      this.openTransactions--
+    }
+    // Also fires when the server aborts the transaction itself, e.g. a deadlock or XACT_ABORT.
+    transaction.on('rollback', end)
+    return {
+      get open() {
+        return open
+      },
+      query: (text, signal) => runBatches(async () => new sql.Request(transaction), text, signal),
+      execute: async (statement) => {
+        // @@ROWCOUNT is the statement's own count, not that of any triggers it fired.
+        const result = await new sql.Request(transaction).query(`${statement}\nSELECT @@ROWCOUNT AS n`)
+        const sets = result.recordsets as unknown as { n: number }[][]
+        return Number(sets[sets.length - 1][0].n)
+      },
+      commit: async () => {
+        try {
+          await transaction.commit()
+        } finally {
+          end()
+        }
+      },
+      rollback: async () => {
+        if (!open) return
+        try {
+          await transaction.rollback()
+        } finally {
+          end()
+        }
       }
     }
-    return { resultSets, rowsAffected, durationMs: Date.now() - started }
   }
 
   async close(): Promise<void> {
     await this.pool?.close()
     this.pool = null
   }
+}
+
+async function runBatches(newRequest: () => Promise<sql.Request>, text: string, signal?: AbortSignal): Promise<QueryResult> {
+  const started = Date.now()
+  const resultSets: ResultSet[] = []
+  const rowsAffected: number[] = []
+  // GO is a client-side batch separator, not T-SQL, so split on it like SSMS does.
+  for (const batch of text.split(/^\s*GO\s*;?\s*$/im).filter((b) => b.trim())) {
+    const request = await newRequest()
+    if (signal?.aborted) throw new QueryCancelledError()
+    request.arrayRowMode = true
+    // Sends a TDS attention, which stops the batch server-side and leaves the connection usable.
+    const onAbort = (): void => request.cancel()
+    signal?.addEventListener('abort', onAbort, { once: true })
+    try {
+      const result = await request.query(batch)
+      resultSets.push(...toResultSets(result))
+      rowsAffected.push(...result.rowsAffected)
+    } catch (error) {
+      if ((error as { code?: string }).code === 'ECANCEL') throw new QueryCancelledError()
+      throw error
+    } finally {
+      signal?.removeEventListener('abort', onAbort)
+    }
+  }
+  return { resultSets, rowsAffected, durationMs: Date.now() - started }
 }
 
 function toResultSets(result: sql.IResult<any>): ResultSet[] {
@@ -362,6 +471,34 @@ function toResultSets(result: sql.IResult<any>): ResultSet[] {
     columns: (columnSets[i] ?? []).map((c) => c.name),
     rows: rows.map((row) => row.map(toCell))
   }))
+}
+
+function groupIndexes(rows: Record<string, any>[]): DesignIndex[] {
+  const byName = new Map<string, DesignIndex>()
+  for (const r of rows) {
+    let index = byName.get(r.name)
+    if (!index) {
+      index = { name: r.name, columns: [], included: [], unique: r.is_unique, primary: r.is_primary_key, type: String(r.type_desc).toLowerCase() }
+      byName.set(r.name, index)
+    }
+    ;(r.is_included_column ? index.included : index.columns).push(r.column_name)
+  }
+  return [...byName.values()]
+}
+
+function groupForeignKeys(rows: Record<string, any>[]): DesignForeignKey[] {
+  const byName = new Map<string, DesignForeignKey>()
+  for (const r of rows) {
+    let fk = byName.get(r.name)
+    if (!fk) {
+      const action = (a: string): string => String(a).replace(/_/g, ' ')
+      fk = { name: r.name, columns: [], references: { schema: r.ref_schema, name: r.ref_table }, referencedColumns: [], onDelete: action(r.on_delete), onUpdate: action(r.on_update) }
+      byName.set(r.name, fk)
+    }
+    fk.columns.push(r.column_name)
+    fk.referencedColumns.push(r.ref_column)
+  }
+  return [...byName.values()]
 }
 
 function formatType(name: string, maxLength: number, precision: number, scale: number): string {
@@ -377,6 +514,11 @@ function formatType(name: string, maxLength: number, precision: number, scale: n
     case 'decimal':
     case 'numeric':
       return `${name}(${precision},${scale})`
+    // 7 is the default; anything else must survive the designer's ALTER COLUMN.
+    case 'datetime2':
+    case 'time':
+    case 'datetimeoffset':
+      return scale === 7 ? name : `${name}(${scale})`
     default:
       return name
   }

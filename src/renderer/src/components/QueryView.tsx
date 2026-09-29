@@ -4,7 +4,7 @@ import { sql, MSSQL, MySQL } from '@codemirror/lang-sql'
 import { acceptCompletion } from '@codemirror/autocomplete'
 import type { HistoryEntry, QueryResult } from '@shared/types'
 import { findWriteKeyword } from '@shared/sqlGuard'
-import { useAppState, type Tab } from '../state'
+import { useAppState, useCloseWarning, type Tab } from '../state'
 import { formatCount, formatDuration } from '../lib/format'
 import { useColorScheme } from '../lib/theme'
 import { DataGrid, LoadingBar, type Selection } from './DataGrid'
@@ -16,6 +16,9 @@ import type { Model } from '@shared/nl/model'
 import { localModel } from '../lib/useNl'
 import { sqlAssist, sqlNamespace } from '../lib/sqlAssist'
 import { runExport } from '../lib/exporting'
+import { stagedChanges, useTransaction } from '../lib/useTransaction'
+import { TransactionBar } from './TransactionBar'
+import { toast } from './Toast'
 
 const emptySelection: Selection = { rows: new Set(), active: null }
 
@@ -51,6 +54,11 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   const [showHistory, setShowHistory] = useState(false)
   const [showAsk, setShowAsk] = useState(!tab.initialSql)
   const viewRef = useRef<EditorView | null>(null)
+  const txn = useTransaction(tab.connectionId)
+  const staged = txn.tx ? stagedChanges(txn.tx).statements : 0
+  useCloseWarning(tab.id, txn.tx && conn
+    ? `A transaction is open on ${conn.name}. Closing the tab rolls it back${staged ? `, discarding ${staged} staged change${staged === 1 ? '' : 's'}` : ''}.`
+    : null)
   /** The run in flight, so Cancel can stop it on the server. */
   const runRef = useRef<{ id: string; controller: AbortController } | null>(null)
 
@@ -106,25 +114,72 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     if (!statement || !conn || running) return
 
     const keyword = findWriteKeyword(statement)
-    if (keyword && !conn.readOnly && conn.env !== 'local') {
+    // Writes on prod are staged in a transaction, so the commit is the confirmation.
+    const stage = !!keyword && !conn.readOnly && conn.env === 'prod' && !txn.idRef.current
+    if (keyword && !conn.readOnly && conn.env !== 'local' && !stage && !txn.idRef.current) {
       const ok = window.confirm(`This query contains ${keyword} and will run against ${conn.name} (${conn.env.toUpperCase()}).\n\nRun it?`)
       if (!ok) return
     }
 
     const { id } = startRun()
+    let transactionId = txn.idRef.current
     try {
-      const r = await window.api.runQuery(tab.connectionId, statement, id)
+      if (stage) transactionId = await txn.begin()
+      const r = await window.api.runQuery(tab.connectionId, statement, id, transactionId ?? undefined)
       setResult(r)
       setResultIndex(Math.max(0, r.resultSets.length - 1))
       setSelection(emptySelection)
+      if (transactionId) {
+        txn.record({ sql: statement, write: !!keyword, rowsAffected: r.rowsAffected.reduce((a, b) => a + b, 0), durationMs: r.durationMs })
+      }
     } catch (e) {
-      setError((e as Error).message)
+      let message = (e as Error).message
+      if (transactionId) {
+        txn.record({ sql: statement, write: !!keyword, rowsAffected: 0, durationMs: 0, error: message })
+        if (!(await txn.stillOpen())) message += '\n\nThe server rolled back the transaction, so none of its changes were kept.'
+      }
+      setError(message)
       setResult(null)
     } finally {
       runRef.current = null
       setRunning(false)
     }
-  }, [conn, running, tab.connectionId])
+  }, [conn, running, tab.connectionId, txn])
+
+  const commit = useCallback(async () => {
+    if (!conn || !txn.tx) return
+    const { statements, rows } = stagedChanges(txn.tx)
+    if (conn.env === 'prod' && statements > 0) {
+      const ok = window.confirm(`Commit ${statements} change${statements === 1 ? '' : 's'} (${formatCount(rows)} rows affected) to ${conn.name} (PROD)?`)
+      if (!ok) return
+    }
+    setError(null)
+    try {
+      await txn.commit()
+      toast('Committed')
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }, [conn, txn])
+
+  const rollback = useCallback(async () => {
+    setError(null)
+    try {
+      await txn.rollback()
+      toast('Rolled back')
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }, [txn])
+
+  const beginTransaction = useCallback(async () => {
+    setError(null)
+    try {
+      await txn.begin()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }, [txn])
 
   const runAsk = useCallback(async (translated: TranslateResult) => {
     const plan = translated.federated
@@ -202,12 +257,42 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
         ) : (
           <button className="primary" onClick={run}>▶ Run</button>
         )}
-        <span className="muted hint">{running ? 'Esc cancels the running query' : 'Ctrl+Enter runs the selection, or everything'}</span>
+        {!conn.readOnly && !txn.tx && (
+          <button
+            className="ghost"
+            disabled={running}
+            title="Run the next queries in a transaction, then commit or roll them back together"
+            onClick={beginTransaction}
+          >
+            Begin transaction
+          </button>
+        )}
+        <span className="muted hint">
+          {running
+            ? 'Esc cancels the running query'
+            : !txn.tx && !conn.readOnly && conn.env === 'prod'
+              ? 'Ctrl+Enter runs · writes on PROD are staged until you commit'
+              : 'Ctrl+Enter runs the selection, or everything'}
+        </span>
         <div className="toolbar-right">
           <button className={`ghost ${showAsk ? 'on' : ''}`} title="Describe a query in plain English" onClick={() => setShowAsk((s) => !s)}>✦ Ask</button>
           <button className={`ghost ${showHistory ? 'on' : ''}`} onClick={() => setShowHistory((s) => !s)}>History</button>
         </div>
       </div>
+
+      {txn.tx && (
+        <TransactionBar
+          tx={txn.tx}
+          env={conn.env}
+          busy={running}
+          onCommit={commit}
+          onRollback={rollback}
+          onPick={(sqlText) => {
+            setText(sqlText)
+            viewRef.current?.focus()
+          }}
+        />
+      )}
 
       <div className="query-body">
         <div className="query-main">

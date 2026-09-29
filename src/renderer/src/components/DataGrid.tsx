@@ -1,5 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import type { CellValue, ColumnInfo, DbKind, FilterOp, TableRef } from '@shared/types'
+import { canHoldGuid, dateKind, momentText, newGuid } from '@shared/edits'
+import { cellStats, formatStat } from '@shared/stats'
 import { COPY_FORMATS, displayValue, formatRows, type CopyFormat } from '../lib/format'
 import { useOpenLink } from '../lib/openLink'
 import type { OpenTarget } from '../state'
@@ -30,9 +32,32 @@ export interface Selection {
   active: number | null
 }
 
+/** How a row differs from the database while edits are unsaved; `cells` are the changed columns. */
+export interface RowMark {
+  state: 'updated' | 'deleted' | 'inserted'
+  cells?: Set<number>
+}
+
+/** Cell editing. Values are staged by the owner and saved separately. */
+export interface GridEditing {
+  canEdit(row: number, column: number): boolean
+  /** What the cell editor starts with. */
+  inputText(row: number, column: number): string
+  /** Stages typed text; returns an error to show instead, e.g. text in a number column. */
+  commit(row: number, column: number, text: string): string | null
+  setNull(row: number, column: number): string | null
+  deleteRows(rows: number[]): void
+  /** Drops staged edits to these rows, and removes them if they are new. */
+  revertRows(rows: number[]): void
+}
+
 interface Props {
   columns: string[]
   rows: CellValue[][]
+  /** Scrolls back to the top when this changes; defaults to `rows`. */
+  scrollResetKey?: unknown
+  marks?: Map<number, RowMark>
+  editing?: GridEditing
   /** Row number shown in the gutter for index 0, so paged results keep absolute numbering. */
   rowOffset?: number
   columnInfo?: Map<string, ColumnInfo>
@@ -49,6 +74,10 @@ interface Props {
   copyTarget?: { kind: DbKind; table?: TableRef }
   /** Double-clicking a row, e.g. to open the record explorer. */
   onRowDoubleClick?(index: number): void
+  /** Scrolls to and highlights this column; `seq` lets the same column be asked for again. */
+  focusColumn?: { name: string; seq: number }
+  /** Shown at the top of the cell menu while editing is off: why, or how to turn it on. */
+  editHint?: string
   /** While set, shows a progress bar and this message instead of "No rows". */
   loadingLabel?: string
 }
@@ -81,6 +110,10 @@ export function DataGrid(props: Props) {
     }))
     // Content changes within the same columns shouldn't reset widths the user dragged.
   }, [columnKey])
+
+  /** The column of the last clicked cell: highlighted, and summarised for the selected rows. */
+  const [activeColumn, setActiveColumn] = useState<number | null>(null)
+  useEffect(() => setActiveColumn(null), [columnKey])
 
   /** Left edge of each column, after the row number gutter. */
   const offsets = useMemo(() => {
@@ -126,9 +159,16 @@ export function DataGrid(props: Props) {
     return () => observer.disconnect()
   }, [updateView])
 
+  const scrollResetKey = props.scrollResetKey ?? rows
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 })
-  }, [rows])
+  }, [scrollResetKey])
+
+  const [editCell, setEditCell] = useState<{ row: number; column: number } | null>(null)
+  const editing = props.editing
+  useEffect(() => {
+    if (!editing) setEditCell(null)
+  }, [editing])
 
   useEffect(() => {
     if (!menu) return
@@ -161,7 +201,72 @@ export function DataGrid(props: Props) {
     toast(`Copied ${indexes.length} row${indexes.length === 1 ? '' : 's'} as ${format.toUpperCase()}`)
   }
 
+  /**
+   * A drag across rows after pressing on one, which selects the range like Excel. `base` is what
+   * the range is added to (the existing selection for Ctrl+drag, else nothing).
+   */
+  const dragSelect = useRef<{ anchor: number; base: Set<number>; last: number } | null>(null)
+  const [dragSelecting, setDragSelecting] = useState(false)
+
+  const dragTo = (index: number): void => {
+    const drag = dragSelect.current
+    if (!drag || index === drag.last) return
+    drag.last = index
+    const [a, b] = [Math.min(drag.anchor, index), Math.max(drag.anchor, index)]
+    const next = new Set(drag.base)
+    for (let i = a; i <= b; i++) next.add(i)
+    onSelectionChange({ rows: next, active: drag.anchor })
+  }
+  const dragToRef = useRef(dragTo)
+  dragToRef.current = dragTo
+
+  // While dragging, follow the pointer, and scroll when it's held near the top or bottom edge.
+  useEffect(() => {
+    if (!dragSelecting) return
+    let pointerY: number | null = null
+    const rowAt = (clientY: number): number | null => {
+      const el = scrollRef.current
+      if (!el || !rows.length) return null
+      const rect = el.getBoundingClientRect()
+      const y = clientY - rect.top + el.scrollTop - ROW_HEIGHT
+      return Math.max(0, Math.min(rows.length - 1, Math.floor(y / ROW_HEIGHT)))
+    }
+    const onMove = (e: MouseEvent): void => {
+      pointerY = e.clientY
+      const index = rowAt(e.clientY)
+      if (index !== null) dragToRef.current(index)
+    }
+    const timer = setInterval(() => {
+      const el = scrollRef.current
+      if (!el || pointerY === null) return
+      const rect = el.getBoundingClientRect()
+      const edge = ROW_HEIGHT * 1.5
+      const step = pointerY < rect.top + ROW_HEIGHT + edge ? -ROW_HEIGHT : pointerY > rect.bottom - edge ? ROW_HEIGHT : 0
+      if (!step) return
+      el.scrollTop += step
+      const index = rowAt(pointerY)
+      if (index !== null) dragToRef.current(index)
+    }, 40)
+    const stop = (): void => {
+      dragSelect.current = null
+      setDragSelecting(false)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', stop)
+    window.addEventListener('blur', stop)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', stop)
+      window.removeEventListener('blur', stop)
+    }
+  }, [dragSelecting, rows.length])
+
   const selectRow = (index: number, event: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }): void => {
+    const additive = event.ctrlKey || event.metaKey
+    const anchor = event.shiftKey && selection.active !== null ? selection.active : index
+    dragSelect.current = { anchor, base: additive ? new Set(selection.rows) : new Set(), last: index }
+    setDragSelecting(true)
     if (event.shiftKey && selection.active !== null) {
       const [a, b] = [Math.min(selection.active, index), Math.max(selection.active, index)]
       onSelectionChange({ rows: new Set(Array.from({ length: b - a + 1 }, (_, i) => a + i)), active: selection.active })
@@ -186,9 +291,73 @@ export function DataGrid(props: Props) {
     }
   }
 
+  const scrollColumnIntoView = (ci: number): void => {
+    const el = scrollRef.current
+    if (!el || offsets[ci] === undefined) return
+    const left = ROW_NUMBER_WIDTH + offsets[ci]
+    if (left - ROW_NUMBER_WIDTH < el.scrollLeft) el.scrollLeft = left - ROW_NUMBER_WIDTH
+    else if (left + widths[ci] > el.scrollLeft + el.clientWidth) el.scrollLeft = left + widths[ci] - el.clientWidth
+  }
+
+  const focusColumn = props.focusColumn
+  useEffect(() => {
+    if (!focusColumn) return
+    const index = columns.indexOf(focusColumn.name)
+    if (index < 0) return
+    setActiveColumn(index)
+    scrollColumnIntoView(index)
+    // Only when asked again, not whenever the scroll helpers change.
+  }, [focusColumn])
+
+  const startEdit = (row: number, column: number): void => {
+    if (!editing?.canEdit(row, column)) return
+    onSelectionChange({ rows: new Set([row]), active: row })
+    scrollIntoView(row)
+    scrollColumnIntoView(column)
+    setEditCell({ row, column })
+  }
+
+  /** The next editable column in the row, for Tab and Shift+Tab. */
+  const nextEditable = (row: number, column: number, step: 1 | -1): number | null => {
+    for (let ci = column + step; ci >= 0 && ci < columns.length; ci += step) {
+      if (editing?.canEdit(row, ci)) return ci
+    }
+    return null
+  }
+
+  /**
+   * `text` null cancels. Returns false when the value was rejected, so the editor stays open.
+   * The cell is passed in, as a blur can arrive after the editor has already moved on.
+   */
+  const finishEdit = (cell: { row: number; column: number }, text: string | null, move: 1 | -1 | 0): boolean => {
+    if (text !== null) {
+      const error = editing?.commit(cell.row, cell.column, text)
+      if (error) {
+        toast(error)
+        return false
+      }
+    }
+    const next = move ? nextEditable(cell.row, cell.column, move) : null
+    if (next !== null) {
+      scrollColumnIntoView(next)
+      setEditCell({ row: cell.row, column: next })
+    } else {
+      setEditCell((current) => (current?.row === cell.row && current.column === cell.column ? null : current))
+      scrollRef.current?.focus()
+    }
+    return true
+  }
+
   const onKeyDown = (event: KeyboardEvent): void => {
     const mod = event.ctrlKey || event.metaKey
-    if (mod && event.key.toLowerCase() === 'c' && selectedIndexes.length) {
+    if (editing && selection.active !== null && (event.key === 'F2' || event.key === 'Enter')) {
+      event.preventDefault()
+      const first = nextEditable(selection.active, -1, 1)
+      if (first !== null) startEdit(selection.active, first)
+    } else if (editing && event.key === 'Delete' && selectedIndexes.length) {
+      event.preventDefault()
+      editing.deleteRows(selectedIndexes)
+    } else if (mod && event.key.toLowerCase() === 'c' && selectedIndexes.length) {
       event.preventDefault()
       copy('tsv', selectedIndexes)
     } else if (mod && event.key.toLowerCase() === 'a') {
@@ -224,6 +393,7 @@ export function DataGrid(props: Props) {
   const openMenu = (event: ReactMouseEvent, row: number, column: number): void => {
     event.preventDefault()
     if (!selection.rows.has(row)) onSelectionChange({ rows: new Set([row]), active: row })
+    setActiveColumn(column)
     setMenu({ x: event.clientX, y: event.clientY, row, column })
   }
 
@@ -234,15 +404,40 @@ export function DataGrid(props: Props) {
     onRowDoubleClick: props.onRowDoubleClick,
     referenceTarget: props.referenceTarget,
     crossLinkTarget: props.crossLinkTarget,
-    link
+    link,
+    startEdit: editing ? startEdit : undefined,
+    finishEdit,
+    inputText: (row, column) => editing?.inputText(row, column) ?? '',
+    setActiveColumn
   }
 
   const menuRows = menu && selection.rows.has(menu.row) ? selectedIndexes : menu ? [menu.row] : []
   const menuValue = menu ? rows[menu.row]?.[menu.column] : null
   const menuColumn = menu ? columns[menu.column] : ''
+  const menuEditable = !!menu && !!editing?.canEdit(menu.row, menu.column)
+  const kind = props.copyTarget?.kind ?? 'mssql'
+  const menuColumnInfo = menu ? columnInfo?.get(columns[menu.column]) : undefined
+  const menuType = menuColumnInfo?.dataType
+  const menuDate = menuType ? dateKind(menuType) : null
+
+  /** The clicked column summarised over the selected rows, or over every loaded row until several are selected. */
+  const statsScope = selectedIndexes.length > 1 ? 'selected' : 'all'
+  const stats = useMemo(() => {
+    if (activeColumn === null || !rows.length) return null
+    const indexes = statsScope === 'selected' ? selectedIndexes : rows.map((_, i) => i)
+    return cellStats(indexes.map((i) => rows[i]?.[activeColumn] ?? null))
+  }, [activeColumn, selectedIndexes, rows, statsScope])
+  const statsRows = statsScope === 'selected' ? selectedIndexes.length : rows.length
+  const menuMarked = menuRows.some((i) => props.marks?.has(i))
+  const menuPlural = `${menuRows.length} row${menuRows.length === 1 ? '' : 's'}`
+  const menuAction = (run: () => string | null | void): void => {
+    const error = run()
+    if (error) toast(error)
+    setMenu(null)
+  }
 
   return (
-    <div className="grid-wrap">
+    <div className={`grid-wrap ${dragSelecting ? 'drag-selecting' : ''}`}>
       {props.loadingLabel && <LoadingBar label={props.loadingLabel} overlay={rows.length > 0} />}
       <div
         ref={scrollRef}
@@ -255,7 +450,9 @@ export function DataGrid(props: Props) {
           <colgroup>
             <col style={{ width: ROW_NUMBER_WIDTH }} />
             {leftPad > 0 && <col style={{ width: leftPad }} />}
-            {visibleColumns.map((_, i) => <col key={firstColumn + i} style={{ width: widths[firstColumn + i] }} />)}
+            {visibleColumns.map((_, i) => (
+              <col key={firstColumn + i} className={firstColumn + i === activeColumn ? 'col-active' : undefined} style={{ width: widths[firstColumn + i] }} />
+            ))}
             {rightPad > 0 && <col style={{ width: rightPad }} />}
           </colgroup>
           <thead>
@@ -269,7 +466,7 @@ export function DataGrid(props: Props) {
                 return (
                   <th
                     key={ci}
-                    className={props.onSort ? 'sortable' : undefined}
+                    className={[props.onSort && 'sortable', ci === activeColumn && 'col-active'].filter(Boolean).join(' ') || undefined}
                     title={info ? `${name}\n${info.dataType}${info.nullable ? ' null' : ' not null'}${info.references ? `\n→ ${info.references.schema}.${info.references.name}.${info.references.column}` : ''}` : name}
                     onClick={() => props.onSort?.(name)}
                   >
@@ -305,6 +502,8 @@ export function DataGrid(props: Props) {
                   rightPad={rightPad > 0}
                   columnInfo={columnInfo}
                   crossLinks={props.crossLinks}
+                  mark={props.marks?.get(index)}
+                  editingColumn={editCell?.row === index ? editCell.column : null}
                   handlers={handlers}
                 />
               )
@@ -315,8 +514,67 @@ export function DataGrid(props: Props) {
         {!rows.length && !props.loadingLabel && <div className="grid-empty">No rows</div>}
       </div>
 
+      {stats && activeColumn !== null && (
+        <div
+          className="grid-stats"
+          title={`Summary of ${columns[activeColumn]} across ${statsScope === 'selected' ? `the ${statsRows} selected rows` : `all ${statsRows} rows shown`}.\nClick a cell to pick the column; Shift/Ctrl+click rows to narrow it down. NULLs are left out.`}
+        >
+          <span className="grid-stats-col">{columns[activeColumn]}</span>
+          <span className="grid-stats-scope">{statsScope === 'selected' ? `${statsRows.toLocaleString()} selected` : `all ${statsRows.toLocaleString()} rows`}</span>
+          {stats.numeric ? (
+            <>
+              <span>Sum <b>{formatStat(stats.numeric.sum)}</b></span>
+              <span>Average <b>{formatStat(stats.numeric.average, 2)}</b></span>
+              <span>Min <b>{formatStat(stats.numeric.min)}</b></span>
+              <span>Max <b>{formatStat(stats.numeric.max)}</b></span>
+            </>
+          ) : (
+            <span>Distinct <b>{stats.distinct.toLocaleString()}</b></span>
+          )}
+          <span>Count <b>{stats.count.toLocaleString()}</b></span>
+          <button className="icon small" title="Hide the summary" onClick={() => setActiveColumn(null)}>✕</button>
+        </div>
+      )}
+
       {menu && (
         <div className="menu" style={{ left: menu.x, top: menu.y }} onMouseDown={(e) => e.stopPropagation()}>
+          {!editing && props.editHint && (
+            <>
+              <div className="menu-label menu-hint">{props.editHint}</div>
+              <div className="menu-sep" />
+            </>
+          )}
+          {editing && (
+            <>
+              {menuEditable && (
+                <>
+                  <button onClick={() => menuAction(() => startEdit(menu.row, menu.column))}>Edit value</button>
+                  {menuColumnInfo?.nullable !== false && (
+                    <button onClick={() => menuAction(() => editing.setNull(menu.row, menu.column))}>Set NULL</button>
+                  )}
+                  {menuType && canHoldGuid(menuType) && (
+                    <button onClick={() => menuAction(() => editing.commit(menu.row, menu.column, newGuid(kind)))}>New GUID</button>
+                  )}
+                  {menuDate && (
+                    <>
+                      <button
+                        title="Your computer's local time"
+                        onClick={() => menuAction(() => editing.commit(menu.row, menu.column, momentText(menuType!, new Date())))}
+                      >
+                        {menuDate === 'date' ? 'Today' : 'Now'}
+                      </button>
+                      {menuDate !== 'date' && (
+                        <button onClick={() => menuAction(() => editing.commit(menu.row, menu.column, momentText(menuType!, new Date(), true)))}>Now (UTC)</button>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+              <button onClick={() => menuAction(() => editing.deleteRows(menuRows))}>Delete {menuPlural}</button>
+              {menuMarked && <button onClick={() => menuAction(() => editing.revertRows(menuRows))}>Undo changes to {menuPlural}</button>}
+              <div className="menu-sep" />
+            </>
+          )}
           <button onClick={() => { window.api.copy(menuValue === null ? '' : String(menuValue)); toast('Copied value'); setMenu(null) }}>
             Copy value
           </button>
@@ -358,6 +616,11 @@ interface RowHandlers {
   referenceTarget?(column: ColumnInfo, value: CellValue): OpenTarget
   crossLinkTarget?(column: string, value: CellValue): OpenTarget | undefined
   link: ReturnType<typeof useOpenLink>
+  setActiveColumn(column: number): void
+  /** Set while the grid is editable; double-clicking a cell edits it. */
+  startEdit?(row: number, column: number): void
+  finishEdit(cell: { row: number; column: number }, text: string | null, move: 1 | -1 | 0): boolean
+  inputText(row: number, column: number): string
 }
 
 interface RowProps {
@@ -373,28 +636,53 @@ interface RowProps {
   rightPad: boolean
   columnInfo?: Map<string, ColumnInfo>
   crossLinks?: Map<string, { title: string; env: string }>
+  mark?: RowMark
+  /** The column being edited in this row, if any. */
+  editingColumn: number | null
   handlers: { current: RowHandlers }
 }
 
 /** One grid row. Memoised, so moving the scroll window only renders the rows that come into view. */
 const GridRow = memo(function GridRow(props: RowProps) {
-  const { row, index, columns, columnInfo, handlers } = props
+  const { row, index, columns, columnInfo, handlers, mark } = props
   const h = handlers.current
   const cells = []
   for (let ci = props.firstColumn; ci < props.lastColumn; ci++) {
     const value = row[ci]
     const info = columnInfo?.get(columns[ci])
-    cells.push(
-      <td key={ci} className={cellClass(value)} onContextMenu={(e) => h.openMenu(e, index, ci)}>
-        <CellContent value={value} column={columns[ci]} info={info} crossInfo={value !== null ? props.crossLinks?.get(columns[ci]) : undefined} handlers={h} />
-      </td>
-    )
+    const edited = mark?.cells?.has(ci) ? ' edited' : ''
+    const onMouseDown = (): void => handlers.current.setActiveColumn(ci)
+    // Read at event time: memoised rows don't re-render when editing is switched on or off.
+    const onDoubleClick = (e: ReactMouseEvent): void => {
+      const start = handlers.current.startEdit
+      if (!start) return
+      e.stopPropagation()
+      start(index, ci)
+    }
+    if (props.editingColumn === ci) {
+      cells.push(
+        <td key={ci} className="editing">
+          <CellEditor cell={{ row: index, column: ci }} initial={h.inputText(index, ci)} onDone={(...args) => handlers.current.finishEdit(...args)} />
+        </td>
+      )
+    } else if (mark?.state === 'inserted' && !edited) {
+      // Unset columns in a new row are left out of the INSERT, so the database fills them in.
+      cells.push(
+        <td key={ci} className="default" onMouseDown={onMouseDown} onContextMenu={(e) => h.openMenu(e, index, ci)} onDoubleClick={onDoubleClick}>default</td>
+      )
+    } else {
+      cells.push(
+        <td key={ci} className={cellClass(value) + edited} onMouseDown={onMouseDown} onContextMenu={(e) => h.openMenu(e, index, ci)} onDoubleClick={onDoubleClick}>
+          <CellContent value={value} column={columns[ci]} info={info} crossInfo={value !== null ? props.crossLinks?.get(columns[ci]) : undefined} handlers={h} />
+        </td>
+      )
+    }
   }
   return (
     <tr
-      className={`${props.selected ? 'selected' : ''} ${props.active ? 'active' : ''}`}
+      className={`${props.selected ? 'selected' : ''} ${props.active ? 'active' : ''} ${mark ? `row-${mark.state}` : ''}`}
       onMouseDown={(e) => e.button === 0 && h.selectRow(index, e)}
-      onDoubleClick={() => h.onRowDoubleClick?.(index)}
+      onDoubleClick={() => handlers.current.onRowDoubleClick?.(index)}
     >
       <td className="rownum">{props.rowNumber}</td>
       {props.leftPad && <td className="spacer" />}
@@ -442,6 +730,53 @@ function CellContent({ value, column, info, crossInfo, handlers }: {
         )}
       </span>
     </span>
+  )
+}
+
+/** Inline cell input: Enter saves, Tab saves and moves along the row, Esc cancels. */
+function CellEditor({ cell, initial, onDone }: {
+  cell: { row: number; column: number }
+  initial: string
+  onDone(cell: { row: number; column: number }, text: string | null, move: 1 | -1 | 0): boolean
+}) {
+  /** Set once a key has finished the edit, so the blur that follows doesn't save it again. */
+  const done = useRef(false)
+  const finish = (text: string | null, move: 1 | -1 | 0): void => {
+    if (done.current) return
+    // Set first: finishing focuses the grid, which blurs this input before onDone returns.
+    done.current = true
+    done.current = onDone(cell, text, move)
+  }
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
+    // The grid's own keys (arrows, Ctrl+A, Delete) mustn't act while typing.
+    e.stopPropagation()
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      finish(e.currentTarget.value, 0)
+    } else if (e.key === 'Tab') {
+      e.preventDefault()
+      finish(e.currentTarget.value, e.shiftKey ? -1 : 1)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      finish(null, 0)
+    }
+  }
+  return (
+    <input
+      className="cell-input"
+      autoFocus
+      defaultValue={initial}
+      onFocus={(e) => e.currentTarget.select()}
+      onKeyDown={onKeyDown}
+      onMouseDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      // Clicking away keeps a valid value and drops an invalid one.
+      onBlur={(e) => {
+        if (done.current) return
+        done.current = true
+        if (!onDone(cell, e.currentTarget.value, 0)) onDone(cell, null, 0)
+      }}
+    />
   )
 }
 

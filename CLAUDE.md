@@ -45,17 +45,22 @@ Dialect details that have caused bugs:
 - SQL Server uses `TOP n` and needs `SELECT DISTINCT TOP n`; MySQL uses `LIMIT`.
 - SQL Server date literals are written `'YYYYMMDD'`, because `'YYYY-MM-DD'` can be misread on `datetime` under UK date settings.
 - SQL Server parameters and literals should match the column type (`N'...'` only for `n*char` columns, `BigInt` for ints) so indexes are used.
-- Users on Azure SQL may be unable to see user-defined type names; the schema query falls back to the system type.
+- Users on Azure SQL may be unable to see user-defined type names; the schema query falls back to the system type. Likewise default and computed-column definitions come back NULL without VIEW DEFINITION, so the designer marks such defaults `defaultHidden` and refuses changes that would drop them.
+- MySQL 8 returns information_schema columns in upper case unless aliased (`c.extra` arrives as `EXTRA`), so alias every column you read.
+- `formatType` keeps `datetime2`/`time`/`datetimeoffset` scale when it isn't 7, because the designer's ALTER COLUMN restates the type.
 
 ### Safety model
 
 - Read-only connections: `runQuery` in `db/index.ts` rejects SQL where `findWriteKeyword` (`src/shared/sqlGuard.ts`) finds a write. MySQL sessions are also set to `READ ONLY` so the server enforces it. The guard deliberately over-blocks rather than risk missing a write.
-- Writable non-local connections confirm writes in the renderer (`QueryView`).
+- Writable non-local connections confirm writes in the renderer (`QueryView`), except on prod, where a write instead starts a staged transaction (`lib/useTransaction.ts`, `TransactionBar`). Staged transactions live in `db/index.ts` (`beginTransaction` etc.), each on a connection of its own via `Driver.begin()`; runs inside one reject COMMIT/ROLLBACK and, on MySQL, statements that commit implicitly (`sqlGuard.ts`). They are rolled back when the tab closes, the page reloads or the connection drops.
+- Table grid edits (`lib/useTableEdits.ts`) are staged by primary key and saved through `applyChanges`, one transaction where every statement must match exactly one row or all is rolled back. Literals are written per column type in `src/shared/edits.ts`. Tables without a primary key, views and read-only connections can't be edited.
 - TestDB is a shared test database, so anything that scans data must be bounded: sampling scans at most `SAMPLE_SCAN_ROWS`, related-row counts are capped, time-limited and skip large unindexed tables (`src/main/explore.ts`), and cross-database key lists are capped at `KEY_LIMIT`. Table exports (`src/main/export.ts`) page through `fetchRows` and stop at `EXPORT_ROW_LIMIT`.
+
+- The table designer (`TableDesigner`, a `design` tab) reads `describeDesign` and builds ALTER scripts in `src/shared/design.ts`: on SQL Server one statement per step run in a transaction by `applyDesign`, on MySQL a single ALTER TABLE (DDL commits implicitly there). DDL clears the schema caches, and the renderer's `schemaChanged` makes open views re-read columns.
 
 ### Storage
 
-`src/main/store.ts` keeps `connections.json`, `links.json` and `history.json` in Electron's userData folder. Passwords are encrypted with `safeStorage` (DPAPI) and never sent to the renderer; the renderer only sees `hasPassword`. Two starter connections (Shop, TestDB) are seeded on first run.
+`src/main/store.ts` keeps `connections.json`, `links.json` and `history.json` in Electron's userData folder. Passwords are encrypted with `safeStorage` (DPAPI) and never sent to the renderer; the renderer only sees `hasPassword`. Two starter connections (Shop, TestDB) are seeded on first run. Connections can sit in a sidebar `folder`, and be shared as a collection file (`src/shared/collection.ts`, `src/main/collections.ts`): no ids or passwords, links kept between exported connections, imports matched to existing connections, and imported prod connections forced read-only.
 
 ### Renderer
 

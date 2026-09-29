@@ -9,7 +9,12 @@ export type PaneId = 0 | 1
 export interface PaneTab {
   id: string
   pane: PaneId
+  /** Pinned tabs come first in their pane and are skipped by the bulk close commands. */
+  pinned?: boolean
 }
+
+/** Which tabs a bulk close command closes, relative to the tab it was chosen on. */
+export type CloseScope = 'others' | 'right' | 'all'
 
 export interface Panes<T extends PaneTab> {
   /** All tabs in opening order; each pane shows its own in that order. */
@@ -61,11 +66,47 @@ export function moveTab<T extends PaneTab>(s: Panes<T>, id: string, pane: PaneId
   return normalise({ tabs: [...remaining, { ...tab, pane }], active: withActive(active, pane, id), focused: pane })
 }
 
+/**
+ * Moves a tab to sit before `beforeId` in `pane` (the end when null), e.g. when dragged along a
+ * tab bar, and shows it there. Pinned tabs still stay ahead of unpinned ones.
+ */
+export function reorderTab<T extends PaneTab>(s: Panes<T>, id: string, pane: PaneId, beforeId: string | null): Panes<T> {
+  const tab = s.tabs.find((t) => t.id === id)
+  if (!tab || id === beforeId) return s
+  const rest = s.tabs.filter((t) => t.id !== id)
+  const at = beforeId === null ? -1 : rest.findIndex((t) => t.id === beforeId)
+  const moving = { ...tab, pane }
+  const tabs = at < 0 ? [...rest, moving] : [...rest.slice(0, at), moving, ...rest.slice(at)]
+  const active = tab.pane !== pane && s.active[tab.pane] === id ? withActive(s.active, tab.pane, neighbour(s.tabs, tab)) : s.active
+  return normalise({ tabs, active: withActive(active, pane, id), focused: pane })
+}
+
 export function closeTab<T extends PaneTab>(s: Panes<T>, id: string): Panes<T> {
   const tab = s.tabs.find((t) => t.id === id)
   if (!tab) return s
   const active = s.active[tab.pane] === id ? withActive(s.active, tab.pane, neighbour(s.tabs, tab)) : s.active
   return normalise({ tabs: s.tabs.filter((t) => t.id !== id), active, focused: s.focused })
+}
+
+export function setPinned<T extends PaneTab>(s: Panes<T>, id: string, pinned: boolean): Panes<T> {
+  return normalise({ ...s, tabs: s.tabs.map((t) => (t.id === id ? { ...t, pinned } : t)) })
+}
+
+/** The unpinned tabs in `id`'s pane that a bulk close would close; `id` itself is kept except for 'all'. */
+export function tabsToClose(s: Panes<PaneTab>, id: string, scope: CloseScope): string[] {
+  const tab = s.tabs.find((t) => t.id === id)
+  if (!tab) return []
+  const own = tabsIn(s, tab.pane)
+  const index = own.findIndex((t) => t.id === id)
+  return own
+    .filter((t, i) => !t.pinned && (scope === 'all' || (t.id !== id && (scope === 'others' || i > index))))
+    .map((t) => t.id)
+}
+
+/** Closes several tabs, then shows `keep` if it's still open. */
+export function closeTabs<T extends PaneTab>(s: Panes<T>, ids: string[], keep?: string): Panes<T> {
+  const closed = ids.reduce(closeTab, s)
+  return keep ? activate(closed, keep) : closed
 }
 
 /** The tab that takes over when `tab` leaves its pane: the next one along, else the previous. */
@@ -80,9 +121,13 @@ function withActive(active: [string | null, string | null], pane: PaneId, id: st
   return pane === 0 ? [id, active[1]] : [active[0], id]
 }
 
-/** Collapses an empty pane and keeps each pane's active tab pointing at one of its own tabs. */
+/**
+ * Collapses an empty pane, keeps pinned tabs ahead of the rest (a stable sort, so each group keeps
+ * its order), and keeps each pane's active tab pointing at one of its own tabs.
+ */
 function normalise<T extends PaneTab>(s: Panes<T>): Panes<T> {
-  let { tabs, active, focused } = s
+  let { active, focused } = s
+  let tabs = [...s.tabs.filter((t) => t.pinned), ...s.tabs.filter((t) => !t.pinned)]
   if (!tabs.some((t) => t.pane === 0) && tabs.some((t) => t.pane === 1)) {
     tabs = tabs.map((t) => ({ ...t, pane: 0 }))
     active = [active[1], null]

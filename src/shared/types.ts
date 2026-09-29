@@ -16,6 +16,8 @@ export interface ConnectionConfig {
   env: EnvTag
   readOnly: boolean
   trustServerCertificate?: boolean
+  /** Sidebar folder the connection is grouped under; none shows it at the top level. */
+  folder?: string
   /** True when a password is stored; the password itself never leaves the main process. */
   hasPassword?: boolean
 }
@@ -72,6 +74,52 @@ export interface ReverseReference {
 
 export interface TableDetails {
   columns: ColumnInfo[]
+  referencedBy: ReverseReference[]
+}
+
+/** A column as the table designer shows it: ColumnInfo plus what's needed to alter it safely. */
+export interface DesignColumn extends ColumnInfo {
+  /** SQL expression after DEFAULT, e.g. `((0))` or `CURRENT_TIMESTAMP`; null for none. */
+  default: string | null
+  /** SQL Server's default constraint, which must be dropped before the default or column can change. */
+  defaultConstraint?: string
+  /**
+   * There is a default, but this login can't read its definition (Azure SQL without VIEW DEFINITION),
+   * so it couldn't be put back after a change that drops it.
+   */
+  defaultHidden?: boolean
+  /** Expression of a computed / generated column; these can't be altered in the designer. */
+  computed?: string
+  /** Kept when altering, so a change of type doesn't silently switch to the database default collation. */
+  collation?: string
+  /** MySQL column extras to keep on CHANGE COLUMN, e.g. `auto_increment`, `on update CURRENT_TIMESTAMP`. */
+  extra?: string
+  comment?: string
+}
+
+export interface DesignIndex {
+  name: string
+  columns: string[]
+  /** SQL Server INCLUDE columns. */
+  included: string[]
+  unique: boolean
+  primary: boolean
+  type: string
+}
+
+export interface DesignForeignKey {
+  name: string
+  columns: string[]
+  references: TableRef
+  referencedColumns: string[]
+  onDelete: string
+  onUpdate: string
+}
+
+export interface TableDesign {
+  columns: DesignColumn[]
+  indexes: DesignIndex[]
+  foreignKeys: DesignForeignKey[]
   referencedBy: ReverseReference[]
 }
 
@@ -187,10 +235,12 @@ export interface TableSort {
 }
 
 /** A tab as saved between runs: what it shows, not its results. */
-export type SavedTab =
+export type SavedTab = (
   | { kind: 'table'; pane: 0 | 1; connectionId: string; table: TableRef; filters: ColumnFilter[]; sort?: TableSort }
   | { kind: 'query'; pane: 0 | 1; connectionId: string; title: string; sql: string }
   | { kind: 'record'; pane: 0 | 1; connectionId: string; table: TableRef; key: ColumnFilter[] }
+  | { kind: 'design'; pane: 0 | 1; connectionId: string; table: TableRef }
+) & { pinned?: boolean }
 
 /** The open tabs and split, saved so the app reopens where it was left. */
 export interface SavedSession {
