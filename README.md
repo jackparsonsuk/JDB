@@ -44,9 +44,7 @@ Electron + React + TypeScript (electron-vite). Drivers run in the main process (
 
 ## Releasing
 
-1. Bump `version` in `package.json`.
-2. Set `GH_TOKEN` to a GitHub token that can write to the public [jdb-releases](https://github.com/jackparsonsUK/jdb-releases) repo (a fine-grained token with Contents read/write on it).
-3. Run `npm run release`. It builds the installer and publishes it as a release on jdb-releases, with `latest.yml`, which installed copies check for updates. The source stays in this private repo.
+Bump `version` in `package.json`, commit, and run `npm run release`. It publishes the installer to the public [jdb-releases](https://github.com/jackparsonsUK/jdb-releases) repo, which installed copies check for updates. See [RELEASE.md](RELEASE.md) for the setup, checks and known pitfalls.
 
 ## Licence
 
