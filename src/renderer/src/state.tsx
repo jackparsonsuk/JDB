@@ -79,13 +79,23 @@ const Ctx = createContext<AppState | null>(null)
 /** Tabs that would lose something if closed (an open transaction, unsaved edits), with the warning. */
 const closeWarnings = new Map<string, string>()
 
-/** While `warning` is set, closing the tab asks first. */
+/** The main process asks before the window closes while there's unsaved work, so keep it told. */
+const reportUnsaved = (): void => window.api.setUnsavedWork([...closeWarnings.values()])
+
+// Blocking the unload makes Electron raise will-prevent-unload, where the main process asks.
+window.addEventListener('beforeunload', (event) => {
+  if (closeWarnings.size) event.preventDefault()
+})
+
+/** While `warning` is set, closing the tab (or the window) asks first. */
 export function useCloseWarning(tabId: string, warning: string | null): void {
   useEffect(() => {
     if (!warning) return
     closeWarnings.set(tabId, warning)
+    reportUnsaved()
     return () => {
       closeWarnings.delete(tabId)
+      reportUnsaved()
     }
   }, [tabId, warning])
 }

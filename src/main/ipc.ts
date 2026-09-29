@@ -45,6 +45,8 @@ export function registerIpc(): void {
   handle('db:applyDesign', (id: string, statements: string[]) => db.applyDesign(id, statements))
   handle('db:rows', (id: string, request: RowsRequest) => db.fetchRows(id, request))
   handle('db:count', (id: string, table: TableRef, filters: ColumnFilter[]) => db.countRows(id, table, filters))
+  handle('db:summarize', (id: string, table: TableRef, filters: ColumnFilter[], column: string, dataType: string) =>
+    db.summarizeColumn(id, table, filters, column, dataType))
   handle('db:schema', (id: string) => db.cachedSchema(id))
   handle('db:distinct', (id: string, table: TableRef, column: string, limit: number, via?: ValueLookup) =>
     db.distinctValues(id, table, column, limit, via))

@@ -3,10 +3,11 @@ import type { AccessToken } from '@azure/identity'
 import { keyKind } from '@shared/links'
 import type {
   CellValue, ColumnFilter, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
-  DesignColumn, DesignForeignKey, DesignIndex, KeyKind, SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ValueLookup
+  ColumnSummary, DesignColumn, DesignForeignKey, DesignIndex, KeyKind, SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ValueLookup
 } from '@shared/types'
-import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancelledError, SAMPLE_SCAN_ROWS, TimeoutError, toCell, type Driver, type DriverTransaction, type SchemaColumnRow } from './driver'
+import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancelledError, MSSQL_UNCOMPARABLE, SAMPLE_SCAN_ROWS, summaryFrom, TimeoutError, toCell, type Driver, type DriverTransaction, type SchemaColumnRow } from './driver'
 import { buildWhere } from './filters'
+import { isNumericType } from '@shared/edits'
 import { getEntraToken } from './entra'
 
 const AZURE_SQL_SCOPE = 'https://database.windows.net/.default'
@@ -379,6 +380,30 @@ export class MssqlDriver implements Driver {
     try {
       const result = await request.query(`SELECT COUNT_BIG(*) AS total FROM ${key} ${where.sql}`)
       return Number(result.recordset[0].total)
+    } catch (error) {
+      if ((error as { code?: string }).code === 'ECANCEL') throw new TimeoutError()
+      throw error
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  async summarize(table: TableRef, filters: ColumnFilter[], column: string, dataType: string, timeoutMs: number): Promise<ColumnSummary> {
+    const numeric = isNumericType(dataType)
+    const distinct = !MSSQL_UNCOMPARABLE.test(dataType)
+    const c = quote(column)
+    // Cast so SUM can't overflow an int column, and so bit columns (no MIN/MAX/SUM) work too.
+    const n = /^(float|real)\b/i.test(dataType) ? `CAST(${c} AS FLOAT)` : `CAST(${c} AS DECIMAL(38, 6))`
+    const parts = [`COUNT(${c}) AS n`]
+    if (distinct) parts.push(`COUNT(DISTINCT ${c}) AS d`)
+    if (numeric) parts.push(`SUM(${n}) AS s`, `AVG(${n}) AS a`, `MIN(${n}) AS lo`, `MAX(${n}) AS hi`)
+    const where = buildWhere(filters, quote, (i) => `@p${i}`)
+    const request = await this.request()
+    where.values.forEach((value, i) => request.input(`p${i}`, sql.NVarChar, value))
+    const timer = setTimeout(() => request.cancel(), timeoutMs)
+    try {
+      const result = await request.query(`SELECT ${parts.join(', ')} FROM ${qualified(table)} ${where.sql}`)
+      return summaryFrom(result.recordset[0], numeric, distinct)
     } catch (error) {
       if ((error as { code?: string }).code === 'ECANCEL') throw new TimeoutError()
       throw error

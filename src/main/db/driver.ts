@@ -1,6 +1,6 @@
 import type {
   CellValue, ColumnFilter, ColumnInfo, QueryResult, RowsRequest, RowsResult, SchemaTable, TableDetails, TableInfo, TableRef,
-  KeyKind, TableDesign, ValueLookup
+  ColumnSummary, KeyKind, TableDesign, ValueLookup
 } from '@shared/types'
 
 export interface Driver {
@@ -25,6 +25,8 @@ export interface Driver {
   fetchRows(request: RowsRequest): Promise<RowsResult>
   /** Rows matching the filters; rejects with TimeoutError after timeoutMs. */
   countRows(table: TableRef, filters: ColumnFilter[], timeoutMs: number): Promise<number>
+  /** Count, distinct and (numeric columns) sum/average/min/max over the filtered rows; TimeoutError after timeoutMs. */
+  summarize(table: TableRef, filters: ColumnFilter[], column: string, dataType: string, timeoutMs: number): Promise<ColumnSummary>
   /** Runs user SQL; aborting `signal` stops it on the server and rejects with QueryCancelledError. */
   query(sql: string, signal?: AbortSignal): Promise<QueryResult>
   /** Starts a transaction on a connection of its own, held until it is committed or rolled back. */
@@ -95,6 +97,20 @@ export function distinctSource(
     expr,
     from: `${qualified(table)} t JOIN ${qualified(via.table)} r ON r.${quote(via.column)} = t.${quote(column)} WHERE ${expr} IS NOT NULL`
   }
+}
+
+/** SQL Server can't compare these, so COUNT(DISTINCT ...) on them fails. */
+export const MSSQL_UNCOMPARABLE = /^(n?text|image|xml|geography|geometry|hierarchyid|sql_variant)\b/i
+
+/** Builds a summary from the aggregate row both drivers select as n, d, s, a, lo, hi. */
+export function summaryFrom(row: Record<string, unknown>, numeric: boolean, distinct: boolean): ColumnSummary {
+  const num = (v: unknown): number => (v === null || v === undefined ? NaN : Number(v))
+  const count = num(row.n)
+  const summary: ColumnSummary = { count: Number.isFinite(count) ? count : 0 }
+  if (distinct) summary.distinct = num(row.d)
+  // With no non-null values SUM and the rest are NULL; there's nothing to show.
+  if (numeric && summary.count > 0) summary.numeric = { sum: num(row.s), average: num(row.a), min: num(row.lo), max: num(row.hi) }
+  return summary
 }
 
 export class TimeoutError extends Error {

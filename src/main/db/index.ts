@@ -126,6 +126,13 @@ export const countRows = (id: string, table: TableRef, filters: ColumnFilter[]) 
   }))
 export const describeSchema = (id: string) => withDriver(id, (d) => d.describeSchema())
 
+/** A column summarised across every row matching the filters, or null if it took over COUNT_TIMEOUT_MS. */
+export const summarizeColumn = (id: string, table: TableRef, filters: ColumnFilter[], column: string, dataType: string) =>
+  withDriver(id, (d) => d.summarize(table, filters, column, dataType, COUNT_TIMEOUT_MS).catch((error) => {
+    if (error instanceof TimeoutError) return null
+    throw error
+  }))
+
 /** Schema reads are one big query; keep them per connection until it reconnects. */
 const schemaCache = new Map<string, Promise<SchemaTable[]>>()
 export function cachedSchema(id: string): Promise<SchemaTable[]> {

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import type { ConnectionConfig } from '@shared/types'
 import { isSplit, otherPane, tabsIn, tabsToClose, type CloseScope, type PaneId } from '@shared/panes'
 import { useAppState, type Tab } from './state'
@@ -14,7 +14,63 @@ import { toast, ToastHost } from './components/Toast'
 import { LinksDialog } from './components/LinksDialog'
 import { appVersion } from './lib/version'
 
+const SIDEBAR_DEFAULT = 270
+const SIDEBAR_MIN = 180
+const SIDEBAR_KEY = 'jdb.sidebar.width'
+const SIDEBAR_HIDDEN_KEY = 'jdb.sidebar.hidden'
+
+function readStored(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function store(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Only a layout convenience; the default is fine.
+  }
+}
+
+/** The sidebar's width (dragged, remembered) and whether it's hidden (Ctrl+B). */
+function useSidebar() {
+  const [width, setWidthState] = useState(() => {
+    const saved = Number(readStored(SIDEBAR_KEY))
+    return Number.isFinite(saved) && saved >= SIDEBAR_MIN ? saved : SIDEBAR_DEFAULT
+  })
+  const [hidden, setHiddenState] = useState(() => readStored(SIDEBAR_HIDDEN_KEY) === '1')
+  const setWidth = useCallback((next: number) => {
+    // Leave most of the window to the tables.
+    const clamped = Math.round(Math.max(SIDEBAR_MIN, Math.min(window.innerWidth * 0.6, next)))
+    setWidthState(clamped)
+    store(SIDEBAR_KEY, String(clamped))
+  }, [])
+  const setHidden = useCallback((next: boolean) => {
+    setHiddenState(next)
+    store(SIDEBAR_HIDDEN_KEY, next ? '1' : '0')
+  }, [])
+  const startResize = useCallback((event: React.MouseEvent) => {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = (event.currentTarget.parentElement as HTMLElement).offsetWidth
+    const move = (e: MouseEvent): void => setWidth(startWidth + e.clientX - startX)
+    const up = (): void => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      document.body.classList.remove('resizing-cols')
+    }
+    document.body.classList.add('resizing-cols')
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }, [setWidth])
+  return useMemo(() => ({ width, hidden, setWidth, setHidden, startResize }), [width, hidden, setWidth, setHidden, startResize])
+}
+
 export function App() {
+  const sidebar = useSidebar()
   const { layout, activeTabId, setActiveTab, closeTab, moveTab, focusPane, connections, openQuery, initialRatio, rememberRatio } = useAppState()
   const [editing, setEditing] = useState<ConnectionConfig | null | 'new'>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -48,6 +104,9 @@ export function App() {
         // Pinned tabs close only from their menu, so a stray Ctrl+W can't lose them.
         if (activeTab?.pinned) toast('Pinned tab: unpin it, or use Close from its right-click menu')
         else closeTab(activeTabId)
+      } else if (mod && key === 'b') {
+        e.preventDefault()
+        sidebar.setHidden(!sidebar.hidden)
       } else if (mod && key === 't') {
         e.preventDefault()
         const target = activeTab?.connectionId ?? connections[0]?.id
@@ -66,7 +125,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [activeTab, activeTabId, closeTab, connections, layout, moveTab, openQuery, setActiveTab])
+  }, [activeTab, activeTabId, closeTab, connections, layout, moveTab, openQuery, setActiveTab, sidebar])
 
   const startResize = (event: React.MouseEvent): void => {
     event.preventDefault()
@@ -86,7 +145,19 @@ export function App() {
 
   return (
     <div className="app">
-      <Sidebar onEdit={(c) => setEditing(c)} onNew={() => setEditing('new')} onLinks={(c) => setLinksFor(c.id)} />
+      {sidebar.hidden ? (
+        <button className="sidebar-reveal" title="Show the sidebar (Ctrl+B)" onClick={() => sidebar.setHidden(false)}>›</button>
+      ) : (
+        <div className="sidebar-wrap" style={{ width: sidebar.width }}>
+          <Sidebar onEdit={(c) => setEditing(c)} onNew={() => setEditing('new')} onLinks={(c) => setLinksFor(c.id)} />
+          <div
+            className="sidebar-resize"
+            title="Drag to resize · double-click to reset · Ctrl+B hides the sidebar"
+            onMouseDown={sidebar.startResize}
+            onDoubleClick={() => sidebar.setWidth(SIDEBAR_DEFAULT)}
+          />
+        </div>
+      )}
 
       {/* One grid holds every tab's content as siblings, so moving a tab between panes keeps it mounted. */}
       <main

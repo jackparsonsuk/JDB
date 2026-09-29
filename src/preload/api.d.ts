@@ -1,5 +1,5 @@
 import type {
-  CellValue, ColumnFilter, ConnectionConfig, DbKind, ExportResult, TableExportRequest, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RowsRequest, RowsResult, SavedSession,
+  CellValue, ColumnFilter, ColumnSummary, ConnectionConfig, DbKind, ExportResult, TableExportRequest, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RowsRequest, RowsResult, SavedSession,
   SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ThemeSetting, ValueLookup
 } from '../shared/types'
 import type { ImportSummary } from '../shared/collection'
@@ -24,6 +24,8 @@ export interface Api {
   fetchRows(connectionId: string, request: RowsRequest): Promise<RowsResult>
   /** Rows matching the filters, or null if counting took too long (a huge table). */
   countRows(connectionId: string, table: TableRef, filters: ColumnFilter[]): Promise<number | null>
+  /** Sum/average/min/max/count of a column over every row matching the filters; null if it took too long. */
+  summarizeColumn(connectionId: string, table: TableRef, filters: ColumnFilter[], column: string, dataType: string): Promise<ColumnSummary | null>
   describeSchema(connectionId: string): Promise<SchemaTable[]>
   distinctValues(connectionId: string, table: TableRef, column: string, limit: number, via?: ValueLookup): Promise<CellValue[] | null>
   /**
@@ -57,6 +59,8 @@ export interface Api {
   /** The last saved session, unchecked; pass it through parseSession. */
   loadSession(): Promise<unknown>
   saveSession(session: SavedSession): void
+  /** What would be lost if the window closed now (open transactions, unsaved edits), so closing can ask. */
+  setUnsavedWork(warnings: string[]): void
   /** Forgets saved Entra sign-ins and disconnects, so the next connection signs in again. */
   signOutEntra(): Promise<void>
   getTheme(): Promise<ThemeSetting>

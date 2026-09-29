@@ -1,8 +1,14 @@
-import { app, BrowserWindow, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { join } from 'path'
 import { registerIpc } from './ipc'
 import { disconnectAll, rollbackAll } from './db'
 import { getTheme } from './store'
+
+/** Unsaved work the renderer has reported, listed when closing would lose it. */
+let unsavedWork: string[] = []
+ipcMain.on('app:unsaved', (_event, warnings: unknown) => {
+  unsavedWork = Array.isArray(warnings) ? warnings.filter((w): w is string => typeof w === 'string') : []
+})
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -24,6 +30,22 @@ function createWindow(): void {
   })
 
   window.once('ready-to-show', () => window.show())
+  // The page blocks unloading while it has unsaved work; ask whether to close (or reload) anyway.
+  window.webContents.on('will-prevent-unload', (event) => {
+    const list = unsavedWork.length ? unsavedWork.map((w) => `• ${w}`).join('\n') : 'Some tabs have unsaved changes.'
+    const choice = dialog.showMessageBoxSync(window, {
+      type: 'warning',
+      title: 'Unsaved work',
+      message: 'Close JDB and lose unsaved work?',
+      detail: `${list}\n\nOpen transactions are rolled back, so nothing they changed is kept.`,
+      buttons: ['Close anyway', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true
+    })
+    // preventDefault here overrides the page's veto, letting the close go ahead.
+    if (choice === 0) event.preventDefault()
+  })
   // A reloaded page has forgotten its staged transactions, so none can be committed any more.
   window.webContents.on('did-start-loading', () => {
     rollbackAll()

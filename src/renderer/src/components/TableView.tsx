@@ -364,7 +364,8 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
           scrollResetKey={visibleRows}
           marks={edits.marks}
           editing={canEditNow ? edits.grid : undefined}
-          editHint={editBlocked ?? 'Turn on ✎ Edit in the toolbar to edit values, set NULL, or fill in a new GUID or now/today'}
+          summarizeAll={(column) => window.api.summarizeColumn(tab.connectionId, tab.table, filters, column, columnInfo.get(column)?.dataType ?? '')}
+          editHint={editBlocked ??'Turn on ✎ Edit in the toolbar to edit values, set NULL, or fill in a new GUID or now/today'}
           rowOffset={quickFind ? 0 : page * pageSize}
           columnInfo={columnInfo}
           sort={sort}

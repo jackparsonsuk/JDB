@@ -40,7 +40,11 @@ if (isRunning()) {
   console.log('Closing JDB…')
   spawnSync('taskkill', ['/IM', exe], { stdio: 'ignore' })
   for (let i = 0; i < 20 && isRunning(); i++) await sleep(250)
-  if (isRunning()) spawnSync('taskkill', ['/IM', exe, '/T', '/F'], { stdio: 'ignore' })
+  if (isRunning()) {
+    // Usually it's asking about unsaved work (an open transaction or edits), which this discards.
+    console.log('JDB did not close by itself (probably asking about unsaved work); forcing it closed.')
+    spawnSync('taskkill', ['/IM', exe, '/T', '/F'], { stdio: 'ignore' })
+  }
   for (let i = 0; i < 20 && isRunning(); i++) await sleep(250)
   // Windows can hold the exe open for a moment after the process has gone.
   await sleep(1000)

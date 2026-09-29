@@ -1,10 +1,11 @@
 import mysql from 'mysql2/promise'
 import type {
   CellValue, ColumnFilter, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
-  DesignColumn, DesignForeignKey, DesignIndex, KeyKind, SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ValueLookup
+  ColumnSummary, DesignColumn, DesignForeignKey, DesignIndex, KeyKind, SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ValueLookup
 } from '@shared/types'
-import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancelledError, SAMPLE_SCAN_ROWS, TimeoutError, toCell, type Driver, type DriverTransaction, type SchemaColumnRow } from './driver'
+import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancelledError, SAMPLE_SCAN_ROWS, summaryFrom, TimeoutError, toCell, type Driver, type DriverTransaction, type SchemaColumnRow } from './driver'
 import { buildWhere } from './filters'
+import { isNumericType } from '@shared/edits'
 
 const quote = (identifier: string): string => `\`${identifier.replace(/`/g, '``')}\``
 const qualified = (table: TableRef): string => `${quote(table.schema)}.${quote(table.name)}`
@@ -322,6 +323,24 @@ export class MysqlDriver implements Driver {
         where.values
       )
       return Number(rows[0].total)
+    } catch (error) {
+      if ((error as { errno?: number }).errno === 3024) throw new TimeoutError()
+      throw error
+    }
+  }
+
+  async summarize(table: TableRef, filters: ColumnFilter[], column: string, dataType: string, timeoutMs: number): Promise<ColumnSummary> {
+    const numeric = isNumericType(dataType)
+    const c = quote(column)
+    const parts = [`COUNT(${c}) AS n`, `COUNT(DISTINCT ${c}) AS d`]
+    if (numeric) parts.push(`SUM(${c}) AS s`, `AVG(${c}) AS a`, `MIN(${c}) AS lo`, `MAX(${c}) AS hi`)
+    const where = buildWhere(filters, quote, () => '?')
+    try {
+      const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
+        `SELECT /*+ MAX_EXECUTION_TIME(${Math.floor(timeoutMs)}) */ ${parts.join(', ')} FROM ${qualified(table)} ${where.sql}`,
+        where.values
+      )
+      return summaryFrom(rows[0], numeric, true)
     } catch (error) {
       if ((error as { errno?: number }).errno === 3024) throw new TimeoutError()
       throw error

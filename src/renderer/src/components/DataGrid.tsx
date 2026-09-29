@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
-import type { CellValue, ColumnInfo, DbKind, FilterOp, TableRef } from '@shared/types'
+import type { CellValue, ColumnInfo, ColumnSummary, DbKind, FilterOp, TableRef } from '@shared/types'
 import { canHoldGuid, dateKind, momentText, newGuid } from '@shared/edits'
 import { cellStats, formatStat } from '@shared/stats'
 import { COPY_FORMATS, displayValue, formatRows, type CopyFormat } from '../lib/format'
@@ -78,6 +78,8 @@ interface Props {
   focusColumn?: { name: string; seq: number }
   /** Shown at the top of the cell menu while editing is off: why, or how to turn it on. */
   editHint?: string
+  /** Summarises a column over every row the view matches (not just this page), on the server; null if too slow. */
+  summarizeAll?(column: string): Promise<ColumnSummary | null>
   /** While set, shows a progress bar and this message instead of "No rows". */
   loadingLabel?: string
 }
@@ -428,6 +430,26 @@ export function DataGrid(props: Props) {
     return cellStats(indexes.map((i) => rows[i]?.[activeColumn] ?? null))
   }, [activeColumn, selectedIndexes, rows, statsScope])
   const statsRows = statsScope === 'selected' ? selectedIndexes.length : rows.length
+
+  /** The same column summarised on the server over every matching row, once asked for. */
+  const [whole, setWhole] = useState<{ column: number; result: ColumnSummary | 'loading' } | null>(null)
+  useEffect(() => setWhole(null), [activeColumn, scrollResetKey])
+  const summarizeWhole = async (column: number): Promise<void> => {
+    if (!props.summarizeAll) return
+    setWhole({ column, result: 'loading' })
+    try {
+      const result = await props.summarizeAll(columns[column])
+      if (result) setWhole((w) => (w?.column === column ? { column, result } : w))
+      else {
+        setWhole(null)
+        toast('That took too long, so the summary still covers just this page')
+      }
+    } catch (e) {
+      setWhole(null)
+      toast(`Couldn't summarise the table: ${(e as Error).message}`)
+    }
+  }
+  const wholeResult = whole && whole.column === activeColumn && whole.result !== 'loading' ? whole.result : null
   const menuMarked = menuRows.some((i) => props.marks?.has(i))
   const menuPlural = `${menuRows.length} row${menuRows.length === 1 ? '' : 's'}`
   const menuAction = (run: () => string | null | void): void => {
@@ -514,27 +536,42 @@ export function DataGrid(props: Props) {
         {!rows.length && !props.loadingLabel && <div className="grid-empty">No rows</div>}
       </div>
 
-      {stats && activeColumn !== null && (
-        <div
-          className="grid-stats"
-          title={`Summary of ${columns[activeColumn]} across ${statsScope === 'selected' ? `the ${statsRows} selected rows` : `all ${statsRows} rows shown`}.\nClick a cell to pick the column; Shift/Ctrl+click rows to narrow it down. NULLs are left out.`}
-        >
-          <span className="grid-stats-col">{columns[activeColumn]}</span>
-          <span className="grid-stats-scope">{statsScope === 'selected' ? `${statsRows.toLocaleString()} selected` : `all ${statsRows.toLocaleString()} rows`}</span>
-          {stats.numeric ? (
-            <>
-              <span>Sum <b>{formatStat(stats.numeric.sum)}</b></span>
-              <span>Average <b>{formatStat(stats.numeric.average, 2)}</b></span>
-              <span>Min <b>{formatStat(stats.numeric.min)}</b></span>
-              <span>Max <b>{formatStat(stats.numeric.max)}</b></span>
-            </>
-          ) : (
-            <span>Distinct <b>{stats.distinct.toLocaleString()}</b></span>
-          )}
-          <span>Count <b>{stats.count.toLocaleString()}</b></span>
-          <button className="icon small" title="Hide the summary" onClick={() => setActiveColumn(null)}>✕</button>
-        </div>
-      )}
+      {stats && activeColumn !== null && (() => {
+        const shown = wholeResult ?? stats
+        const scope = wholeResult ? 'whole' : statsScope
+        const label = scope === 'whole' ? 'all matching rows' : scope === 'selected' ? `${statsRows.toLocaleString()} selected` : `all ${statsRows.toLocaleString()} rows`
+        return (
+          <div
+            className={`grid-stats ${scope === 'whole' ? 'whole' : ''}`}
+            title={`Summary of ${columns[activeColumn]} across ${scope === 'whole' ? 'every row matching the filters, worked out by the database' : scope === 'selected' ? `the ${statsRows} selected rows` : `the ${statsRows} rows on this page`}.\nClick a cell to pick the column; Shift/Ctrl+click or drag rows to narrow it down. NULLs are left out.`}
+          >
+            <span className="grid-stats-col">{columns[activeColumn]}</span>
+            <span className="grid-stats-scope">{label}</span>
+            {shown.numeric ? (
+              <>
+                <span>Sum <b>{formatStat(shown.numeric.sum)}</b></span>
+                <span>Average <b>{formatStat(shown.numeric.average, 2)}</b></span>
+                <span>Min <b>{formatStat(shown.numeric.min)}</b></span>
+                <span>Max <b>{formatStat(shown.numeric.max)}</b></span>
+              </>
+            ) : shown.distinct !== undefined && (
+              <span>Distinct <b>{shown.distinct.toLocaleString()}</b></span>
+            )}
+            <span>Count <b>{shown.count.toLocaleString()}</b></span>
+            {props.summarizeAll && statsScope === 'all' && !wholeResult && (
+              <button
+                className="ghost small-button"
+                disabled={whole?.result === 'loading'}
+                title="Work this out over every row matching the filters, not just this page (stops after 10 seconds)"
+                onClick={() => summarizeWhole(activeColumn)}
+              >
+                {whole?.result === 'loading' ? 'Summing…' : 'Whole table'}
+              </button>
+            )}
+            <button className="icon small" title="Hide the summary" onClick={() => setActiveColumn(null)}>✕</button>
+          </div>
+        )
+      })()}
 
       {menu && (
         <div className="menu" style={{ left: menu.x, top: menu.y }} onMouseDown={(e) => e.stopPropagation()}>

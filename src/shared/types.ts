@@ -77,6 +77,16 @@ export interface TableDetails {
   referencedBy: ReverseReference[]
 }
 
+/** A column summarised on the server across every row matching the table view's filters. */
+export interface ColumnSummary {
+  /** Non-null values. */
+  count: number
+  /** Only for columns whose values can be compared (not text/ntext/image/xml on SQL Server). */
+  distinct?: number
+  /** Only for numeric columns. */
+  numeric?: { sum: number; average: number; min: number; max: number }
+}
+
 /** A column as the table designer shows it: ColumnInfo plus what's needed to alter it safely. */
 export interface DesignColumn extends ColumnInfo {
   /** SQL expression after DEFAULT, e.g. `((0))` or `CURRENT_TIMESTAMP`; null for none. */
