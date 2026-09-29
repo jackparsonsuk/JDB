@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import CodeMirror, { type EditorView, type Extension, keymap, Prec } from '@uiw/react-codemirror'
 import { sql, MSSQL, MySQL } from '@codemirror/lang-sql'
+import { acceptCompletion } from '@codemirror/autocomplete'
 import type { HistoryEntry, QueryResult } from '@shared/types'
 import { findWriteKeyword } from '@shared/sqlGuard'
 import { useAppState, type Tab } from '../state'
@@ -164,7 +165,9 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   const runKeymap = useMemo(
     () => Prec.highest(keymap.of([
       { key: 'Mod-Enter', run: () => { run(); return true } },
-      { key: 'F5', run: () => { run(); return true } }
+      { key: 'F5', run: () => { run(); return true } },
+      // Tab accepts the highlighted completion like Enter; with no list open it indents as before.
+      { key: 'Tab', run: acceptCompletion }
     ])),
     [run]
   )
