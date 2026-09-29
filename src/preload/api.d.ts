@@ -1,6 +1,6 @@
 import type {
   CellValue, ColumnFilter, ColumnSummary, ConnectionConfig, DbKind, ExportResult, TableExportRequest, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RowsRequest, RowsResult, SavedSession,
-  SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ThemeSetting, ValueLookup
+  SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ThemeSetting, UpdateCheck, ValueLookup
 } from '../shared/types'
 import type { ImportSummary } from '../shared/collection'
 
@@ -70,6 +70,8 @@ export interface Api {
   readyUpdate(): Promise<string | null>
   /** Quits and installs the downloaded update. */
   installUpdate(): Promise<void>
+  /** Checks for a new release now; a newer one starts downloading. */
+  checkForUpdates(): Promise<UpdateCheck>
   /** Called when an update finishes downloading; returns an unsubscribe. */
   onUpdateReady(listener: (version: string) => void): () => void
 }

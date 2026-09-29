@@ -264,3 +264,11 @@ export interface SavedSession {
 
 /** 'system' follows the Windows light/dark setting. */
 export type ThemeSetting = 'system' | 'light' | 'dark'
+
+/** The outcome of "Check for updates". */
+export type UpdateCheck =
+  | { state: 'dev' }
+  | { state: 'current'; version: string }
+  | { state: 'downloading'; version: string }
+  | { state: 'ready'; version: string }
+  | { state: 'error'; error: string }

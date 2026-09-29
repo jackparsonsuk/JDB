@@ -5,6 +5,7 @@ import { setTheme, THEME_ICONS, THEME_LABELS, useTheme } from '../lib/theme'
 import { toast } from './Toast'
 import { fuzzyScore } from '../lib/fuzzy'
 import { toggleSlop, useSlop } from '../lib/slop'
+import { checkForUpdates } from '../lib/useUpdate'
 
 interface Item {
   key: string
@@ -133,6 +134,15 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
         }
       })
     }
+    out.push({
+      key: 'update-check',
+      label: 'Check for updates',
+      detail: 'look for a new JDB release now',
+      icon: '⟳',
+      haystack: 'check for updates update upgrade new version release',
+      bias: -10,
+      run: checkForUpdates
+    })
     for (const option of ['system', 'light', 'dark'] as const) {
       if (option === theme) continue
       out.push({

@@ -53,6 +53,7 @@ const api: Api = {
   copy: (text) => call('clipboard:write', text),
   readyUpdate: () => call('update:ready'),
   installUpdate: () => call('update:install'),
+  checkForUpdates: () => call('update:check'),
   onUpdateReady: (listener) => {
     const handler = (_event: unknown, version: string): void => listener(version)
     ipcRenderer.on('update:ready', handler)
