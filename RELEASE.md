@@ -7,18 +7,23 @@ Installed copies of JDB update themselves from the public [jdb-releases](https:/
 1. Make sure `npm run typecheck` and `npm test` pass, and that the change works in the installed app (`npm run deploy`).
 2. Bump `version` in `package.json`. The new version must be higher than the latest release, and each version can only be released once.
 3. Commit and push to `main`.
-4. Run:
+4. Tag the commit and push the tag. GitHub Actions (`.github/workflows/release.yml`) then runs the typecheck and tests and publishes the release:
 
    ```bash
-   npm run release
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
    ```
 
-5. Check that it printed `Published vX.Y.Z: <link>`, and that the release on GitHub has all three files:
+   The tag must match the version in `package.json`, or the workflow stops before building. Follow it in the repo's **Actions** tab.
+
+   To release from your own machine instead (for example if Actions is down), run `npm run release`. It needs `GH_TOKEN` set locally.
+
+5. Check that the run succeeded (locally it prints `Published vX.Y.Z: <link>`), and that the release on GitHub has all three files:
    - `JDB-Setup-X.Y.Z.exe`
    - `JDB-Setup-X.Y.Z.exe.blockmap`
    - `latest.yml`
 
-The whole run takes a few minutes, most of it building the installer and uploading about 117 MB.
+The whole run takes a few minutes, most of it building the installer and uploading about 117 MB. On Actions, Windows runners count double against the private repo's 2,000 free minutes a month, so a release costs roughly 15–25 of them.
 
 ## What `npm run release` does
 
@@ -26,9 +31,10 @@ The whole run takes a few minutes, most of it building the installer and uploadi
 2. `electron-vite build` and `electron-builder --win --publish always` build the installer and upload the three files into that draft.
 3. `node scripts/release.mjs publish` checks that the draft has all three files, then publishes it and marks it as the latest release. If any file is missing, it leaves the draft unpublished, so nothing reaches users.
 
-## One-time setup (per machine)
+## One-time setup
 
-- `GH_TOKEN` must be set as a user environment variable. Use a GitHub **fine-grained token** that can only access `jdb-releases`, with **Contents: Read and write**. Tokens expire, so a release failing with 401 or 403 usually means it needs renewing.
+- For Actions: the `jdb` repo needs a secret called `RELEASES_TOKEN` (Settings → Secrets and variables → Actions) holding the token below. When the token is renewed, update the secret too.
+- For local releases: `GH_TOKEN` must be set as a user environment variable. Use a GitHub **fine-grained token** that can only access `jdb-releases`, with **Contents: Read and write**. Tokens expire, so a release failing with 401 or 403 usually means it needs renewing.
 - `jdb-releases` must have at least one commit (it has a README), or GitHub can't create tags there.
 
 ## How installed apps update
