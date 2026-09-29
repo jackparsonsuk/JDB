@@ -11,7 +11,7 @@ win:
   target: nsis
   icon: build/icon.ico
 nsis:
-  # Pinned to the id derived from the old appId (com.activategroup.jdb), so existing installs upgrade in place.
+  # Pinned to the id derived from an earlier appId, so existing installs upgrade in place.
   guid: 4d324775-1d91-5185-8204-0843849efc55
   oneClick: false
   allowToChangeInstallationDirectory: true
