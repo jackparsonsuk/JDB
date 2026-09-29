@@ -4,7 +4,7 @@ A streamlined desktop database viewer for SQL Server / Azure SQL and MySQL, buil
 
 ## Install
 
-Download `JDB Setup x.y.z.exe` from the [latest release](https://github.com/jackparsonsUK/jdb/releases/latest) and run it. Windows may warn about an unknown publisher because the installer isn't code-signed; choose **More info → Run anyway**.
+Download `JDB Setup x.y.z.exe` from the [latest release](https://github.com/jackparsonsUK/jdb-releases/releases/latest) and run it. Windows may warn about an unknown publisher because the installer isn't code-signed; choose **More info → Run anyway**.
 
 Once installed, JDB checks for new releases in the background. A new version downloads by itself and installs the next time you close JDB, or straight away from **Restart to update** in the sidebar.
 
@@ -45,8 +45,8 @@ Electron + React + TypeScript (electron-vite). Drivers run in the main process (
 ## Releasing
 
 1. Bump `version` in `package.json`.
-2. Set `GH_TOKEN` to a GitHub token that can write to this repo's contents (a fine-grained token with Contents read/write).
-3. Run `npm run release`. It builds the installer and publishes it as a GitHub Release with `latest.yml`, which installed copies check for updates.
+2. Set `GH_TOKEN` to a GitHub token that can write to the public [jdb-releases](https://github.com/jackparsonsUK/jdb-releases) repo (a fine-grained token with Contents read/write on it).
+3. Run `npm run release`. It builds the installer and publishes it as a release on jdb-releases, with `latest.yml`, which installed copies check for updates. The source stays in this private repo.
 
 ## Licence
 

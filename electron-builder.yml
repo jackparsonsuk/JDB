@@ -15,10 +15,11 @@ nsis:
   guid: 4d324775-1d91-5185-8204-0843849efc55
   oneClick: false
   allowToChangeInstallationDirectory: true
-# Installed apps check GitHub Releases for updates (electron-updater); `npm run release` publishes there.
+# Installers go to a public releases-only repo (the source repo is private). Installed apps check its
+# releases for updates (electron-updater), and `npm run release` publishes there.
 publish:
   provider: github
   owner: jackparsonsUK
-  repo: jdb
+  repo: jdb-releases
   # Publish straight away rather than as a draft, so installs pick it up without a trip to GitHub.
   releaseType: release

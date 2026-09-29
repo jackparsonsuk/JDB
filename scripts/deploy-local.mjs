@@ -7,8 +7,8 @@ import { dirname, join } from 'node:path'
 const source = join(process.cwd(), 'dist', 'win-unpacked')
 const exe = 'JDB.exe'
 const uninstaller = 'Uninstall JDB.exe'
-/** Files the installer adds that an unpacked build doesn't have. */
-const installerOnly = [uninstaller, 'elevate.exe']
+/** Files the installer adds that an unpacked build doesn't have; app-update.yml tells the updater where releases are. */
+const installerOnly = [uninstaller, 'elevate.exe', 'app-update.yml']
 
 /** The install folder, from the uninstaller the NSIS installer registered, else its default. */
 function installDir() {

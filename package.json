@@ -7,7 +7,7 @@
   "author": "Jack Parsons",
   "license": "MIT",
   "repository": "github:jackparsonsUK/jdb",
-  "homepage": "https://github.com/jackparsonsUK/jdb",
+  "homepage": "https://github.com/jackparsonsUK/jdb-releases",
   "private": true,
   "scripts": {
     "dev": "electron-vite dev",
