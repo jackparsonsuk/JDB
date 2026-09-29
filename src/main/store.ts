@@ -32,43 +32,11 @@ function writeJson(name: string, value: unknown): void {
   writeFileSync(dataFile(name), JSON.stringify(value, null, 2), 'utf8')
 }
 
-/** Starter connections so a fresh install opens with the databases in regular use. */
-function defaultConnections(): StoredConnection[] {
-  return [
-    {
-      id: randomUUID(),
-      name: 'Shop',
-      kind: 'mysql',
-      host: 'localhost',
-      port: 3306,
-      database: 'Shop',
-      user: 'root',
-      authType: 'sql',
-      env: 'local',
-      readOnly: false
-    },
-    {
-      id: randomUUID(),
-      name: 'TestDB',
-      kind: 'mssql',
-      host: 'example.database.windows.net',
-      port: 1433,
-      database: 'TestDB',
-      user: '',
-      authType: 'sql',
-      env: 'test',
-      readOnly: true
-    }
-  ]
-}
-
+/**
+ * A fresh install starts with no connections: the installer is shared outside the team, so it
+ * mustn't carry any server names. Colleagues add their own or import a shared collection.
+ */
 function loadStored(): StoredConnection[] {
-  const path = dataFile('connections.json')
-  if (!existsSync(path)) {
-    const seeded = defaultConnections()
-    writeJson('connections.json', seeded)
-    return seeded
-  }
   return readJson<StoredConnection[]>('connections.json', [])
 }
 

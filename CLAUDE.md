@@ -61,7 +61,7 @@ Dialect details that have caused bugs:
 
 ### Storage
 
-`src/main/store.ts` keeps `connections.json`, `links.json` and `history.json` in Electron's userData folder. Passwords are encrypted with `safeStorage` (DPAPI) and never sent to the renderer; the renderer only sees `hasPassword`. Two starter connections (Shop, TestDB) are seeded on first run. Connections can sit in a sidebar `folder`, and be shared as a collection file (`src/shared/collection.ts`, `src/main/collections.ts`): no ids or passwords, links kept between exported connections, imports matched to existing connections, and imported prod connections forced read-only.
+`src/main/store.ts` keeps `connections.json`, `links.json` and `history.json` in Electron's userData folder. Passwords are encrypted with `safeStorage` (DPAPI) and never sent to the renderer; the renderer only sees `hasPassword`. A fresh install starts with no connections; nothing company-specific (server names, logins) may be hard-coded, because the installer is handed to people outside the team. Connections can sit in a sidebar `folder`, and be shared as a collection file (`src/shared/collection.ts`, `src/main/collections.ts`): no ids or passwords, links kept between exported connections, imports matched to existing connections, and imported prod connections forced read-only.
 
 ### Renderer
 
