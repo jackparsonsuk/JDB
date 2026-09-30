@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { CellValue, ColumnFilter, RelatedCount, RowsResult, TableDetails, TableRef } from '@shared/types'
 import { incomingLinks, outgoingLinks } from '@shared/links'
 import { pickDateColumn, pickDisplayColumn } from '@shared/display'
-import { useAppState, type Tab } from '../state'
+import { useAppState, useTableList, type Tab } from '../state'
 import { displayValue, formatCount } from '../lib/format'
 import { useOpenLink } from '../lib/openLink'
 import { RowInspector } from './RowInspector'
@@ -61,6 +61,7 @@ interface Relation {
 
 export function RecordView({ tab }: { tab: Extract<Tab, { kind: 'record' }> }) {
   const { connection, links } = useAppState()
+  useTableList(tab.connectionId)
   const link = useOpenLink()
   const conn = connection(tab.connectionId)
   const [details, setDetails] = useState<TableDetails | null>(null)

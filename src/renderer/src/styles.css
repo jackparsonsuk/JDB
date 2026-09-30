@@ -740,9 +740,11 @@ html.slop ::selection { background: #ff4ecd; color: #fff; }
 .group-head:hover:not(:disabled) { background: none; color: var(--text); }
 .group-head .chevron { width: 8px; font-size: 12px; }
 .group-name { flex: 1; }
-.routine-item { padding-left: 29px; }
+/* Long routine names shrink with an ellipsis rather than pushing the sidebar sideways. */
+.routine-item { padding-left: 29px; min-width: 0; max-width: 100%; }
+.routine-item .table-name { min-width: 0; }
 .routine-item.disabled .table-name { color: var(--text-dim); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text-dim) 60%, transparent); }
-.routine-aside { font-size: 10.5px; color: var(--text-dim); max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.routine-aside { flex: 0 1 auto; min-width: 0; font-size: 10.5px; color: var(--text-dim); max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .routine-aside.off { color: var(--danger); }
 .show-more { border: none; background: none; color: var(--accent); font-size: 11.5px; padding: 3px 6px 5px 29px; text-align: left; }
 .show-more:hover:not(:disabled) { background: none; text-decoration: underline; }
@@ -752,7 +754,6 @@ html.slop ::selection { background: #ff4ecd; color: #fff; }
 .source-hit:hover { border-radius: 4px; }
 .source-hit-head { display: flex; align-items: center; gap: 7px; }
 .source-snippet { display: block; font: 11px/1.5 var(--mono); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 14px; }
-.source-snippet .line-no { display: inline-block; min-width: 26px; margin-right: 6px; color: color-mix(in srgb, var(--text-dim) 70%, transparent); text-align: right; }
 .source-snippet mark { background: color-mix(in srgb, var(--kind-trigger) 30%, transparent); color: var(--text); border-radius: 2px; padding: 0 1px; }
 
 /* Routine tab */

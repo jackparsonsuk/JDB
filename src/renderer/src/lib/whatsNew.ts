@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import changelogText from '../../../../CHANGELOG.md?raw'
-import { changesSince, parseChangelog, type ChangelogEntry } from '@shared/changelog'
+import { changesSince, compareVersions, parseChangelog, type ChangelogEntry } from '@shared/changelog'
 import { toast } from '../components/Toast'
 
 /** CHANGELOG.md, bundled at build time, so an updated app knows its own notes offline. */
@@ -12,8 +12,11 @@ const LAST_SEEN_KEY = 'jdb.lastSeenVersion'
 let shown: ChangelogEntry[] | null = null
 const listeners = new Set<() => void>()
 
-/** Opens the What's new dialog with these entries; no entries opens the whole changelog. */
-export function openWhatsNew(entries: ChangelogEntry[] = changelog): void {
+/**
+ * Opens the What's new dialog with these entries; no entries opens the whole changelog up to this
+ * version (a local build can carry notes for a version that isn't out yet).
+ */
+export function openWhatsNew(entries: ChangelogEntry[] = changelog.filter((e) => compareVersions(e.version, __APP_VERSION__) <= 0)): void {
   shown = entries
   listeners.forEach((l) => l())
 }

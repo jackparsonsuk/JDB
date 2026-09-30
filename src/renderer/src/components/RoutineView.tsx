@@ -207,7 +207,7 @@ export function RoutineView({ tab }: { tab: Extract<Tab, { kind: 'routine' }> })
 
           <aside className="routine-side">
             <div className="side-tabs" role="tablist">
-              <button role="tab" className={side === 'outline' ? 'on' : ''} onClick={() => setSide('outline')} disabled={!shown}>
+              <button role="tab" className={side === 'outline' && shown ? 'on' : ''} onClick={() => setSide('outline')} disabled={!shown}>
                 Outline {outline.length > 0 && <span className="side-count">{outline.length}</span>}
               </button>
               <button role="tab" className={side === 'overview' || !shown ? 'on' : ''} onClick={() => setSide('overview')}>Overview</button>

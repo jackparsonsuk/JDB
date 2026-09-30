@@ -1288,7 +1288,8 @@ class Walker {
         const after = this.wordAt(this.nextIndex(next))
         if (after === 'CURSOR' || (after === 'SCROLL' || after === 'INSENSITIVE')) this.item('cursor', `CURSOR ${name ? unquote(name) : ''}`.trim(), i)
         else if (after === 'TABLE' && name?.type === 'variable') this.item('temp', `DECLARE ${name.text} TABLE`, i)
-        else if (this.kind === 'mysql' && (nextWord === 'CONTINUE' || nextWord === 'EXIT')) this.item('error', `${nextWord} HANDLER`, i)
+        // A handler is control flow (what happens on NOT FOUND or an error), not an error being raised.
+        else if (this.kind === 'mysql' && (nextWord === 'CONTINUE' || nextWord === 'EXIT')) this.item('control', this.flatText(next, this.clauseEnd(i, false), 50), i)
         return
       }
       case 'CREATE':

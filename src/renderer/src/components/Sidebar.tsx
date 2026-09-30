@@ -483,7 +483,7 @@ function RoutineList({ connectionId, filter, inSource }: { connectionId: string;
             key={`${m.source.kind}:${m.source.schema}.${m.source.name}`}
             className="table-item source-hit"
             {...link({ kind: 'routine', connectionId, routine: { schema: m.source.schema, name: m.source.name, kind: m.source.kind }, find: term })}
-            title={`${m.source.schema}.${m.source.name} · ${m.count} match${m.count === 1 ? '' : 'es'}, first on line ${m.line}\nShift+click opens beside · drag to a pane`}
+            title={`${m.source.schema}.${m.source.name} · ${m.count} match${m.count === 1 ? '' : 'es'}\nShift+click opens beside · drag to a pane`}
           >
             <span className="source-hit-head">
               <span className={`kind-dot kind-${m.source.kind}`} />
@@ -494,7 +494,6 @@ function RoutineList({ connectionId, filter, inSource }: { connectionId: string;
               {m.count > 1 && <span className="table-rows">×{m.count}</span>}
             </span>
             <code className="source-snippet">
-              <span className="line-no">{m.line}</span>
               {m.snippet.slice(0, m.start)}<mark>{m.snippet.slice(m.start, m.end)}</mark>{m.snippet.slice(m.end)}
             </code>
           </button>

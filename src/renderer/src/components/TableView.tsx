@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CellValue, ColumnFilter, ColumnInfo, FilterOp, RowsResult, TableDetails, TableSort } from '@shared/types'
-import { useAppState, useCloseWarning, type OpenTarget, type Tab } from '../state'
+import { useAppState, useCloseWarning, useTableList, type OpenTarget, type Tab } from '../state'
 import { incomingLinks, outgoingLinks } from '@shared/links'
 import { formatCount, selectSql } from '../lib/format'
 import { DataGrid, type Selection } from './DataGrid'
@@ -42,6 +42,7 @@ function chipValue(value: string, dataType?: string): string {
 /** `focused`: this tab is showing in the focused pane, so it owns the keyboard. */
 export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' }>; focused: boolean }) {
   const { connection, openQuery, openRecord, open, links, tables, rememberTab, schemaVersions } = useAppState()
+  useTableList(tab.connectionId)
   const schemaVersion = schemaVersions[tab.connectionId] ?? 0
   const conn = connection(tab.connectionId)
   const [details, setDetails] = useState<TableDetails | null>(null)

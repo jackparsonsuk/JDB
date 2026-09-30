@@ -10,6 +10,9 @@ What changed in each JDB release, newest first. JDB shows these notes after it u
 - Source search says when there are more matches than it shows, instead of stopping at 200 without a word.
 - On MySQL, "changed 3 hours ago" for routines is right even when the server's clock is in another time zone.
 - Escape closes the release notes without clicking into them first.
+- Ctrl+K finds the tables of any connection you have a tab open on, without expanding it in the sidebar first.
+- A MySQL handler (DECLARE ... HANDLER) shows in a routine's outline as control flow, not as an error.
+- Long routine names no longer make the sidebar scroll sideways, and when a routine's source is hidden only the Overview tab looks selected.
 
 ## 0.5.9
 - Stored procedures are much easier to read. **Formatted** lays the source out with one statement per line, indented blocks and IF / ELSE bodies, and long lists and conditions split over lines. Only spacing and keyword capitals change; switch to **As written** to see the original.

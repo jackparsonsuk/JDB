@@ -152,6 +152,13 @@ DELETE w FROM #work w JOIN dbo.Orders o ON o.Id = w.Id`)).toEqual([
     ])
   })
 
+  it('treats a MySQL handler as control flow, named by what it handles', () => {
+    expect(outline('BEGIN\n  DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;\n  SELECT 1;\nEND', 'mysql')).toEqual([
+      '  control: CONTINUE HANDLER FOR NOT FOUND',
+      '  read: SELECT 1'
+    ])
+  })
+
   it('skips commented-out code but keeps headings', () => {
     expect(outline('-- Step 1: load\nSELECT 1\n--SELECT * FROM old\nSELECT 2')).toEqual([
       'comment: Step 1: load',

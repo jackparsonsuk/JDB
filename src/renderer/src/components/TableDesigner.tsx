@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { DesignColumn, TableDesign } from '@shared/types'
 import { countChanges, designProblems, designSql, draftsFrom, TYPE_SUGGESTIONS, type ColumnDraft } from '@shared/design'
-import { useAppState, useCloseWarning, type Tab } from '../state'
+import { useAppState, useCloseWarning, useTableList, type Tab } from '../state'
 import { LoadingBar } from './DataGrid'
 import { SaveChangesDialog } from './SaveChangesDialog'
 import { toast } from './Toast'
@@ -14,6 +14,7 @@ const NOTES = {
 /** A table's structure: columns (editable on writable connections), indexes, and keys in and out. */
 export function TableDesigner({ tab }: { tab: Extract<Tab, { kind: 'design' }> }) {
   const { connection, openTable, openQuery, open, schemaVersions, schemaChanged } = useAppState()
+  useTableList(tab.connectionId)
   const conn = connection(tab.connectionId)
   const [design, setDesign] = useState<TableDesign | null>(null)
   const [drafts, setDrafts] = useState<ColumnDraft[]>([])

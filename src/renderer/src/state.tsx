@@ -407,6 +407,18 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
+/**
+ * Loads a connection's table list once a view that uses the connection is showing, so Ctrl+K can
+ * find its tables without the sidebar being expanded. The view connects anyway, so this never
+ * adds a sign-in prompt.
+ */
+export function useTableList(connectionId: string): void {
+  const { loadTables } = useAppState()
+  useEffect(() => {
+    loadTables(connectionId)
+  }, [connectionId, loadTables])
+}
+
 export function useAppState(): AppState {
   const ctx = useContext(Ctx)
   if (!ctx) throw new Error('useAppState must be used inside AppStateProvider')
