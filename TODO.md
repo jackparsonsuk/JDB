@@ -1,0 +1,61 @@
+# TODO
+
+What could come next for OverlookDB, roughly in the order worth doing. Tick things off or move them into CHANGELOG.md as they ship. New work goes on a feature branch; see CLAUDE.md.
+
+## From using it
+
+- [x] **Show what an update changed.** After an UPDATE (from a query or grid edits), show the rows it touched with before and after values, so it's clear it worked. It's especially hard to tell on MySQL today, which only reports "rows affected". (1.2.0)
+- [ ] **Show what grid edits changed.** The query-tab Changes view (`lib/updateChanges.ts`, `UpdateChangesView`) doesn't cover saving edits from a table grid yet; `applyChanges` already knows each row's key and old and new values.
+- [x] **Query tabs open as plain SQL.** A new query tab should start with the SQL editor focused and the Ask bar closed; Ask stays one click away (✦ Ask). (1.2.0)
+- [x] **Right-click menu in the SQL editor.** Run selection, run all, run the statement under the cursor, format, copy, save as a query. (1.2.0)
+- [x] **Word wrap on by default in the SQL editor.** A long pasted WHERE clause (dozens of `AND` conditions) currently runs off to the right. Turn wrapping on unless the user switches it off in Settings → Grid & editor. (1.2.0)
+- [x] **Explain empty connections.** A connection with no tables says which database it's in and offers the others; the dialog warns about a blank Database on Azure SQL. (1.2.1)
+- [x] **Lookups in the table view**, a clearer selected cell, and column search in the designer. (1.3.0)
+- [x] **Query parameters**, **errors that point at the SQL**, and **Ctrl+click names to open them**. (1.4.0)
+
+## Check first (built but not yet seen for real)
+
+- [ ] **Row-count confirm dialog on a writable test connection.** It only appears on writable, non-local, non-protected connections, so it hasn't been opened against a real server yet. Try an UPDATE with a WHERE, one without, a joined DELETE and an INSERT ... SELECT.
+- [ ] **Proc formatter on real SQL Server procs.** The layout guesses T-SQL structure without semicolons. Open some long procs and note any odd layout or a "shown as written" fallback.
+- [ ] **Custom environments through a shared file.** Export a connection on a custom environment, import it on another machine, and check the environment arrives and a protected one comes in read-only.
+- [ ] **The Changes view on both dialects**, including inside a staged transaction on prod (before commit) and an UPDATE whose SET changes a WHERE column.
+- [ ] **Lookups on Shop's shared `lookups` table.** Check the TypeId narrowing picks the right kinds, and how a foreign key to a big table behaves (it should search, not list).
+- [ ] **Error lines on MySQL multi-statement scripts.** It isn't confirmed whether MySQL's "at line N" counts from the whole script or from the failing statement; the spot is found by text first, so only the line may be off.
+- [ ] **Azure database picker** on a connection with a blank Database (it should land in master and list ProdDB and the rest).
+
+## Features
+
+- [x] **Clickable names in routine source.** Ctrl+click a table or proc name in the code to open it, in routine source and the SQL editor. (1.4.0)
+- [ ] **Hover a table to see its columns**, in routine source and the SQL editor, reusing `nameAt` in `src/shared/routines.ts`.
+- [ ] **Labels in the grid for lookup columns.** Show the label ("Draft") beside the key in the cell itself, from the same lookups as the side panel.
+- [ ] **Share lookups in connection files**, like links and saved queries.
+- [ ] **Search every table for a value.** Paste a GUID or email and see which tables and columns hold it, reading only indexed or likely columns, bounded and time-limited.
+- [ ] **Dry run on prod.** Run a write in a transaction, show the Changes view, then roll back automatically.
+- [ ] **Undo last change.** After an UPDATE or grid save, offer a script that puts the rows back, from the Changes view's before values.
+- [ ] **Diff between connections.** Compare a table's columns and keys between two connections, one row by key, or a query's results on both. Link discovery already does much of the sampling.
+- [ ] **Query plans.** An Explain button on query tabs (SHOWPLAN_XML on SQL Server, EXPLAIN FORMAT=JSON on MySQL) that flags table scans on big tables.
+- [ ] **Recent and pinned tables** per connection, at the top of its table list.
+- [ ] **Share a result** as a Markdown table or a Teams / Slack message, with the query and connection name.
+- [ ] **ER diagram from the Ask model.** A "tables around this one" diagram, including inferred keys and cross-database links.
+- [ ] **Pinned records.** Pin a record in the explorer and come back to it later, across databases.
+- [ ] **Explain this SQL.** Turn a query into a plain-English summary using the Ask engine's model.
+- [ ] **Quick charts.** A bar or line chart of a grouped query result, drawn as SVG.
+- [x] **Filter from a cell.** Right-click a cell and choose "filter to this value" or "exclude it", added as a filter chip.
+- [x] **Insert a saved query into the open tab** from the sidebar, rather than only opening it in a new tab. (1.2.1)
+- [ ] **Import and export appearance settings**, so a theme and colours can be shared.
+
+## Smaller improvements
+
+- [ ] The table toolbar wraps to a second row when filters are applied; tighten it.
+- [ ] The sidebar's fuzzy name filter is loose ("next" matches `queue_invoice_export`); prefer word-start matches.
+- [ ] `DECLARE ... CURSOR FOR` then `SELECT` could indent the SELECT one level in the formatter.
+- [ ] MySQL `PREPARE` and `EXECUTE` show in the outline as a call; label them as prepared statements.
+- [ ] Deploy (`scripts/deploy-local.mjs`) force-closes the app when it's asking about unsaved work, which discards it. Ask before forcing, or stop and say so.
+- [ ] Read-only connections block `SELECT ... INTO @var` (MySQL) and `EXEC sp_helptext`. That's deliberate over-blocking; revisit only with a safe allow-list.
+- [ ] The Changes view skips joined UPDATEs and SQL Server's `UPDATE ... FROM`; they could be read back through the target's key when the join is on it.
+
+## Housekeeping
+
+- [ ] Tests only cover `src/shared`. Consider a small scripted smoke test of the installed app (the debug-port approach used during testing) for the main flows.
+- [ ] RELEASE.md: note that GitHub CLI isn't installed on this machine, and releases are checked through the public jdb-releases API instead.
+- [ ] Delete merged branches (`fixes/minor`, `feature/saved-queries`, `feature/customisation`, `feature/query-params-errors`, `feature/clickable-names`) once nothing else is needed from them.
