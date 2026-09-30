@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useRef, useState, type DragEvent, type Rea
 import type { ConnectionConfig, RoutineInfo, RoutineKind, RoutineSource, TableInfo } from '@shared/types'
 import { ROUTINE_LABELS, searchSources } from '@shared/routines'
 import { useOpenLink } from '../lib/openLink'
+import { SavedQueries } from './SavedQueries'
 import { useAppState } from '../state'
 import { fuzzyScore } from '../lib/fuzzy'
 import { appVersion } from '../lib/version'
@@ -34,7 +35,7 @@ function writeList(key: string, values: Iterable<string>): void {
 }
 
 export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig): void; onNew(): void; onLinks(c: ConnectionConfig): void }) {
-  const { connections, reloadConnections, setLinks } = useAppState()
+  const { connections, reloadConnections, setLinks, reloadQueries } = useAppState()
   const scheme = useColorScheme()
   const update = useUpdate()
   const [collapsed, setCollapsed] = useState(() => new Set(readList(COLLAPSED_KEY)))
@@ -93,7 +94,11 @@ export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig
     try {
       const result = await window.api.exportConnections(ids, name)
       if (result) {
-        toast(`Exported ${result.connections} connection${result.connections === 1 ? '' : 's'}${result.links ? ` and ${result.links} link${result.links === 1 ? '' : 's'}` : ''} (no passwords)`)
+        const extras = [
+          result.links ? `${result.links} link${result.links === 1 ? '' : 's'}` : '',
+          result.queries ? `${result.queries} saved quer${result.queries === 1 ? 'y' : 'ies'}` : ''
+        ].filter(Boolean)
+        toast(`Exported ${result.connections} connection${result.connections === 1 ? '' : 's'}${extras.length ? ` with ${extras.join(' and ')}` : ''} (no passwords)`)
       }
     } catch (e) {
       toast(`Export failed: ${(e as Error).message}`)
@@ -105,11 +110,13 @@ export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig
       const summary = await window.api.importConnections()
       if (!summary) return
       await reloadConnections()
+      await reloadQueries()
       setLinks(await window.api.listLinks())
       const parts = [
         `Imported ${summary.added.length} connection${summary.added.length === 1 ? '' : 's'}`,
         summary.existing.length ? `${summary.existing.length} already here` : '',
-        summary.links ? `${summary.links} link${summary.links === 1 ? '' : 's'}` : ''
+        summary.links ? `${summary.links} link${summary.links === 1 ? '' : 's'}` : '',
+        summary.queries ? `${summary.queries} saved quer${summary.queries === 1 ? 'y' : 'ies'}` : ''
       ].filter(Boolean)
       const notes = [
         summary.added.length ? 'Add passwords in each connection\'s settings.' : '',
@@ -206,6 +213,7 @@ export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig
           )
         })}
         {!connections.length && <div className="muted pad">No connections yet. Add one with ＋, or import a shared file from ⋯.</div>}
+        {connections.length > 0 && <SavedQueries />}
       </div>
       <div className="sidebar-foot muted">
         <span>Ctrl+K to jump anywhere</span>

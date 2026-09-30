@@ -26,7 +26,7 @@ const MAX_RESULTS = 60
 const COLUMN_QUERY_MIN = 2
 
 export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(): void; onNewConnection(): void; onLinks(connectionId: string): void }) {
-  const { connections, tables, loadTables, routines, loadRoutines, openTable, openQuery, open } = useAppState()
+  const { connections, tables, loadTables, routines, loadRoutines, openTable, openQuery, open, savedQueries, openSaved, activeTabId, tabs } = useAppState()
   const theme = useTheme()
   const slop = useSlop()
   const [query, setQuery] = useState('')
@@ -135,6 +135,22 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
         })
       }
     }
+    // Saved queries open on their own connection, or (snippets) on the one in use.
+    const inUse = tabs.find((t) => t.id === activeTabId)?.connectionId ?? connections[0]?.id
+    for (const q of savedQueries) {
+      const own = q.connectionId ? connections.find((c) => c.id === q.connectionId) : undefined
+      const at = own?.id ?? inUse
+      if (!at) continue
+      out.push({
+        key: `sq:${q.id}`,
+        label: q.name,
+        detail: [own ? 'saved query' : 'snippet', q.folder, own?.name].filter(Boolean).join(' · '),
+        icon: '▤',
+        haystack: `${q.name} ${q.folder ?? ''} saved query snippet ${own?.name ?? ''}`,
+        bias: 0,
+        run: () => openSaved(q, at)
+      })
+    }
     out.push({ key: 'new', label: 'New connection…', detail: '', icon: '＋', haystack: 'new connection add', bias: -10, run: onNewConnection })
     if (connections.some((c) => c.authType === 'entra-browser')) {
       out.push({
@@ -180,7 +196,7 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
       })
     }
     return out
-  }, [connections, tables, routines, open, openTable, openQuery, loadTables, onNewConnection, onLinks, theme])
+  }, [connections, tables, routines, open, openTable, openQuery, loadTables, onNewConnection, onLinks, theme, savedQueries, openSaved, activeTabId, tabs])
 
   const results = useMemo(() => {
     // The slop easter egg only shows when typed in full, so it never turns up in normal searches.
@@ -243,7 +259,7 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
         <input
           autoFocus
           className="palette-input"
-          placeholder="Jump to a table, column or routine, or run a command…"
+          placeholder="Jump to a table, column, routine or saved query, or run a command…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKey}

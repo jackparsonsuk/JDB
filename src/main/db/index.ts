@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import type { ColumnFilter, ConnectionConfig, KeyKind, QueryResult, RoutineRef, RoutineSource, RowsRequest, SchemaTable, TableRef, ValueLookup } from '@shared/types'
+import type { ColumnFilter, ConnectionConfig, KeyKind, QueryResult, RoutineRef, RoutineSource, RowsRequest, SchemaTable, TableRef, ValueLookup, WriteCount } from '@shared/types'
 import { findImplicitCommit, findTransactionControl, findWriteKeyword } from '@shared/sqlGuard'
 import { addHistory, getConnection } from '../store'
 import { TimeoutError, type Driver, type DriverTransaction } from './driver'
@@ -204,6 +204,30 @@ export async function runQuery(connectionId: string, sql: string, runId?: string
     throw error
   } finally {
     if (runId && runs.get(runId) === controller) runs.delete(runId)
+  }
+}
+
+/** How long counting a write's rows may take before it is stopped; test databases are shared. */
+const WRITE_COUNT_TIMEOUT_MS = 10_000
+
+/**
+ * Runs the SELECT COUNT(*) that previews a write (see @shared/writePreview). Refused if it could
+ * change anything, stopped after WRITE_COUNT_TIMEOUT_MS, and kept out of the query history.
+ */
+export async function countForWrite(connectionId: string, sql: string): Promise<WriteCount> {
+  const keyword = findWriteKeyword(sql)
+  if (keyword) return { status: 'failed', error: `The count query contains ${keyword}, so it wasn't run.` }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), WRITE_COUNT_TIMEOUT_MS)
+  try {
+    const result = await withDriver(connectionId, (driver) => driver.query(sql, controller.signal))
+    const rows = Number(result.resultSets[0]?.rows[0]?.[0])
+    return Number.isFinite(rows) ? { status: 'counted', rows } : { status: 'failed', error: 'The count came back empty.' }
+  } catch (error) {
+    if (controller.signal.aborted) return { status: 'timeout', seconds: WRITE_COUNT_TIMEOUT_MS / 1000 }
+    return { status: 'failed', error: String((error as Error).message ?? error) }
+  } finally {
+    clearTimeout(timer)
   }
 }
 

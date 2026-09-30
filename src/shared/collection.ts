@@ -1,4 +1,4 @@
-import type { AuthType, ConnectionConfig, CrossLink, DbKind, EnvTag, LinkEnd } from './types'
+import type { AuthType, ConnectionConfig, CrossLink, DbKind, EnvTag, LinkEnd, SavedQuery } from './types'
 
 /**
  * A shareable file of connections (and the cross-database links between them), like a Postman
@@ -10,6 +10,17 @@ export interface ConnectionCollection {
   exportedAt: string
   connections: CollectionConnection[]
   links: CollectionLink[]
+  /** Saved queries; older files have none. */
+  queries: CollectionQuery[]
+}
+
+/** A saved query without its id or dates; `connection` is the ref of the connection it runs on, if any. */
+export interface CollectionQuery {
+  name: string
+  folder?: string
+  sql: string
+  description?: string
+  connection?: string
 }
 
 /** A connection without its id; `ref` ties links to it within the file. */
@@ -31,6 +42,8 @@ export interface ImportSummary {
   links: number
   /** Production connections that came in read-only although the file allowed writes. */
   madeReadOnly: string[]
+  /** Saved queries added (ones already here with the same name, folder and SQL are skipped). */
+  queries: number
 }
 
 const FORMAT = 'jdb-connections'
@@ -38,7 +51,7 @@ const KINDS: ReadonlySet<string> = new Set<DbKind>(['mssql', 'mysql'])
 const AUTH: ReadonlySet<string> = new Set<AuthType>(['sql', 'entra-browser', 'entra-default'])
 const ENVS: ReadonlySet<string> = new Set<EnvTag>(['local', 'dev', 'test', 'prod'])
 
-export function buildCollection(connections: ConnectionConfig[], links: CrossLink[], now = new Date()): ConnectionCollection {
+export function buildCollection(connections: ConnectionConfig[], links: CrossLink[], queries: SavedQuery[] = [], now = new Date()): ConnectionCollection {
   const refs = new Map(connections.map((c, i) => [c.id, `c${i + 1}`]))
   const end = (e: LinkEnd): CollectionLinkEnd => ({ connection: refs.get(e.connectionId)!, table: e.table, column: e.column })
   return {
@@ -49,7 +62,15 @@ export function buildCollection(connections: ConnectionConfig[], links: CrossLin
     // Only links whose both ends are in the file make sense to someone else.
     links: links
       .filter((l) => refs.has(l.from.connectionId) && refs.has(l.to.connectionId))
-      .map((l) => ({ from: end(l.from), to: end(l.to), status: l.status, source: l.source }))
+      .map((l) => ({ from: end(l.from), to: end(l.to), status: l.status, source: l.source })),
+    queries: queries.map((q) => ({
+      name: q.name,
+      ...(q.folder && { folder: q.folder }),
+      sql: q.sql,
+      ...(q.description && { description: q.description }),
+      // A query tied to a connection that isn't in the file travels as one for any connection.
+      ...(q.connectionId && refs.has(q.connectionId) && { connection: refs.get(q.connectionId)! })
+    }))
   }
 }
 
@@ -67,7 +88,14 @@ export function parseCollection(raw: unknown): ConnectionCollection {
     if (!from || !to || from.connection === to.connection || !isObject(l)) return []
     return [{ from, to, status: l.status === 'dismissed' ? 'dismissed' : 'confirmed', source: l.source === 'auto' ? 'auto' : 'manual' }]
   })
-  return { format: FORMAT, version: 1, exportedAt: typeof raw.exportedAt === 'string' ? raw.exportedAt : '', connections, links }
+  const queries = (Array.isArray(raw.queries) ? raw.queries : []).flatMap((q): CollectionQuery[] => {
+    if (!isObject(q) || typeof q.name !== 'string' || typeof q.sql !== 'string' || !q.name.trim()) return []
+    const folder = typeof q.folder === 'string' ? q.folder.trim() : ''
+    const description = typeof q.description === 'string' ? q.description.trim() : ''
+    const connection = typeof q.connection === 'string' && refs.has(q.connection) ? q.connection : undefined
+    return [{ name: q.name.trim(), sql: q.sql, ...(folder && { folder }), ...(description && { description }), ...(connection && { connection }) }]
+  })
+  return { format: FORMAT, version: 1, exportedAt: typeof raw.exportedAt === 'string' ? raw.exportedAt : '', connections, links, queries }
 }
 
 function parseConnection(value: unknown, index: number): CollectionConnection {

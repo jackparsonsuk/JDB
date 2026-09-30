@@ -2,6 +2,12 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 0.6.0
+- **Saved queries.** Press **Ctrl+S** in a query tab to keep a query by name, in a folder if you like. Open it again from **Saved queries** at the bottom of the sidebar or from Ctrl+K. After that Ctrl+S saves changes to it, and a dot on the tab shows when there are some.
+- **Snippets.** Save a query for **Any connection** and it works everywhere: start typing its name in any query and pick it from the suggestions to drop its SQL in.
+- Saved queries travel with shared connection files: exporting all connections includes them, and exporting a folder includes the queries for its connections.
+- **See how many rows a write will change before it runs.** On shared connections, running an UPDATE, DELETE or INSERT now shows how many rows it would touch, for example "12 rows to update in dbo.Orders", and warns in red when there's no WHERE clause. Cancel is the default, so Enter never runs it by accident.
+
 ## 0.5.10
 - Choosing **What's new** (or any command that opens a window) in Ctrl+K with Enter no longer closes it again straight away.
 - Release notes show button and menu names in bold, and the Close button stays in view while you scroll them.

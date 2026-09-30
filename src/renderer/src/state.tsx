@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { ColumnFilter, ConnectionConfig, CrossLink, RoutineInfo, RoutineRef, SavedSession, SavedTab, TableInfo, TableRef, TableSort } from '@shared/types'
+import type { ColumnFilter, ConnectionConfig, CrossLink, RoutineInfo, RoutineRef, SavedQuery, SavedQueryInput, SavedSession, SavedTab, TableInfo, TableRef, TableSort } from '@shared/types'
 import { sameRoutine } from '@shared/routines'
 import * as panes from '@shared/panes'
 import type { CloseScope, PaneId, Panes } from '@shared/panes'
@@ -11,7 +11,11 @@ export type Tab = (
       /** A column to scroll to and highlight; `seq` changes when asked again. Not saved. */
       focusColumn?: { name: string; seq: number }
     }
-  | { kind: 'query'; id: string; pane: PaneId; connectionId: string; title: string; initialSql: string }
+  | {
+      kind: 'query'; id: string; pane: PaneId; connectionId: string; title: string; initialSql: string
+      /** The saved query this tab holds, if it was opened from one or saved as one. */
+      savedId?: string
+    }
   | { kind: 'record'; id: string; pane: PaneId; connectionId: string; table: TableRef; key: ColumnFilter[] }
   | { kind: 'design'; id: string; pane: PaneId; connectionId: string; table: TableRef }
   | {
@@ -71,6 +75,19 @@ interface AppState {
   open(target: OpenTarget, pane?: PaneId): void
   openTable(connectionId: string, table: TableRef, filters?: ColumnFilter[], pane?: PaneId): void
   openQuery(connectionId: string, sql?: string): void
+  /** Saved queries, loaded at startup. */
+  savedQueries: SavedQuery[]
+  /** Adds or updates a saved query and returns it as stored. */
+  saveQuery(input: SavedQueryInput): Promise<SavedQuery>
+  deleteQuery(id: string): Promise<void>
+  reloadQueries(): Promise<void>
+  /** Opens a saved query in a query tab (re-using one already showing it), on `connectionId` or its own connection. */
+  openSaved(query: SavedQuery, connectionId: string): void
+  /** Ties a query tab to a saved query, taking its name as the tab title. */
+  linkQueryTab(tabId: string, savedId: string, title: string): void
+  /** Query tabs with changes not yet saved to their saved query. */
+  unsavedTabs: ReadonlySet<string>
+  setTabUnsaved(tabId: string, unsaved: boolean): void
   /** Opens the record explorer for one row, identified by its primary key values. */
   openRecord(connectionId: string, table: TableRef, key: ColumnFilter[], pane?: PaneId): void
   closeTab(id: string): void
@@ -140,7 +157,7 @@ function savedContent(tab: Tab, memory: TabMemory | undefined): SavedTab {
   const { pane, connectionId } = tab
   switch (tab.kind) {
     case 'query':
-      return { kind: 'query', pane, connectionId, title: tab.title, sql: memory?.sql ?? tab.initialSql }
+      return { kind: 'query', pane, connectionId, title: tab.title, sql: memory?.sql ?? tab.initialSql, ...(tab.savedId && { savedId: tab.savedId }) }
     case 'table': {
       const sort = memory && 'sort' in memory ? memory.sort ?? undefined : tab.initialSort
       return { kind: 'table', pane, connectionId, table: tab.table, filters: memory?.filters ?? tab.initialFilters, ...(sort && { sort }) }
@@ -162,7 +179,7 @@ function savedTab(saved: SavedTab): Tab {
   const id = nextTabId()
   switch (saved.kind) {
     case 'query':
-      return { kind: 'query', id, pane: saved.pane, connectionId: saved.connectionId, title: saved.title, initialSql: saved.sql }
+      return { kind: 'query', id, pane: saved.pane, connectionId: saved.connectionId, title: saved.title, initialSql: saved.sql, ...(saved.savedId && { savedId: saved.savedId }) }
     case 'table':
       return { kind: 'table', id, pane: saved.pane, connectionId: saved.connectionId, table: saved.table, initialFilters: saved.filters, initialSort: saved.sort }
     case 'record':
@@ -345,6 +362,53 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     setLayout((s) => panes.addTab(s, { kind: 'query', id: nextTabId(), pane: s.focused, connectionId, title, initialSql: sql }))
   }, [])
 
+  const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([])
+  const reloadQueries = useCallback(async () => {
+    setSavedQueries(await window.api.listQueries())
+  }, [])
+  useEffect(() => {
+    reloadQueries().catch(() => undefined)
+  }, [reloadQueries])
+
+  const saveQuery = useCallback(async (input: SavedQueryInput) => {
+    const saved = await window.api.saveQuery(input)
+    setSavedQueries((list) => (list.some((q) => q.id === saved.id) ? list.map((q) => (q.id === saved.id ? saved : q)) : [...list, saved]))
+    // Open tabs showing it take its new name.
+    setLayout((s) => ({ ...s, tabs: s.tabs.map((t) => (t.kind === 'query' && t.savedId === saved.id ? { ...t, title: saved.name } : t)) }))
+    return saved
+  }, [])
+
+  const deleteQuery = useCallback(async (id: string) => {
+    await window.api.deleteQuery(id)
+    setSavedQueries((list) => list.filter((q) => q.id !== id))
+    // Tabs showing it keep their text as an ordinary query.
+    setLayout((s) => ({ ...s, tabs: s.tabs.map((t) => (t.kind === 'query' && t.savedId === id ? { ...t, savedId: undefined } : t)) }))
+  }, [])
+
+  const openSaved = useCallback((query: SavedQuery, connectionId: string) => {
+    const existing = layoutRef.current.tabs.find((t) => t.kind === 'query' && t.savedId === query.id && t.connectionId === connectionId)
+    if (existing) {
+      setLayout((s) => panes.activate(s, existing.id))
+      return
+    }
+    setLayout((s) => panes.addTab(s, { kind: 'query', id: nextTabId(), pane: s.focused, connectionId, title: query.name, initialSql: query.sql, savedId: query.id }))
+  }, [])
+
+  const linkQueryTab = useCallback((tabId: string, savedId: string, title: string) => {
+    setLayout((s) => ({ ...s, tabs: s.tabs.map((t) => (t.id === tabId && t.kind === 'query' ? { ...t, savedId, title } : t)) }))
+  }, [])
+
+  const [unsavedTabs, setUnsavedTabs] = useState<ReadonlySet<string>>(() => new Set())
+  const setTabUnsaved = useCallback((tabId: string, unsaved: boolean) => {
+    setUnsavedTabs((prev) => {
+      if (prev.has(tabId) === unsaved) return prev
+      const next = new Set(prev)
+      if (unsaved) next.add(tabId)
+      else next.delete(tabId)
+      return next
+    })
+  }, [])
+
   const setActiveTab = useCallback((id: string) => setLayout((s) => panes.activate(s, id)), [])
   const focusPane = useCallback((pane: PaneId) => setLayout((s) => panes.focusPane(s, pane)), [])
   const moveTab = useCallback((id: string, pane: PaneId) => setLayout((s) => panes.moveTab(s, id, pane)), [])
@@ -391,6 +455,14 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     open,
     openTable,
     openQuery,
+    savedQueries,
+    saveQuery,
+    deleteQuery,
+    reloadQueries,
+    openSaved,
+    linkQueryTab,
+    unsavedTabs,
+    setTabUnsaved,
     openRecord,
     closeTab,
     closeTabs,
@@ -402,7 +474,7 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     rememberTab,
     initialRatio,
     rememberRatio
-  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, routines, loadRoutines, layout, setActiveTab, focusPane, moveTab, open, openTable, openQuery, openRecord, closeTab, closeTabs, pinTab, reorderTab, schemaVersions, schemaChanged, rememberTab, initialRatio, rememberRatio])
+  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, routines, loadRoutines, layout, setActiveTab, focusPane, moveTab, open, openTable, openQuery, savedQueries, saveQuery, deleteQuery, reloadQueries, openSaved, linkQueryTab, unsavedTabs, setTabUnsaved, openRecord, closeTab, closeTabs, pinTab, reorderTab, schemaVersions, schemaChanged, rememberTab, initialRatio, rememberRatio])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

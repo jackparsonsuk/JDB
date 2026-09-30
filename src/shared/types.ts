@@ -273,6 +273,30 @@ export interface ExportResult {
   truncated: boolean
 }
 
+/** A query kept by name, to open again or insert as a snippet. */
+export interface SavedQuery {
+  id: string
+  name: string
+  /** Groups it in the sidebar; none shows it at the top level. */
+  folder?: string
+  sql: string
+  description?: string
+  /** The connection it runs on; none means it suits any connection (a snippet). */
+  connectionId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** What the renderer sends to save a query: no id adds a new one. */
+export type SavedQueryInput = Omit<SavedQuery, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
+
+/** How many rows a write would touch, counted before it runs. */
+export type WriteCount =
+  | { status: 'counted'; rows: number }
+  /** Counting took longer than the limit and was stopped. */
+  | { status: 'timeout'; seconds: number }
+  | { status: 'failed'; error: string }
+
 export interface HistoryEntry {
   id: string
   connectionId: string
@@ -290,7 +314,7 @@ export interface TableSort {
 /** A tab as saved between runs: what it shows, not its results. */
 export type SavedTab = (
   | { kind: 'table'; pane: 0 | 1; connectionId: string; table: TableRef; filters: ColumnFilter[]; sort?: TableSort }
-  | { kind: 'query'; pane: 0 | 1; connectionId: string; title: string; sql: string }
+  | { kind: 'query'; pane: 0 | 1; connectionId: string; title: string; sql: string; savedId?: string }
   | { kind: 'record'; pane: 0 | 1; connectionId: string; table: TableRef; key: ColumnFilter[] }
   | { kind: 'design'; pane: 0 | 1; connectionId: string; table: TableRef }
   | { kind: 'routine'; pane: 0 | 1; connectionId: string; routine: RoutineRef }

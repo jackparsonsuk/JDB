@@ -227,7 +227,7 @@ export function App() {
 
 /** A pane's tab bar and the environment banner for the tab it shows. */
 function PaneHead({ pane, split }: { pane: PaneId; split: boolean }) {
-  const { layout, setActiveTab, closeTab, pinTab, reorderTab, focusPane, connection } = useAppState()
+  const { layout, setActiveTab, closeTab, pinTab, reorderTab, focusPane, connection, unsavedTabs } = useAppState()
   const [menu, setMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
   const own = tabsIn(layout, pane)
 
@@ -312,6 +312,7 @@ function PaneHead({ pane, split }: { pane: PaneId; split: boolean }) {
             >
               <span className="tab-icon">{tab.kind === 'table' ? '▦' : tab.kind === 'record' ? '◉' : tab.kind === 'design' ? '⚙' : tab.kind === 'routine' ? 'ƒ' : '⌨'}</span>
               <span className="tab-title">{tabTitle(tab)}</span>
+              {unsavedTabs.has(tab.id) && <span className="tab-unsaved" title="Unsaved changes to this saved query (Ctrl+S saves)" />}
               <span className="tab-conn">{conn?.name}</span>
               {tab.pinned ? (
                 <button className="icon small tab-pin" title="Unpin" onMouseDown={(e) => e.stopPropagation()} onClick={() => pinTab(tab.id, false)}>📌</button>

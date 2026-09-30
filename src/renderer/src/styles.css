@@ -865,3 +865,61 @@ html.slop ::selection { background: #ff4ecd; color: #fff; }
 .hidden-card p { margin: 0; color: var(--text-dim); line-height: 1.55; }
 .hidden-card code { font: 12px var(--mono); color: var(--text); background: var(--bg-3); padding: 1px 5px; border-radius: 4px; }
 .grant { margin: 14px 0 0; padding: 8px 12px; font: 12px var(--mono); text-align: left; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; user-select: all; }
+
+/* Saved queries: the save dialog */
+textarea { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 6px 8px; outline: none; resize: vertical; font-size: 13px; }
+textarea:focus { border-color: var(--accent); }
+.form .optional { font-size: 10.5px; opacity: 0.7; margin-left: 4px; }
+.choice-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.choice { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 9px 12px; text-align: left; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; transition: border-color 120ms, box-shadow 120ms; }
+.choice:hover:not(:disabled) { background: var(--bg); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.choice.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.choice-title { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13px; }
+.choice-note { font-size: 11.5px; color: var(--text-dim); line-height: 1.4; }
+
+/* Saved queries: the sidebar section */
+.saved-queries { margin-top: 10px; border-top: 1px solid var(--border); padding: 6px 0 10px; }
+.saved-head { display: flex; align-items: center; gap: 7px; width: 100%; border: none; border-radius: 0; background: none; padding: 5px 12px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-dim); }
+.saved-head:hover:not(:disabled) { background: none; color: var(--text); }
+.saved-head .chevron { width: 8px; font-size: 12px; }
+.saved-body { padding: 0 8px 0 18px; display: flex; flex-direction: column; }
+.saved-body .search { margin: 4px 0; }
+.saved-row { position: relative; display: flex; align-items: center; min-width: 0; }
+.saved-row:hover .saved-actions { opacity: 1; }
+.saved-item { flex: 1; min-width: 0; }
+.saved-item .table-name { min-width: 0; }
+.saved-icon { width: 16px; flex-shrink: 0; text-align: center; font-size: 11px; color: var(--kind-procedure); }
+.saved-icon.snippet { color: var(--kind-function); font-size: 9px; letter-spacing: -1px; }
+.saved-conn { flex: 0 1 auto; min-width: 0; max-width: 40%; font-size: 10.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-row:hover .saved-conn { visibility: hidden; }
+.saved-actions { position: absolute; right: 2px; background: var(--bg-hover); border-radius: 4px; }
+.saved-folder-row { display: flex; align-items: center; gap: 6px; width: 100%; border: none; background: none; padding: 4px 6px; text-align: left; font-size: 12px; font-weight: 600; color: var(--text-dim); border-radius: 4px; }
+.saved-folder-row:hover:not(:disabled) { background: var(--bg-hover); }
+.saved-folder-body { padding-left: 14px; }
+.saved-queries kbd { font-size: 10px; padding: 0 4px; }
+
+/* The dot on a tab with unsaved changes to its saved query, and the Save button */
+.tab-unsaved { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.save-query-button.unsaved { color: var(--accent); font-weight: 600; }
+
+/* A saved query's preview in autocompletion */
+.snippet-info { max-width: 420px; }
+.snippet-info .snippet-note { font: 12px var(--sans); color: var(--text-dim); margin-bottom: 6px; white-space: normal; }
+.snippet-info pre { margin: 0; font: 11.5px var(--mono); white-space: pre-wrap; max-height: 220px; overflow: hidden; }
+
+/* Confirming a write, with how many rows it touches */
+.dialog.write-confirm { width: 600px; }
+.write-impact { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin: 4px 0 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; }
+.write-impact.warn { border-color: color-mix(in srgb, var(--env-prod) 55%, var(--border)); background: color-mix(in srgb, var(--env-prod) 7%, var(--bg)); }
+.write-impact.none { border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
+.impact-number { min-width: 56px; font: 700 26px/1 var(--mono); font-variant-numeric: tabular-nums; text-align: center; }
+.write-impact.warn .impact-number { color: var(--env-prod); }
+.write-impact.none .impact-number { color: var(--ok); }
+.impact-text { font-size: 13px; line-height: 1.45; }
+.counting { display: inline-block; width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--bg-3); border-top-color: var(--accent); animation: spin 0.8s linear infinite; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.write-confirm .status { margin: 0 0 10px; }
+.write-sql { max-height: 22vh; margin-top: 0; white-space: pre-wrap; word-break: break-word; }
+.count-sql { max-height: 16vh; color: var(--text-dim); }
+button.linkish { border: none; background: none; padding: 6px 0 0; font-size: 12px; color: var(--accent); }
+button.linkish:hover:not(:disabled) { background: none; text-decoration: underline; }

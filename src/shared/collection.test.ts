@@ -18,7 +18,7 @@ const link: CrossLink = {
 
 describe('connection collections', () => {
   it('round-trips connections and the links between them, without ids or passwords', () => {
-    const file = buildCollection([shop, jobs], [link], new Date('2026-09-29T00:00:00Z'))
+    const file = buildCollection([shop, jobs], [link], [], new Date('2026-09-29T00:00:00Z'))
     const text = JSON.stringify(file)
     expect(text).not.toContain('hasPassword')
     expect(text).not.toContain('"id"')
@@ -26,6 +26,30 @@ describe('connection collections', () => {
     expect(parsed.connections.map((c) => c.name)).toEqual(['Shop', 'Jobs'])
     expect(parsed.connections[0]).toMatchObject({ folder: 'Local', readOnly: false })
     expect(parsed.links).toEqual([{ from: { connection: 'c1', table: link.from.table, column: 'JobId' }, to: { connection: 'c2', table: link.to.table, column: 'Id' }, status: 'confirmed', source: 'auto' }])
+  })
+
+  it('carries saved queries, tied to connections by ref', () => {
+    const at = '2026-09-30T00:00:00Z'
+    const queries = [
+      { id: '1', name: 'Open jobs', folder: 'Daily', sql: 'SELECT * FROM Job WHERE Closed = 0', connectionId: 'c', createdAt: at, updatedAt: at },
+      { id: '2', name: 'Row count', sql: 'SELECT COUNT(*) FROM x', description: 'any table', createdAt: at, updatedAt: at },
+      { id: '3', name: 'Elsewhere', sql: 'SELECT 1', connectionId: 'not-exported', createdAt: at, updatedAt: at }
+    ]
+    const file = buildCollection([shop, jobs], [], queries)
+    expect(JSON.stringify(file.queries)).not.toContain('"id"')
+    const parsed = parseCollection(JSON.parse(JSON.stringify(file)))
+    expect(parsed.queries).toEqual([
+      { name: 'Open jobs', folder: 'Daily', sql: 'SELECT * FROM Job WHERE Closed = 0', connection: 'c2' },
+      { name: 'Row count', sql: 'SELECT COUNT(*) FROM x', description: 'any table' },
+      { name: 'Elsewhere', sql: 'SELECT 1' }
+    ])
+  })
+
+  it('reads files without queries, and skips broken ones', () => {
+    const base = { format: 'jdb-connections', version: 1, connections: [{ name: 'X', host: 'h', kind: 'mysql', ref: 'c1' }] }
+    expect(parseCollection(base).queries).toEqual([])
+    expect(parseCollection({ ...base, queries: [{ name: '', sql: 'x' }, { name: 'ok', sql: 'SELECT 1', connection: 'c9' }, 'junk'] }).queries)
+      .toEqual([{ name: 'ok', sql: 'SELECT 1' }])
   })
 
   it('leaves out links to connections that were not exported', () => {

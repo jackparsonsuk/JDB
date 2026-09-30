@@ -10,7 +10,7 @@ const FILTERS = [{ name: 'JDB connections', extensions: ['json'] }]
 const MAX_FILE_BYTES = 5 * 1024 * 1024
 
 /** Saves connections (all, or just `ids`) to a shareable file. Returns the path, or null if cancelled. */
-export async function exportConnections(ids: string[] | null, suggestedName: string): Promise<{ path: string; connections: number; links: number } | null> {
+export async function exportConnections(ids: string[] | null, suggestedName: string): Promise<{ path: string; connections: number; links: number; queries: number } | null> {
   const all = store.listConnections()
   const chosen = ids ? all.filter((c) => ids.includes(c.id)) : all
   if (!chosen.length) throw new Error('There are no connections to export.')
@@ -23,9 +23,11 @@ export async function exportConnections(ids: string[] | null, suggestedName: str
   const window = BrowserWindow.getFocusedWindow()
   const choice = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
   if (choice.canceled || !choice.filePath) return null
-  const collection = buildCollection(chosen, store.listLinks())
+  // Everything goes with a full export; a folder takes the queries tied to its connections.
+  const queries = store.listQueries().filter((q) => !ids || (q.connectionId && ids.includes(q.connectionId)))
+  const collection = buildCollection(chosen, store.listLinks(), queries)
   await writeFile(choice.filePath, JSON.stringify(collection, null, 2), 'utf8')
-  return { path: choice.filePath, connections: collection.connections.length, links: collection.links.length }
+  return { path: choice.filePath, connections: collection.connections.length, links: collection.links.length, queries: collection.queries.length }
 }
 
 /** Asks for a collection file and adds its connections; null if cancelled. */

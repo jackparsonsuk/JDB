@@ -1,5 +1,5 @@
 import type {
-  CellValue, ColumnFilter, ColumnSummary, ConnectionConfig, DbKind, ExportResult, TableExportRequest, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RoutineDefinition, RoutineInfo, RoutineRef, RoutineSource, RowsRequest, RowsResult, SavedSession,
+  CellValue, ColumnFilter, ColumnSummary, ConnectionConfig, DbKind, ExportResult, TableExportRequest, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RoutineDefinition, RoutineInfo, RoutineRef, RoutineSource, SavedQuery, SavedQueryInput, WriteCount, RowsRequest, RowsResult, SavedSession,
   SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ThemeSetting, UpdateCheck, ValueLookup
 } from '../shared/types'
 import type { ImportSummary } from '../shared/collection'
@@ -13,7 +13,7 @@ export interface Api {
   /** Moves connections into a sidebar folder; '' takes them out of any folder. */
   setFolder(ids: string[], folder: string): Promise<void>
   /** Saves connections (all when `ids` is null) and their links to a file to share; no passwords. Null if cancelled. */
-  exportConnections(ids: string[] | null, suggestedName: string): Promise<{ path: string; connections: number; links: number } | null>
+  exportConnections(ids: string[] | null, suggestedName: string): Promise<{ path: string; connections: number; links: number; queries: number } | null>
   /** Asks for a connections file and adds what it holds. Null if cancelled. */
   importConnections(): Promise<ImportSummary | null>
   listTables(connectionId: string): Promise<TableInfo[]>
@@ -40,6 +40,8 @@ export interface Api {
    */
   runQuery(connectionId: string, sql: string, runId?: string, transactionId?: string): Promise<QueryResult>
   cancelQuery(runId: string): Promise<void>
+  /** Runs a write's row-count preview (a SELECT COUNT(*)); refused if it could write, stopped after 10 s. */
+  countForWrite(connectionId: string, sql: string): Promise<WriteCount>
   /** Runs grid edits in one transaction, rolling all back unless each matches exactly one row. Returns how many ran. */
   applyChanges(connectionId: string, statements: string[]): Promise<number>
   /** Opens a transaction on a connection of its own and returns its id. Refused on read-only connections. */
@@ -62,6 +64,10 @@ export interface Api {
   discoverLinks(connectionA: string, connectionB: string): Promise<LinkCandidate[]>
   verifyLink(from: LinkEnd, to: LinkEnd): Promise<LinkOverlap>
   listHistory(): Promise<HistoryEntry[]>
+  listQueries(): Promise<SavedQuery[]>
+  /** Adds a query (no id) or updates the one with its id. */
+  saveQuery(input: SavedQueryInput): Promise<SavedQuery>
+  deleteQuery(id: string): Promise<void>
   /** The last saved session, unchecked; pass it through parseSession. */
   loadSession(): Promise<unknown>
   saveSession(session: SavedSession): void

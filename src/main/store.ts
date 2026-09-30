@@ -2,7 +2,7 @@ import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, LinkEnd, SavedSession, ThemeSetting } from '@shared/types'
+import type { ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, LinkEnd, SavedQuery, SavedQueryInput, SavedSession, ThemeSetting } from '@shared/types'
 import { sameDatabase, type ConnectionCollection, type ImportSummary } from '@shared/collection'
 
 interface StoredConnection extends ConnectionConfig {
@@ -76,6 +76,11 @@ export function saveConnection(input: ConnectionInput): ConnectionConfig {
 export function deleteConnection(id: string): void {
   writeJson('connections.json', loadStored().filter((c) => c.id !== id))
   writeJson('links.json', listLinks().filter((l) => l.from.connectionId !== id && l.to.connectionId !== id))
+  // Its saved queries stay, as queries for any connection.
+  const queries = listQueries()
+  if (queries.some((q) => q.connectionId === id)) {
+    writeJson('queries.json', queries.map(({ connectionId, ...q }) => (connectionId === id ? q : { ...q, ...(connectionId && { connectionId }) })))
+  }
 }
 
 /** Moves connections into a folder; an empty name takes them out of any folder. */
@@ -96,7 +101,7 @@ export function setFolder(ids: string[], folder: string): void {
 export function importCollection(collection: ConnectionCollection): ImportSummary {
   const stored = loadStored()
   const idForRef = new Map<string, string>()
-  const summary: ImportSummary = { added: [], existing: [], links: 0, madeReadOnly: [] }
+  const summary: ImportSummary = { added: [], existing: [], links: 0, madeReadOnly: [], queries: 0 }
   const added: StoredConnection[] = []
   for (const { ref, ...incoming } of collection.connections) {
     const match = [...stored, ...added].find((c) => sameDatabase(c, incoming))
@@ -127,6 +132,30 @@ export function importCollection(collection: ConnectionCollection): ImportSummar
   }
   if (newLinks.length) saveLinks(newLinks)
   summary.links = newLinks.length
+
+  // Queries already here with the same name, folder and SQL are skipped.
+  const existingQueries = listQueries()
+  const queryKey = (q: { name: string; folder?: string; sql: string }): string => JSON.stringify([q.name.trim().toLowerCase(), (q.folder ?? '').trim().toLowerCase(), q.sql.trim()])
+  const knownQueries = new Set(existingQueries.map(queryKey))
+  const now = new Date().toISOString()
+  const newQueries: SavedQuery[] = []
+  for (const q of collection.queries) {
+    if (knownQueries.has(queryKey(q))) continue
+    knownQueries.add(queryKey(q))
+    const connectionId = q.connection ? idForRef.get(q.connection) : undefined
+    newQueries.push({
+      id: randomUUID(),
+      name: q.name,
+      sql: q.sql,
+      ...(q.folder && { folder: q.folder }),
+      ...(q.description && { description: q.description }),
+      ...(connectionId && { connectionId }),
+      createdAt: now,
+      updatedAt: now
+    })
+  }
+  if (newQueries.length) writeJson('queries.json', [...existingQueries, ...newQueries])
+  summary.queries = newQueries.length
   return summary
 }
 
@@ -150,6 +179,37 @@ export function deleteLink(id: string): CrossLink[] {
   const next = listLinks().filter((l) => l.id !== id)
   writeJson('links.json', next)
   return next
+}
+
+export function listQueries(): SavedQuery[] {
+  return readJson<SavedQuery[]>('queries.json', [])
+}
+
+/** Adds a query (no id) or replaces the one with its id. */
+export function saveQuery(input: SavedQueryInput): SavedQuery {
+  const name = input.name.trim()
+  if (!name) throw new Error('A saved query needs a name.')
+  const all = listQueries()
+  const now = new Date().toISOString()
+  const existing = input.id ? all.find((q) => q.id === input.id) : undefined
+  const folder = input.folder?.trim()
+  const description = input.description?.trim()
+  const saved: SavedQuery = {
+    id: existing?.id ?? randomUUID(),
+    name,
+    sql: input.sql,
+    ...(folder && { folder }),
+    ...(description && { description }),
+    ...(input.connectionId && { connectionId: input.connectionId }),
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now
+  }
+  writeJson('queries.json', existing ? all.map((q) => (q.id === saved.id ? saved : q)) : [...all, saved])
+  return saved
+}
+
+export function deleteQuery(id: string): void {
+  writeJson('queries.json', listQueries().filter((q) => q.id !== id))
 }
 
 export function listHistory(): HistoryEntry[] {

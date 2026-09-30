@@ -19,15 +19,28 @@ import { runExport } from '../lib/exporting'
 import { stagedChanges, useTransaction } from '../lib/useTransaction'
 import { TransactionBar } from './TransactionBar'
 import { toast } from './Toast'
+import { snippetCompletions } from '../lib/snippets'
+import { SaveQueryDialog } from './SaveQueryDialog'
+import { WriteConfirmDialog } from './WriteConfirmDialog'
 
 const emptySelection: Selection = { rows: new Set(), active: null }
 
 /** `active`: the tab is showing in its pane; `focused`: and that pane has the keyboard. */
 export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 'query' }>; active: boolean; focused: boolean }) {
-  const { connection, tables, loadTables, rememberTab } = useAppState()
+  const { connection, tables, loadTables, rememberTab, savedQueries, saveQuery, linkQueryTab, setTabUnsaved } = useAppState()
   const conn = connection(tab.connectionId)
   const scheme = useColorScheme()
   const [text, setText] = useState(tab.initialSql)
+  const savedQuery = tab.savedId ? savedQueries.find((q) => q.id === tab.savedId) : undefined
+  const unsaved = !!savedQuery && text !== savedQuery.sql
+  const [saving, setSaving] = useState(false)
+  /** A write waiting for the user to confirm it in WriteConfirmDialog. */
+  const [pendingWrite, setPendingWrite] = useState<{ sql: string; keyword: string } | null>(null)
+  const [saveDialog, setSaveDialog] = useState(false)
+  useEffect(() => {
+    setTabUnsaved(tab.id, unsaved)
+  }, [tab.id, unsaved, setTabUnsaved])
+  useEffect(() => () => setTabUnsaved(tab.id, false), [tab.id, setTabUnsaved])
   const firstText = useRef(true)
   useEffect(() => {
     if (firstText.current) firstText.current = false
@@ -56,9 +69,12 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   const viewRef = useRef<EditorView | null>(null)
   const txn = useTransaction(tab.connectionId)
   const staged = txn.tx ? stagedChanges(txn.tx).statements : 0
+  // One warning per tab: an open transaction matters more than unsaved edits to a saved query.
   useCloseWarning(tab.id, txn.tx && conn
     ? `A transaction is open on ${conn.name}. Closing the tab rolls it back${staged ? `, discarding ${staged} staged change${staged === 1 ? '' : 's'}` : ''}.`
-    : null)
+    : unsaved && savedQuery
+      ? `Changes to the saved query "${savedQuery.name}" aren't saved.`
+      : null)
   /** The run in flight, so Cancel can stop it on the server. */
   const runRef = useRef<{ id: string; controller: AbortController } | null>(null)
 
@@ -106,19 +122,22 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     const { schema, defaultSchema } = sqlNamespace(tableList ?? [], model)
     const extensions: Extension[] = [sql({ dialect, schema, defaultSchema, upperCaseKeywords: true })]
     if (model) extensions.push(dialect.language.data.of({ autocomplete: sqlAssist(model) }))
+    if (conn) extensions.push(dialect.language.data.of({ autocomplete: snippetCompletions(savedQueries, conn.id) }))
     return extensions
-  }, [conn?.kind, tableList, model])
+  }, [conn?.kind, conn?.id, tableList, model, savedQueries])
 
-  const execute = useCallback(async (sqlText: string) => {
+  /** `confirmed`: the user has already agreed to this write in WriteConfirmDialog. */
+  const execute = useCallback(async (sqlText: string, confirmed = false) => {
     const statement = sqlText.trim()
     if (!statement || !conn || running) return
 
     const keyword = findWriteKeyword(statement)
     // Writes on prod are staged in a transaction, so the commit is the confirmation.
     const stage = !!keyword && !conn.readOnly && conn.env === 'prod' && !txn.idRef.current
-    if (keyword && !conn.readOnly && conn.env !== 'local' && !stage && !txn.idRef.current) {
-      const ok = window.confirm(`This query contains ${keyword} and will run against ${conn.name} (${conn.env.toUpperCase()}).\n\nRun it?`)
-      if (!ok) return
+    if (keyword && !conn.readOnly && conn.env !== 'local' && !stage && !txn.idRef.current && !confirmed) {
+      // Asks, saying how many rows it would touch; Run calls back here with confirmed.
+      setPendingWrite({ sql: statement, keyword })
+      return
     }
 
     const { id } = startRun()
@@ -217,14 +236,33 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     execute(selected || text)
   }, [execute, text])
 
+  /** Ctrl+S: updates the saved query this tab holds, or asks for a name for a new one. */
+  const save = useCallback(async () => {
+    if (!savedQuery || !unsaved) {
+      setSaveDialog(true)
+      return
+    }
+    setSaving(true)
+    try {
+      const { id, name, folder, description, connectionId } = savedQuery
+      await saveQuery({ id, name, folder, description, connectionId, sql: text })
+      toast(`Saved ${name}`)
+    } catch (e) {
+      toast(`Couldn't save: ${(e as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
+  }, [savedQuery, unsaved, saveQuery, text])
+
   const runKeymap = useMemo(
     () => Prec.highest(keymap.of([
       { key: 'Mod-Enter', run: () => { run(); return true } },
       { key: 'F5', run: () => { run(); return true } },
+      { key: 'Mod-s', run: () => { save(); return true } },
       // Tab accepts the highlighted completion like Enter; with no list open it indents as before.
       { key: 'Tab', run: acceptCompletion }
     ])),
-    [run]
+    [run, save]
   )
 
   const startResize = (event: React.MouseEvent): void => {
@@ -275,6 +313,16 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
               : 'Ctrl+Enter runs the selection, or everything'}
         </span>
         <div className="toolbar-right">
+          <button
+            className={`ghost save-query-button ${unsaved ? 'unsaved' : ''}`}
+            disabled={saving || !text.trim()}
+            title={savedQuery
+              ? unsaved ? `Save changes to "${savedQuery.name}" (Ctrl+S)` : `"${savedQuery.name}": rename it, move it or save a copy`
+              : 'Save this query to open again or use as a snippet (Ctrl+S)'}
+            onClick={save}
+          >
+            {savedQuery ? (unsaved ? 'Save' : 'Saved') : 'Save'}
+          </button>
           <button className={`ghost ${showAsk ? 'on' : ''}`} title="Describe a query in plain English" onClick={() => setShowAsk((s) => !s)}>✦ Ask</button>
           <button className={`ghost ${showHistory ? 'on' : ''}`} onClick={() => setShowHistory((s) => !s)}>History</button>
         </div>
@@ -391,6 +439,40 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
           />
         )}
       </div>
+
+      {saveDialog && (
+        <SaveQueryDialog
+          connection={conn}
+          sql={text}
+          existing={savedQuery}
+          onClose={() => {
+            setSaveDialog(false)
+            viewRef.current?.focus()
+          }}
+          onSaved={(saved) => {
+            setSaveDialog(false)
+            linkQueryTab(tab.id, saved.id, saved.name)
+            toast(`Saved ${saved.name}`)
+            viewRef.current?.focus()
+          }}
+        />
+      )}
+      {pendingWrite && (
+        <WriteConfirmDialog
+          connection={conn}
+          sql={pendingWrite.sql}
+          keyword={pendingWrite.keyword}
+          onCancel={() => {
+            setPendingWrite(null)
+            viewRef.current?.focus()
+          }}
+          onRun={() => {
+            const { sql: statement } = pendingWrite
+            setPendingWrite(null)
+            execute(statement, true)
+          }}
+        />
+      )}
     </div>
   )
 }

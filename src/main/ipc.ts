@@ -1,5 +1,5 @@
 import { clipboard, ipcMain, nativeTheme } from 'electron'
-import type { CellValue, ColumnFilter, ConnectionConfig, DbKind, TableExportRequest, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RoutineRef, RowsRequest, SavedSession, TableRef, ThemeSetting, ValueLookup } from '@shared/types'
+import type { CellValue, ColumnFilter, ConnectionConfig, DbKind, TableExportRequest, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RoutineRef, RowsRequest, SavedQueryInput, SavedSession, TableRef, ThemeSetting, ValueLookup } from '@shared/types'
 import * as db from './db'
 import * as store from './store'
 import { discoverLinks, verifyLink } from './links'
@@ -56,6 +56,7 @@ export function registerIpc(): void {
     db.distinctValues(id, table, column, limit, via))
   handle('db:query', (id: string, sql: string, runId?: string, transactionId?: string) => db.runQuery(id, sql, runId, transactionId))
   handle('db:cancel', (runId: string) => db.cancelQuery(runId))
+  handle('db:countForWrite', (id: string, sql: string) => db.countForWrite(id, sql))
   handle('db:applyChanges', (id: string, statements: string[]) => db.applyChanges(id, statements))
   handle('tx:begin', (id: string) => db.beginTransaction(id))
   handle('tx:commit', (transactionId: string) => db.commitTransaction(transactionId))
@@ -74,6 +75,9 @@ export function registerIpc(): void {
   handle('links:verify', (from: LinkEnd, to: LinkEnd) => verifyLink(from, to))
 
   handle('history:list', () => store.listHistory())
+  handle('queries:list', () => store.listQueries())
+  handle('queries:save', (input: SavedQueryInput) => store.saveQuery(input))
+  handle('queries:delete', (id: string) => store.deleteQuery(id))
   handle('session:load', () => store.loadSession())
   // Fire-and-forget so the last save still lands while the window is closing.
   ipcMain.on('session:save', (_event, session: SavedSession) => {

@@ -34,7 +34,10 @@ function parseTab(value: unknown): SavedTab | null {
   const connectionId = value.connectionId
   switch (value.kind) {
     case 'query':
-      return { kind: 'query', pane, connectionId, title: typeof value.title === 'string' ? value.title : 'Query', sql: typeof value.sql === 'string' ? value.sql : '' }
+      return {
+        kind: 'query', pane, connectionId, title: typeof value.title === 'string' ? value.title : 'Query', sql: typeof value.sql === 'string' ? value.sql : '',
+        ...(typeof value.savedId === 'string' && { savedId: value.savedId })
+      }
     case 'table': {
       const table = parseTableRef(value.table)
       if (!table) return null
