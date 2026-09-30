@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
-import type { ConnectionConfig, RoutineInfo, RoutineKind, RoutineSource, TableInfo } from '@shared/types'
+import type { ConnectionConfig, DatabaseList, RoutineInfo, RoutineKind, RoutineSource, TableInfo } from '@shared/types'
 import { ROUTINE_LABELS, searchSources } from '@shared/routines'
 import { useOpenLink } from '../lib/openLink'
 import { SavedQueries } from './SavedQueries'
@@ -422,12 +422,67 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
                     {t.rowEstimate !== undefined && <span className="table-rows">{compact(t.rowEstimate)}</span>}
                   </button>
                 ))}
-                {!list.length && <div className="muted pad">No matches</div>}
+                {!state.tables.length
+                  ? <NoTables connection={connection} onEdit={onEdit} />
+                  : !list.length && <div className="muted pad">No matches</div>}
               </div>
             </>
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * A connection that lists no tables has usually landed in the wrong database: on Azure SQL a
+ * blank Database means master. Says which database it's in and offers the others on the server.
+ */
+function NoTables({ connection, onEdit }: { connection: ConnectionConfig; onEdit(): void }) {
+  const { forgetTables, reloadConnections, loadTables } = useAppState()
+  const [list, setList] = useState<DatabaseList | null>(null)
+  const [switching, setSwitching] = useState<string | null>(null)
+
+  useEffect(() => {
+    let live = true
+    window.api.listDatabases(connection.id).then((l) => live && setList(l), () => undefined)
+    return () => { live = false }
+  }, [connection.id])
+
+  const use = async (database: string): Promise<void> => {
+    setSwitching(database)
+    try {
+      await window.api.saveConnection({ ...connection, database })
+      forgetTables(connection.id)
+      await reloadConnections()
+      loadTables(connection.id, true)
+      toast(`${connection.name} now uses ${database}`)
+    } catch (e) {
+      toast(`Couldn't switch database: ${(e as Error).message}`)
+      setSwitching(null)
+    }
+  }
+
+  const current = list?.current
+  const others = list?.databases.filter((d) => d !== current) ?? []
+  return (
+    <div className="no-tables">
+      <div>
+        {current === 'master'
+          ? <>Connected to <strong>master</strong>, which has no tables of its own. {connection.database ? '' : 'With no Database set, Azure SQL starts there.'}</>
+          : <>No tables or views visible{current ? <> in <strong>{current}</strong></> : ''}. The login may not have permission to see them.</>}
+      </div>
+      {others.length > 0 && (
+        <>
+          <div className="muted">Use a database on this server:</div>
+          <div className="no-tables-dbs">
+            {others.map((d) => (
+              <button key={d} disabled={!!switching} onClick={() => use(d)}>{switching === d ? 'Switching…' : d}</button>
+            ))}
+          </div>
+        </>
+      )}
+      <button className="ghost" onClick={onEdit}>Edit connection</button>
     </div>
   )
 }

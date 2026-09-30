@@ -2,6 +2,10 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 1.2.1
+- **No more mystery empty connections.** If a connection shows no tables, the sidebar now says which database it's connected to and lists the other databases on the server. Click one to switch the connection to it. On Azure SQL a blank Database means you land in master, which has no tables of its own, and the connection dialog now warns about that before you save.
+- **Insert a saved query into the tab you're working in.** Hover a saved query in the sidebar and click ⤵ to drop its SQL in at the cursor, instead of opening it in a new tab.
+
 ## 1.2.0
 - **See what an UPDATE changed.** After an UPDATE runs, a **Changes** tab lists each row it changed, with the old value crossed out next to the new one. It also says when rows matched but already had those values, or when nothing matched at all, so you can tell on MySQL whether it worked. It works inside transactions too, so you can check staged changes before you commit. It needs a table with a primary key and doesn't cover joined updates.
 - **Query tabs open as plain SQL**, with the editor ready to type in. ✦ Ask is still one click away on the toolbar.

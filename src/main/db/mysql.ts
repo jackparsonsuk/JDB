@@ -1,6 +1,6 @@
 import mysql from 'mysql2/promise'
 import type {
-  CellValue, ColumnFilter, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
+  CellValue, ColumnFilter, ColumnInfo, ConnectionConfig, DatabaseList, QueryResult, ResultSet, RowsRequest, RowsResult,
   ColumnSummary, DesignColumn, DesignForeignKey, DesignIndex, KeyKind, SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ValueLookup,
   RoutineDefinition, RoutineInfo, RoutineParam, RoutineRef, RoutineSource
 } from '@shared/types'
@@ -97,6 +97,18 @@ export class MysqlDriver implements Driver {
       const asUtc = new Date(`${text.replace(' ', 'T')}Z`)
       return isNaN(asUtc.getTime()) ? text : new Date(asUtc.getTime() - offset * 1000).toISOString()
     }
+  }
+
+  async listDatabases(): Promise<DatabaseList> {
+    const [[current], [schemas]] = await Promise.all([
+      this.pool.query<mysql.RowDataPacket[]>('SELECT DATABASE() AS c'),
+      this.pool.query<mysql.RowDataPacket[]>(
+        `SELECT schema_name AS n FROM information_schema.schemata
+         WHERE schema_name NOT IN (${SYSTEM_SCHEMAS.map(() => '?').join(', ')}) ORDER BY schema_name`,
+        SYSTEM_SCHEMAS
+      )
+    ])
+    return { current: current[0]?.c ?? null, databases: schemas.map((r) => String(r.n)) }
   }
 
   async listRoutines(): Promise<RoutineInfo[]> {

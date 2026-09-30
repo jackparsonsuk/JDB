@@ -86,6 +86,22 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   const [showChanges, setShowChanges] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
+
+  // A saved query inserted from the sidebar goes in at the cursor, replacing any selection, on a line of its own.
+  // Starts at the seq already there, so a tab that remounts (moved to the other pane) doesn't insert it twice.
+  const insertedSeq = useRef(tab.insert?.seq)
+  useEffect(() => {
+    const view = viewRef.current
+    if (!tab.insert || !view || tab.insert.seq === insertedSeq.current) return
+    insertedSeq.current = tab.insert.seq
+    const range = view.state.selection.main
+    const line = view.state.doc.lineAt(range.from)
+    const before = range.from > line.from && view.state.sliceDoc(line.from, range.from).trim() ? '\n' : ''
+    const insert = before + tab.insert.sql
+    view.dispatch({ changes: { from: range.from, to: range.to, insert }, selection: { anchor: range.from + insert.length }, scrollIntoView: true })
+    view.focus()
+    // Only when asked (the seq changes), not on every render.
+  }, [tab.insert?.seq])
   const viewRef = useRef<EditorView | null>(null)
   const txn = useTransaction(tab.connectionId)
   const staged = txn.tx ? stagedChanges(txn.tx).statements : 0

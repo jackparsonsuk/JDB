@@ -19,6 +19,7 @@ const api: Api = {
   exportConnections: (ids, name) => call('connections:export', ids, name),
   importConnections: () => call('connections:import'),
   listTables: (id) => call('db:tables', id),
+  listDatabases: (id) => call('db:databases', id),
   describeTable: (id, table) => call('db:describe', id, table),
   describeDesign: (id, table) => call('db:design', id, table),
   listRoutines: (id) => call('db:routines', id),

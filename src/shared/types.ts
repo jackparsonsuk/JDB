@@ -33,6 +33,14 @@ export interface TableRef {
   name: string
 }
 
+/** The database a connection is using and the others on the same server that it can open. */
+export interface DatabaseList {
+  /** null on MySQL when no database is set, so every schema is listed. */
+  current: string | null
+  /** User databases on the server, without system ones (master, mysql, ...). */
+  databases: string[]
+}
+
 export interface TableInfo extends TableRef {
   type: 'table' | 'view'
   rowEstimate?: number

@@ -25,9 +25,9 @@ function write(key: string, value: string): void {
   }
 }
 
-/** The sidebar's saved queries, grouped by folder: click one to open it in a query tab. */
+/** The sidebar's saved queries, grouped by folder: click one to open it in a query tab, or ⤵ to insert it into the one in use. */
 export function SavedQueries() {
-  const { savedQueries, connections, activeTabId, tabs, openSaved, deleteQuery } = useAppState()
+  const { savedQueries, connections, activeTabId, tabs, openSaved, deleteQuery, insertIntoQuery } = useAppState()
   const [open, setOpenState] = useState(() => read(OPEN_KEY) !== '0')
   const [closed, setClosed] = useState<Set<string>>(() => {
     try {
@@ -54,7 +54,10 @@ export function SavedQueries() {
   }
 
   const connectionName = new Map(connections.map((c) => [c.id, c]))
-  const activeConnection = tabs.find((t) => t.id === activeTabId)?.connectionId
+  const activeTab = tabs.find((t) => t.id === activeTabId)
+  const activeConnection = activeTab?.connectionId
+  /** The query tab in use, which saved queries can be inserted into. */
+  const activeQuery = activeTab?.kind === 'query' ? activeTab : undefined
 
   /** Where a query opens: its own connection, else the one in use, else the first. */
   const target = (q: SavedQuery): string | undefined =>
@@ -112,6 +115,15 @@ export function SavedQueries() {
           <span className="saved-conn">{conn ? conn.name : 'any'}</span>
         </button>
         <span className="conn-actions saved-actions">
+          {activeQuery && (
+            <button
+              className="icon small"
+              title={`Insert into "${activeQuery.title}" at the cursor${conn && conn.id !== activeQuery.connectionId ? ` (it was saved for ${conn.name})` : ''}`}
+              onClick={() => insertIntoQuery(activeQuery.id, q.sql)}
+            >
+              ⤵
+            </button>
+          )}
           <button className="icon small" title="Rename, move or change where it runs" onClick={() => setEditing(q)}>✎</button>
           <button className="icon small" title="Delete this saved query" onClick={() => remove(q)}>✕</button>
         </span>

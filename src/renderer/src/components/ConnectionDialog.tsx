@@ -107,7 +107,11 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConf
             <label className="narrow">Port<input type="number" value={form.port} onChange={(e) => set('port', Number(e.target.value))} /></label>
           </div>
 
-          <label>Database<input value={form.database} onChange={(e) => set('database', e.target.value)} placeholder={form.kind === 'mysql' ? 'blank = all schemas' : 'blank = default'} /></label>
+          <label>Database<input value={form.database} onChange={(e) => set('database', e.target.value)} placeholder={form.kind === 'mysql' ? 'blank = all schemas' : 'blank = default'} />
+            {form.kind === 'mssql' && !form.database.trim() && /\.database\.windows\.net$/i.test(form.host.trim()) && (
+              <span className="field-hint field-warn">Azure SQL connects to master when this is blank, and master has no tables of its own. Enter the database's name.</span>
+            )}
+          </label>
 
           {form.kind === 'mssql' && (
             <label>Authentication

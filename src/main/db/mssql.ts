@@ -2,7 +2,7 @@ import sql from 'mssql'
 import type { AccessToken } from '@azure/identity'
 import { keyKind } from '@shared/links'
 import type {
-  CellValue, ColumnFilter, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
+  CellValue, ColumnFilter, ColumnInfo, ConnectionConfig, DatabaseList, QueryResult, ResultSet, RowsRequest, RowsResult,
   ColumnSummary, DesignColumn, DesignForeignKey, DesignIndex, KeyKind, SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ValueLookup,
   RoutineDefinition, RoutineInfo, RoutineKind, RoutineParam, RoutineRef, RoutineSource
 } from '@shared/types'
@@ -108,6 +108,15 @@ export class MssqlDriver implements Driver {
       type: row.type.trim() === 'V' ? 'view' : 'table',
       rowEstimate: row.row_estimate == null ? undefined : Number(row.row_estimate)
     }))
+  }
+
+  async listDatabases(): Promise<DatabaseList> {
+    // On Azure SQL, master lists every database on the server; a user database lists itself and master.
+    const result = await (await this.request()).query(`
+      SELECT DB_NAME() AS current_db;
+      SELECT name FROM sys.databases WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb') ORDER BY name`)
+    const sets = result.recordsets as unknown as { current_db?: string; name?: string }[][]
+    return { current: sets[0]?.[0]?.current_db ?? null, databases: (sets[1] ?? []).map((r) => String(r.name)) }
   }
 
   async listRoutines(): Promise<RoutineInfo[]> {

@@ -1,5 +1,5 @@
 import type {
-  CellValue, ColumnFilter, ColumnSummary, ConnectionConfig, DbKind, ExportResult, TableExportRequest, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, ResultSet, RoutineDefinition, RoutineInfo, RoutineRef, RoutineSource, SavedQuery, SavedQueryInput, WriteCount, RowsRequest, RowsResult, SavedSession,
+  CellValue, ColumnFilter, ColumnSummary, ConnectionConfig, DatabaseList, DbKind, ExportResult, TableExportRequest, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, ResultSet, RoutineDefinition, RoutineInfo, RoutineRef, RoutineSource, SavedQuery, SavedQueryInput, WriteCount, RowsRequest, RowsResult, SavedSession,
   SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ThemeSetting, UpdateCheck, ValueLookup
 } from '../shared/types'
 import type { ImportSummary } from '../shared/collection'
@@ -19,6 +19,8 @@ export interface Api {
   /** Asks for a connections file and adds what it holds. Null if cancelled. */
   importConnections(): Promise<ImportSummary | null>
   listTables(connectionId: string): Promise<TableInfo[]>
+  /** The database the connection is using and the others on its server. */
+  listDatabases(connectionId: string): Promise<DatabaseList>
   describeTable(connectionId: string, table: TableRef): Promise<TableDetails>
   describeDesign(connectionId: string, table: TableRef): Promise<TableDesign>
   /** Stored procedures, functions and triggers. */

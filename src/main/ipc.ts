@@ -42,6 +42,7 @@ export function registerIpc(): void {
   handle('connections:import', () => importConnections())
 
   handle('db:tables', (id: string) => db.listTables(id))
+  handle('db:databases', (id: string) => db.listDatabases(id))
   handle('db:describe', (id: string, table: TableRef) => db.describeTable(id, table))
   handle('db:design', (id: string, table: TableRef) => db.describeDesign(id, table))
   handle('db:routines', (id: string) => db.listRoutines(id))

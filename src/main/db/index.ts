@@ -63,6 +63,7 @@ export async function testConnection(config: ConnectionConfig, password?: string
 }
 
 export const listTables = (id: string) => withDriver(id, (d) => d.listTables())
+export const listDatabases = (id: string) => withDriver(id, (d) => d.listDatabases())
 export const describeTable = (id: string, table: TableRef) => withDriver(id, (d) => d.describeTable(table))
 export const describeDesign = (id: string, table: TableRef) => withDriver(id, (d) => d.describeDesign(table))
 export const listRoutines = (id: string) => withDriver(id, (d) => d.listRoutines())

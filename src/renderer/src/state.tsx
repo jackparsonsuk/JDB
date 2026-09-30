@@ -17,6 +17,8 @@ export type Tab = (
       kind: 'query'; id: string; pane: PaneId; connectionId: string; title: string; initialSql: string
       /** The saved query this tab holds, if it was opened from one or saved as one. */
       savedId?: string
+      /** SQL to insert at the cursor (a saved query from the sidebar); `seq` changes when asked again. Not saved. */
+      insert?: { sql: string; seq: number }
     }
   | { kind: 'record'; id: string; pane: PaneId; connectionId: string; table: TableRef; key: ColumnFilter[] }
   | { kind: 'design'; id: string; pane: PaneId; connectionId: string; table: TableRef }
@@ -98,6 +100,8 @@ interface AppState {
   openSaved(query: SavedQuery, connectionId: string): void
   /** Ties a query tab to a saved query, taking its name as the tab title. */
   linkQueryTab(tabId: string, savedId: string, title: string): void
+  /** Inserts SQL at the cursor of a query tab, such as a saved query picked in the sidebar. */
+  insertIntoQuery(tabId: string, sql: string): void
   /** Query tabs with changes not yet saved to their saved query. */
   unsavedTabs: ReadonlySet<string>
   setTabUnsaved(tabId: string, unsaved: boolean): void
@@ -428,6 +432,10 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     setLayout((s) => ({ ...s, tabs: s.tabs.map((t) => (t.id === tabId && t.kind === 'query' ? { ...t, savedId, title } : t)) }))
   }, [])
 
+  const insertIntoQuery = useCallback((tabId: string, sql: string) => {
+    setLayout((s) => ({ ...s, tabs: s.tabs.map((t) => (t.id === tabId && t.kind === 'query' ? { ...t, insert: { sql, seq: Date.now() } } : t)) }))
+  }, [])
+
   const [unsavedTabs, setUnsavedTabs] = useState<ReadonlySet<string>>(() => new Set())
   const setTabUnsaved = useCallback((tabId: string, unsaved: boolean) => {
     setUnsavedTabs((prev) => {
@@ -502,6 +510,7 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     reloadQueries,
     openSaved,
     linkQueryTab,
+    insertIntoQuery,
     unsavedTabs,
     setTabUnsaved,
     openRecord,
@@ -515,7 +524,7 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     rememberTab,
     initialRatio,
     rememberRatio
-  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, routines, loadRoutines, layout, setActiveTab, focusPane, moveTab, open, openTable, openQuery, environments, saveEnvironments, reloadEnvironments, deleteEnvironment, environment, safety, savedQueries, saveQuery, deleteQuery, reloadQueries, openSaved, linkQueryTab, unsavedTabs, setTabUnsaved, openRecord, closeTab, closeTabs, pinTab, reorderTab, schemaVersions, schemaChanged, rememberTab, initialRatio, rememberRatio])
+  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, routines, loadRoutines, layout, setActiveTab, focusPane, moveTab, open, openTable, openQuery, environments, saveEnvironments, reloadEnvironments, deleteEnvironment, environment, safety, savedQueries, saveQuery, deleteQuery, reloadQueries, openSaved, linkQueryTab, insertIntoQuery, unsavedTabs, setTabUnsaved, openRecord, closeTab, closeTabs, pinTab, reorderTab, schemaVersions, schemaChanged, rememberTab, initialRatio, rememberRatio])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

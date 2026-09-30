@@ -1,10 +1,12 @@
 import type {
-  CellValue, ColumnFilter, ColumnInfo, QueryResult, RowsRequest, RowsResult, SchemaTable, TableDetails, TableInfo, TableRef,
+  CellValue, ColumnFilter, ColumnInfo, DatabaseList, QueryResult, RowsRequest, RowsResult, SchemaTable, TableDetails, TableInfo, TableRef,
   ColumnSummary, KeyKind, RoutineDefinition, RoutineInfo, RoutineRef, RoutineSource, TableDesign, ValueLookup
 } from '@shared/types'
 
 export interface Driver {
   listTables(): Promise<TableInfo[]>
+  /** The database in use and the user databases on the server, for connections that landed in the wrong one. */
+  listDatabases(): Promise<DatabaseList>
   describeTable(table: TableRef): Promise<TableDetails>
   /** Columns with defaults and collations, indexes and foreign keys, for the table designer. */
   describeDesign(table: TableRef): Promise<TableDesign>
