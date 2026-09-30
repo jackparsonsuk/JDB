@@ -1,7 +1,7 @@
 // Copies a fresh unpacked build (dist/win-unpacked) over the locally installed JDB, so a change can
 // be tried in the installed app without running the installer. Run via `npm run deploy`.
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { closeSync, existsSync, openSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 const source = join(process.cwd(), 'dist', 'win-unpacked')
@@ -31,6 +31,16 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/** Whether a file can be opened for writing; Windows keeps a closing app's exe locked for a while. */
+function writable(path) {
+  try {
+    closeSync(openSync(path, 'r+'))
+    return true
+  } catch {
+    return false
+  }
+}
+
 const target = installDir()
 if (!existsSync(join(source, exe))) throw new Error(`No build at ${source}; run electron-builder --dir first.`)
 if (!existsSync(join(target, exe))) throw new Error(`JDB isn't installed at ${target}; run the installer once first.`)
@@ -46,9 +56,9 @@ if (isRunning()) {
     spawnSync('taskkill', ['/IM', exe, '/T', '/F'], { stdio: 'ignore' })
   }
   for (let i = 0; i < 20 && isRunning(); i++) await sleep(250)
-  // Windows can hold the exe open for a moment after the process has gone.
-  await sleep(1000)
 }
+// Windows can hold the exe open after the process has gone; copying then fails on it and retries.
+for (let i = 0; i < 40 && !writable(join(target, exe)); i++) await sleep(250)
 
 // /MIR removes files the new build no longer has, apart from the installer's own.
 const copy = spawnSync('robocopy', [source, target, '/MIR', '/XF', ...installerOnly, '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:10', '/W:1'], { stdio: 'inherit' })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { callTemplate, routineUses, searchSources, stripLiterals } from './routines'
+import { callTemplate, findInSource, routineUses, searchSources, stripLiterals } from './routines'
 import type { RoutineDefinition, RoutineRef, TableRef } from './types'
 
 const tables: TableRef[] = [
@@ -80,21 +80,43 @@ describe('stripLiterals', () => {
 
 describe('searchSources', () => {
   it('counts matches and shows the first line', () => {
-    const results = searchSources([
+    const { matches: results, total } = searchSources([
       { schema: 'dbo', name: 'A', kind: 'procedure', definition: 'CREATE PROC A AS\n\tSELECT * FROM Orders\nSELECT 1 FROM orders' },
       { schema: 'dbo', name: 'B', kind: 'procedure', definition: 'CREATE PROC B AS SELECT 1 FROM Orders' },
       { schema: 'dbo', name: 'C', kind: 'procedure', definition: null }
     ], 'orders')
     expect(results.map((r) => [r.source.name, r.count, r.line])).toEqual([['A', 2, 2], ['B', 1, 1]])
+    expect(total).toBe(2)
     const first = results[0]
     expect(first.snippet.slice(first.start, first.end)).toBe('Orders')
   })
 
   it('keeps the match visible on long lines', () => {
     const long = `${'x'.repeat(200)} needle ${'y'.repeat(200)}`
-    const [hit] = searchSources([{ schema: 's', name: 'n', kind: 'function', definition: long }], 'NEEDLE')
+    const [hit] = searchSources([{ schema: 's', name: 'n', kind: 'function', definition: long }], 'NEEDLE').matches
     expect(hit.snippet.slice(hit.start, hit.end)).toBe('needle')
     expect(hit.snippet.length).toBeLessThan(100)
+  })
+
+  it('limits the matches but counts them all', () => {
+    const sources = ['A', 'B', 'C'].map((name) => ({ schema: 'dbo', name, kind: 'procedure' as const, definition: 'SELECT 1' }))
+    const result = searchSources(sources, 'select', 2)
+    expect(result.matches).toHaveLength(2)
+    expect(result.total).toBe(3)
+  })
+})
+
+describe('findInSource', () => {
+  it('ignores case and differences in spacing', () => {
+    const text = 'SELECT *\n    FROM   dbo.Orders o'
+    const hit = findInSource(text, 'from dbo.orders')!
+    expect(text.slice(hit.from, hit.to)).toBe('FROM   dbo.Orders')
+  })
+
+  it('treats the search as plain text and reports misses', () => {
+    expect(findInSource('a (b) c', '(b)')).toEqual({ from: 2, to: 5 })
+    expect(findInSource('abc', 'x.y')).toBeNull()
+    expect(findInSource('abc', '   ')).toBeNull()
   })
 })
 

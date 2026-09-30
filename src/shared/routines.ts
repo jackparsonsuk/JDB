@@ -303,10 +303,29 @@ function lowerOf(source: RoutineSource, text: string): string {
   return value
 }
 
+/**
+ * Where `needle` first appears in `text`, ignoring case and treating any run of whitespace as
+ * equal, so a search still lands once the source has been re-laid out. Null when it isn't there.
+ */
+export function findInSource(text: string, needle: string): { from: number; to: number } | null {
+  const words = needle.trim().split(/\s+/).filter(Boolean)
+  if (!words.length) return null
+  const escaped = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const match = new RegExp(escaped.join('\\s+'), 'i').exec(text)
+  return match ? { from: match.index, to: match.index + match[0].length } : null
+}
+
+export interface SourceSearch {
+  /** The best matches, at most the limit asked for. */
+  matches: SourceMatch[]
+  /** How many routines matched in all. */
+  total: number
+}
+
 /** Routines whose source contains `needle` (case-insensitive), most occurrences first. */
-export function searchSources(sources: RoutineSource[], needle: string, limit = 200): SourceMatch[] {
+export function searchSources(sources: RoutineSource[], needle: string, limit = 200): SourceSearch {
   const lower = needle.trim().toLowerCase()
-  if (!lower) return []
+  if (!lower) return { matches: [], total: 0 }
   const out: SourceMatch[] = []
   for (const source of sources) {
     const text = source.definition
@@ -333,7 +352,8 @@ export function searchSources(sources: RoutineSource[], needle: string, limit = 
     }
     out.push({ source, count, line, snippet, start, end: start + lower.length })
   }
-  return out.sort((a, b) => b.count - a.count || a.source.name.localeCompare(b.source.name)).slice(0, limit)
+  out.sort((a, b) => b.count - a.count || a.source.name.localeCompare(b.source.name))
+  return { matches: out.slice(0, limit), total: out.length }
 }
 
 const PLAIN_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/

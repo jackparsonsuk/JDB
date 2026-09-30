@@ -368,7 +368,7 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
                   className="search"
                   placeholder={mode === 'tables'
                     ? `Filter ${state.tables.length} tables…`
-                    : inSource ? 'Search inside the source…' : `Filter ${routineState?.routines.length ?? ''} routines…`}
+                    : inSource ? 'Search inside the source…' : routineState?.status === 'ready' ? `Filter ${routineState.routines.length} routines…` : 'Filter routines…'}
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   onKeyDown={(e) => {
@@ -411,6 +411,9 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
     </div>
   )
 }
+
+/** Source search shows at most this many routines; more than that and the search needs narrowing. */
+const SOURCE_LIMIT = 200
 
 /** How many routines show per group before "Show all"; big databases can have thousands. */
 const ROUTINE_PAGE = 300
@@ -471,7 +474,7 @@ function RoutineList({ connectionId, filter, inSource }: { connectionId: string;
     if (sources.status === 'error') return <div className="conn-error">{sources.error}</div>
     const hidden = sources.list.filter((s) => s.definition === null).length
     const term = needle.trim()
-    const matches = term.length >= 2 ? searchSources(sources.list, term) : []
+    const { matches, total } = term.length >= 2 ? searchSources(sources.list, term, SOURCE_LIMIT) : { matches: [], total: 0 }
     return (
       <div className="tables">
         {term.length < 2 && <div className="muted source-hint">Type a table, column or any text to find the routines that mention it.</div>}
@@ -497,6 +500,11 @@ function RoutineList({ connectionId, filter, inSource }: { connectionId: string;
           </button>
         ))}
         {term.length >= 2 && !matches.length && <div className="muted pad">Not found in any routine's source</div>}
+        {total > matches.length && (
+          <div className="muted source-hint">
+            Showing the {matches.length.toLocaleString()} with the most matches of {total.toLocaleString()}. Type more to narrow it down.
+          </div>
+        )}
         {hidden > 0 && (
           <div className="muted source-hint">
             {hidden.toLocaleString()} of {sources.list.length.toLocaleString()} can't be searched because this login can't read their source.

@@ -3,7 +3,7 @@ import CodeMirror, { EditorView, type Extension } from '@uiw/react-codemirror'
 import { EditorSelection, EditorState } from '@codemirror/state'
 import { sql, MSSQL, MySQL } from '@codemirror/lang-sql'
 import type { ConnectionConfig, RoutineDefinition, RoutineKind, TableRef } from '@shared/types'
-import { callTemplate, ROUTINE_LABELS, routineUses, type RoutineUses } from '@shared/routines'
+import { callTemplate, findInSource, ROUTINE_LABELS, routineUses, type RoutineUses } from '@shared/routines'
 import { layoutSql, type OutlineItem } from '@shared/sqlLayout'
 import { useAppState, type Tab } from '../state'
 import { useColorScheme } from '../lib/theme'
@@ -112,9 +112,10 @@ export function RoutineView({ tab }: { tab: Extract<Tab, { kind: 'routine' }> })
   useEffect(() => {
     const view = viewRef.current
     if (!tab.find || !view || !shown || !editorReady) return
-    const at = shown.toLowerCase().indexOf(tab.find.text.toLowerCase())
-    if (at < 0) return
-    const end = at + tab.find.text.length
+    // Formatting changes spacing, so match whatever whitespace sits between the words.
+    const hit = findInSource(shown, tab.find.text)
+    if (!hit) return
+    const { from: at, to: end } = hit
     // Let CodeMirror lay the document out first so scrolling lands in the right place.
     requestAnimationFrame(() => {
       view.dispatch({ selection: EditorSelection.single(at, end), effects: EditorView.scrollIntoView(at, { y: 'center' }) })

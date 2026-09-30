@@ -79,6 +79,26 @@ export class MysqlDriver implements Driver {
     }))
   }
 
+  /** Seconds the session's clock is ahead of UTC; information_schema times are in session time. */
+  private utcOffset: Promise<number> | null = null
+
+  /** Turns session-time 'YYYY-MM-DD hh:mm:ss' values into ISO UTC times, so the renderer can compare them with now. */
+  private async utcConverter(): Promise<(stamp: unknown) => string | undefined> {
+    if (!this.utcOffset) {
+      this.utcOffset = this.pool.query<mysql.RowDataPacket[]>('SELECT TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()) AS off')
+        .then(([rows]) => Number(rows[0]?.off) || 0)
+      // Try again next time rather than caching a failure.
+      this.utcOffset.catch(() => { this.utcOffset = null })
+    }
+    const offset = await this.utcOffset.catch(() => 0)
+    return (stamp) => {
+      if (stamp == null || stamp === '') return undefined
+      const text = String(stamp)
+      const asUtc = new Date(`${text.replace(' ', 'T')}Z`)
+      return isNaN(asUtc.getTime()) ? text : new Date(asUtc.getTime() - offset * 1000).toISOString()
+    }
+  }
+
   async listRoutines(): Promise<RoutineInfo[]> {
     const routineFilter = this.schemaFilter('r.routine_schema')
     const triggerFilter = this.schemaFilter('t.trigger_schema')
@@ -95,12 +115,13 @@ export class MysqlDriver implements Driver {
         triggerFilter.values
       )
     ])
+    const utc = await this.utcConverter()
     return [
       ...routines.map((row): RoutineInfo => ({
         schema: row.s,
         name: row.n,
         kind: row.t === 'FUNCTION' ? 'function' : 'procedure',
-        ...(row.modified && { modified: String(row.modified) })
+        ...(row.modified && { modified: utc(row.modified) })
       })),
       ...triggers.map((row): RoutineInfo => ({
         schema: row.s,
@@ -108,7 +129,7 @@ export class MysqlDriver implements Driver {
         kind: 'trigger',
         detail: `${row.timing} ${row.event}`,
         parent: { schema: row.ps, name: row.pt },
-        ...(row.modified && { modified: String(row.modified) })
+        ...(row.modified && { modified: utc(row.modified) })
       }))
     ].sort((a, b) => a.schema.localeCompare(b.schema) || a.name.localeCompare(b.name))
   }
@@ -166,7 +187,7 @@ export class MysqlDriver implements Driver {
         if (Number(p.pos) === 0) returns = String(p.type)
         else parameters.push({ name: p.name, dataType: String(p.type), mode: p.mode === 'OUT' ? 'OUT' : p.mode === 'INOUT' ? 'INOUT' : 'IN' })
       }
-      if (meta[0]?.created) created = String(meta[0].created)
+      if (meta[0]?.created) created = (await this.utcConverter())(meta[0].created)
     }
     return { routine: info, definition, ...(bodyOnly && { bodyOnly }), parameters, returns, created }
   }
