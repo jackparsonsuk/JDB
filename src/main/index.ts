@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { nativeThemeOf } from '@shared/types'
 import { join } from 'path'
 import { registerIpc } from './ipc'
 import { disconnectAll, rollbackAll } from './db'
@@ -72,7 +73,7 @@ function createWindow(): void {
 if (app.isPackaged) app.setAppUserModelId('com.jackparsonsuk.jdb')
 
 app.whenReady().then(() => {
-  nativeTheme.themeSource = getTheme()
+  nativeTheme.themeSource = nativeThemeOf(getTheme())
   registerIpc()
   createWindow()
   startUpdater()

@@ -22,23 +22,30 @@ function apply(theme: ThemeSetting): void {
 window.api.getTheme().then(apply).catch(() => undefined)
 media.addEventListener('change', notify)
 
-export const THEME_LABELS: Record<ThemeSetting, string> = { system: 'System', light: 'Light', dark: 'Dark' }
-export const THEME_ICONS: Record<ThemeSetting, string> = { system: '◐', light: '☀', dark: '☾' }
+export const THEME_LABELS: Record<ThemeSetting, string> = {
+  system: 'System', light: 'Light', dark: 'Dark', dim: 'Dim', midnight: 'Midnight', contrast: 'High contrast'
+}
+export const THEME_ICONS: Record<ThemeSetting, string> = { system: '◐', light: '☀', dark: '☾', dim: '◑', midnight: '●', contrast: '◧' }
+/** The order themes are offered in. */
+export const THEMES: ThemeSetting[] = ['system', 'light', 'dark', 'dim', 'midnight', 'contrast']
 
 export function setTheme(theme: ThemeSetting): void {
   apply(theme)
   window.api.setTheme(theme).catch(() => undefined)
 }
 
-const subscribe = (listener: () => void): (() => void) => {
+/** Whether what's shown is a dark theme, for code outside React. */
+export const isDark = (): boolean => resolved() === 'dark'
+
+export const subscribe = (listener: () => void): (() => void) => {
   listeners.add(listener)
   return () => listeners.delete(listener)
 }
 
 /** Light or dark as actually shown, with 'system' resolved. */
 function resolved(): 'light' | 'dark' {
-  if (current !== 'system') return current
-  return media.matches ? 'dark' : 'light'
+  if (current === 'system') return media.matches ? 'dark' : 'light'
+  return current === 'light' ? 'light' : 'dark'
 }
 
 export function useTheme(): ThemeSetting {

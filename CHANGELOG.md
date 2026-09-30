@@ -2,6 +2,13 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 1.1.0
+- **Settings** (Ctrl+, or the ⚙ in the sidebar) to make OverlookDB your own. Changes show straight away.
+- New themes: **Dim** (a softer dark), **Midnight** (near-black) and **High contrast**, alongside Light, Dark and following Windows.
+- Pick an **accent colour** from the swatches or any colour you like, and change the **environment colours** used for local, dev, test and prod.
+- Choose the **interface font**, the **code font** and its size (with ligatures for fonts that have them), and scale the whole interface from 90% to 125%.
+- **Row density** for tables and results (compact, comfortable or spacious), and word wrap and indent size in the SQL editor.
+
 ## 1.0.0
 - **JDB is now OverlookDB**, with a new logo: an O with the sun rising over the horizon. Everything else stays where it was: your connections, saved passwords, links and settings carry over, and updates keep arriving as before.
 - **Saved queries.** Press **Ctrl+S** in a query tab to keep a query by name, in a folder if you like. Open it again from **Saved queries** at the bottom of the sidebar or from Ctrl+K. After that Ctrl+S saves changes to it, and a dot on the tab shows when there are some.

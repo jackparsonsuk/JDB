@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SchemaTable } from '@shared/types'
 import { useAppState } from '../state'
 import { ROUTINE_LABELS } from '@shared/routines'
-import { setTheme, THEME_ICONS, THEME_LABELS, useTheme } from '../lib/theme'
+import { setTheme, THEME_ICONS, THEME_LABELS, THEMES, useTheme } from '../lib/theme'
 import { toast } from './Toast'
 import { fuzzyScore } from '../lib/fuzzy'
 import { toggleSlop, useSlop } from '../lib/slop'
@@ -26,7 +26,7 @@ const MAX_RESULTS = 60
 /** Column matches only show once this much is typed; there can be tens of thousands. */
 const COLUMN_QUERY_MIN = 2
 
-export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(): void; onNewConnection(): void; onLinks(connectionId: string): void }) {
+export function CommandPalette({ onClose, onNewConnection, onLinks, onSettings }: { onClose(): void; onNewConnection(): void; onLinks(connectionId: string): void; onSettings(): void }) {
   const { connections, tables, loadTables, routines, loadRoutines, openTable, openQuery, open, savedQueries, openSaved, activeTabId, tabs } = useAppState()
   const theme = useTheme()
   const slop = useSlop()
@@ -176,6 +176,15 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
       run: checkForUpdates
     })
     out.push({
+      key: 'settings',
+      label: 'Settings…',
+      detail: 'theme, accent and environment colours, fonts, size, grid density (Ctrl+,)',
+      icon: '⚙',
+      haystack: 'settings preferences options appearance theme colour color accent font size zoom density customise customize',
+      bias: -8,
+      run: onSettings
+    })
+    out.push({
       key: 'whats-new',
       label: "What's new",
       detail: 'release notes for each version',
@@ -184,12 +193,12 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
       bias: -10,
       run: () => openWhatsNew()
     })
-    for (const option of ['system', 'light', 'dark'] as const) {
+    for (const option of THEMES) {
       if (option === theme) continue
       out.push({
         key: `theme:${option}`,
         label: `Theme: ${THEME_LABELS[option]}`,
-        detail: option === 'system' ? 'follow Windows' : '',
+        detail: option === 'system' ? 'follow Windows' : option === 'dim' ? 'a softer dark' : option === 'midnight' ? 'near-black' : option === 'contrast' ? 'bold text and borders' : '',
         icon: THEME_ICONS[option],
         haystack: `theme appearance colour color ${option} mode`,
         bias: -10,
@@ -197,7 +206,7 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
       })
     }
     return out
-  }, [connections, tables, routines, open, openTable, openQuery, loadTables, onNewConnection, onLinks, theme, savedQueries, openSaved, activeTabId, tabs])
+  }, [connections, tables, routines, open, openTable, openQuery, loadTables, onNewConnection, onLinks, onSettings, theme, savedQueries, openSaved, activeTabId, tabs])
 
   const results = useMemo(() => {
     // The slop easter egg only shows when typed in full, so it never turns up in normal searches.

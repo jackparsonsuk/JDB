@@ -6,8 +6,10 @@ import { COPY_FORMATS, displayValue, formatRows, type CopyFormat } from '../lib/
 import { useOpenLink } from '../lib/openLink'
 import type { OpenTarget } from '../state'
 import { toast } from './Toast'
+import { useRowHeight } from '../lib/appearance'
 
-const ROW_HEIGHT = 26
+/** Row height for the chosen density (Settings); set by DataGrid on each render, read live by its handlers. */
+let ROW_HEIGHT = 26
 const OVERSCAN = 12
 /** The row window moves in steps this big, so scrolling only re-renders every few rows. */
 const ROW_BLOCK = 8
@@ -92,6 +94,13 @@ interface MenuState {
 }
 
 export function DataGrid(props: Props) {
+  // A new density re-creates the grid, so its scroll window is worked out afresh at the new height.
+  const rowHeight = useRowHeight()
+  ROW_HEIGHT = rowHeight
+  return <Grid key={rowHeight} {...props} />
+}
+
+function Grid(props: Props) {
   const { columns, rows, columnInfo, selection, onSelectionChange } = props
   const link = useOpenLink()
   const scrollRef = useRef<HTMLDivElement>(null)

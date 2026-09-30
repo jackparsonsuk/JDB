@@ -331,7 +331,11 @@ export interface SavedSession {
 }
 
 /** 'system' follows the Windows light/dark setting. */
-export type ThemeSetting = 'system' | 'light' | 'dark'
+export type ThemeSetting = 'system' | 'light' | 'dark' | 'dim' | 'midnight' | 'contrast'
+
+/** What Windows is told for the title bar and prefers-color-scheme: the dark variants are all dark. */
+export const nativeThemeOf = (theme: ThemeSetting): 'system' | 'light' | 'dark' =>
+  theme === 'system' || theme === 'light' ? theme : 'dark'
 
 /** The outcome of "Check for updates". */
 export type UpdateCheck =

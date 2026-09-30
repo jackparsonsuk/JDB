@@ -3,6 +3,7 @@ import type {
   SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ThemeSetting, UpdateCheck, ValueLookup
 } from '../shared/types'
 import type { ImportSummary } from '../shared/collection'
+import type { Appearance } from '../shared/appearance'
 
 export interface Api {
   listConnections(): Promise<ConnectionConfig[]>
@@ -77,6 +78,11 @@ export interface Api {
   signOutEntra(): Promise<void>
   getTheme(): Promise<ThemeSetting>
   setTheme(theme: ThemeSetting): Promise<void>
+  getAppearance(): Promise<Appearance>
+  /** Saves colours, fonts and sizes; invalid values are dropped. Returns what was kept. */
+  setAppearance(appearance: Appearance): Promise<Appearance>
+  /** Scales the whole window (interface size). */
+  setZoom(factor: number): Promise<void>
   copy(text: string): Promise<void>
   /** The version of a downloaded update waiting to install, or null. */
   readyUpdate(): Promise<string | null>

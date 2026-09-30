@@ -14,6 +14,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { toast, ToastHost } from './components/Toast'
 import { ConfirmHost } from './components/Confirm'
 import { Logo } from './components/Logo'
+import { SettingsDialog } from './components/SettingsDialog'
 import { LinksDialog } from './components/LinksDialog'
 import { SlopLayer } from './components/SlopLayer'
 import { WhatsNewDialog } from './components/WhatsNewDialog'
@@ -80,6 +81,7 @@ export function App() {
   const { layout, activeTabId, setActiveTab, closeTab, moveTab, focusPane, connections, openQuery, initialRatio, rememberRatio } = useAppState()
   const [editing, setEditing] = useState<ConnectionConfig | null | 'new'>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [linksFor, setLinksFor] = useState<string | null>(null)
   /** Share of the width the left pane takes when split. */
   const [ratio, setRatioState] = useState(initialRatio)
@@ -115,6 +117,9 @@ export function App() {
         // Pinned tabs close only from their menu, so a stray Ctrl+W can't lose them.
         if (activeTab?.pinned) toast('Pinned tab: unpin it, or use Close from its right-click menu')
         else closeTab(activeTabId)
+      } else if (mod && e.key === ',') {
+        e.preventDefault()
+        setSettingsOpen(true)
       } else if (mod && key === 'b') {
         e.preventDefault()
         sidebar.setHidden(!sidebar.hidden)
@@ -160,7 +165,7 @@ export function App() {
         <button className="sidebar-reveal" title="Show the sidebar (Ctrl+B)" onClick={() => sidebar.setHidden(false)}>›</button>
       ) : (
         <div className="sidebar-wrap" style={{ width: sidebar.width }}>
-          <Sidebar onEdit={(c) => setEditing(c)} onNew={() => setEditing('new')} onLinks={(c) => setLinksFor(c.id)} />
+          <Sidebar onEdit={(c) => setEditing(c)} onNew={() => setEditing('new')} onLinks={(c) => setLinksFor(c.id)} onSettings={() => setSettingsOpen(true)} />
           <div
             className="sidebar-resize"
             title="Drag to resize · double-click to reset · Ctrl+B hides the sidebar"
@@ -216,11 +221,13 @@ export function App() {
         <CommandPalette
           onClose={() => setPaletteOpen(false)}
           onNewConnection={() => setEditing('new')}
+          onSettings={() => setSettingsOpen(true)}
           onLinks={(id) => setLinksFor(id)}
         />
       )}
       {linksFor && <LinksDialog connectionId={linksFor} onClose={() => setLinksFor(null)} />}
       <WhatsNewDialog />
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       <ConfirmHost />
       <ToastHost />
       <SlopLayer />
@@ -469,6 +476,7 @@ function Welcome({ onPalette }: { onPalette(): void }) {
       <p className="muted">Open a connection on the left, or press <kbd>Ctrl</kbd> <kbd>K</kbd> to jump straight to a table.</p>
       <ul className="shortcuts">
         <li><kbd>Ctrl K</kbd> Jump to table / command</li>
+        <li><kbd>Ctrl ,</kbd> Settings: theme, colours, fonts</li>
         <li><kbd>Ctrl T</kbd> New query tab</li>
         <li><kbd>Ctrl Enter</kbd> Run query (or selection)</li>
         <li><kbd>Ctrl W</kbd> Close tab</li>

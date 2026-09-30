@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import CodeMirror, { type EditorView, type Extension, keymap, Prec } from '@uiw/react-codemirror'
+import CodeMirror, { EditorView, type Extension, keymap, Prec } from '@uiw/react-codemirror'
+import { EditorState } from '@codemirror/state'
+import { indentUnit } from '@codemirror/language'
+import { useAppearance } from '../lib/appearance'
 import { sql, MSSQL, MySQL } from '@codemirror/lang-sql'
 import { acceptCompletion } from '@codemirror/autocomplete'
 import type { HistoryEntry, QueryResult } from '@shared/types'
@@ -32,6 +35,12 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   const conn = connection(tab.connectionId)
   const scheme = useColorScheme()
   const [text, setText] = useState(tab.initialSql)
+  const { wordWrap, tabSize } = useAppearance()
+  /** Word wrap and tab size from Settings; unset keeps CodeMirror's defaults. */
+  const editorPrefs = useMemo<Extension[]>(() => [
+    ...(wordWrap ? [EditorView.lineWrapping] : []),
+    ...(tabSize ? [EditorState.tabSize.of(tabSize), indentUnit.of(' '.repeat(tabSize))] : [])
+  ], [wordWrap, tabSize])
   const savedQuery = tab.savedId ? savedQueries.find((q) => q.id === tab.savedId) : undefined
   const unsaved = !!savedQuery && text !== savedQuery.sql
   const [saving, setSaving] = useState(false)
@@ -366,7 +375,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
               value={text}
               height="100%"
               theme={scheme}
-              extensions={[...language, runKeymap]}
+              extensions={[...language, ...editorPrefs, runKeymap]}
               onChange={setText}
               onCreateEditor={(view) => {
                 viewRef.current = view

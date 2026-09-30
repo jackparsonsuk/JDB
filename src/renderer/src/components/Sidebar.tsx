@@ -37,7 +37,7 @@ function writeList(key: string, values: Iterable<string>): void {
   }
 }
 
-export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig): void; onNew(): void; onLinks(c: ConnectionConfig): void }) {
+export function Sidebar({ onEdit, onNew, onLinks, onSettings }: { onEdit(c: ConnectionConfig): void; onNew(): void; onLinks(c: ConnectionConfig): void; onSettings(): void }) {
   const { connections, reloadConnections, setLinks, reloadQueries } = useAppState()
   const scheme = useColorScheme()
   const update = useUpdate()
@@ -170,11 +170,14 @@ export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig
         >
           {scheme === 'dark' ? '☀' : '☾'}
         </button>
+        <button className="icon" title="Settings: theme, colours, fonts (Ctrl+,)" onClick={onSettings}>⚙</button>
         <button className="icon" title="New connection" onClick={onNew}>＋</button>
         <span className="sidebar-menu-wrap">
           <button className="icon" title="Folders, import and export" onClick={() => setMenu((m) => !m)}>⋯</button>
           {menu && (
             <SidebarMenu onClose={() => setMenu(false)}>
+              <button onClick={() => { setMenu(false); onSettings() }}>Settings…<kbd>Ctrl+,</kbd></button>
+              <div className="menu-sep" />
               <button onClick={() => { setMenu(false); setNaming(true) }}>New folder</button>
               <div className="menu-sep" />
               <button onClick={() => { setMenu(false); importConnections() }}>Import connections…</button>

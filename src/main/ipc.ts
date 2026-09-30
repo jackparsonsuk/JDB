@@ -1,4 +1,5 @@
 import { clipboard, ipcMain, nativeTheme } from 'electron'
+import { nativeThemeOf } from '@shared/types'
 import type { CellValue, ColumnFilter, ConnectionConfig, DbKind, TableExportRequest, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RoutineRef, RowsRequest, SavedQueryInput, SavedSession, TableRef, ThemeSetting, ValueLookup } from '@shared/types'
 import * as db from './db'
 import * as store from './store'
@@ -96,7 +97,13 @@ export function registerIpc(): void {
   // nativeTheme drives prefers-color-scheme in the renderer and the native title bar.
   handle('theme:set', (theme: ThemeSetting) => {
     store.setTheme(theme)
-    nativeTheme.themeSource = theme
+    nativeTheme.themeSource = nativeThemeOf(theme)
+  })
+  handle('appearance:get', () => store.getAppearance())
+  handle('appearance:set', (appearance: unknown) => store.setAppearance(appearance))
+  // Interface size: zooming the page scales everything, grid rows included, evenly.
+  ipcMain.handle('app:zoom', (event, factor: number) => {
+    if (typeof factor === 'number' && factor >= 0.5 && factor <= 2) event.sender.setZoomFactor(factor)
   })
   handle('clipboard:write', (text: string) => clipboard.writeText(text))
   handle('update:ready', () => readyUpdate())

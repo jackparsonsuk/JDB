@@ -4,6 +4,7 @@ import { join } from 'path'
 import { randomUUID } from 'crypto'
 import type { ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, LinkEnd, SavedQuery, SavedQueryInput, SavedSession, ThemeSetting } from '@shared/types'
 import { sameDatabase, type ConnectionCollection, type ImportSummary } from '@shared/collection'
+import { parseAppearance, type Appearance } from '@shared/appearance'
 
 interface StoredConnection extends ConnectionConfig {
   /** Password encrypted with the OS keychain (DPAPI on Windows), base64 encoded. */
@@ -232,9 +233,10 @@ export function saveSession(session: SavedSession): void {
 
 interface Settings {
   theme?: ThemeSetting
+  appearance?: unknown
 }
 
-const THEMES: ReadonlySet<string> = new Set<ThemeSetting>(['system', 'light', 'dark'])
+const THEMES: ReadonlySet<string> = new Set<ThemeSetting>(['system', 'light', 'dark', 'dim', 'midnight', 'contrast'])
 
 export function getTheme(): ThemeSetting {
   const theme = readJson<Settings>('settings.json', {}).theme
@@ -244,6 +246,17 @@ export function getTheme(): ThemeSetting {
 export function setTheme(theme: ThemeSetting): void {
   if (!THEMES.has(theme)) throw new Error(`Unknown theme: ${theme}`)
   writeJson('settings.json', { ...readJson<Settings>('settings.json', {}), theme })
+}
+
+export function getAppearance(): Appearance {
+  return parseAppearance(readJson<Settings>('settings.json', {}).appearance)
+}
+
+/** Saves the appearance, keeping only valid settings; returns what was kept. */
+export function setAppearance(appearance: unknown): Appearance {
+  const clean = parseAppearance(appearance)
+  writeJson('settings.json', { ...readJson<Settings>('settings.json', {}), appearance: clean })
+  return clean
 }
 
 const TOKEN_CACHE = 'entra-cache.bin'

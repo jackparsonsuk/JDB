@@ -72,6 +72,8 @@ Dialect details that have caused bugs:
 
 `state.tsx` holds app-wide state: connections, loaded table lists, cross-database links, and tabs. There are three tab kinds, `table` (`TableView`), `query` (`QueryView`, with the `AskBar`) and `record` (`RecordView`, the explorer). Tabs stay mounted and are hidden when inactive, so their state survives switching. `DataGrid` is a virtualised table shared by the table, query and explorer views.
 
+Appearance: the theme (`lib/theme.ts`, `data-theme` on <html>; dim, midnight and contrast are dark variants in `styles.css`, and Windows is told "dark" for them via `nativeThemeOf`) and everything else in Settings (`components/SettingsDialog.tsx`) live in `settings.json`. `src/shared/appearance.ts` checks stored values (`parseAppearance`, which also keeps font names from breaking out of CSS) and turns them into CSS custom properties that override the stylesheet's defaults (`appearanceVars`); `lib/appearance.ts` applies them, zooms the window for the interface size, and saves shortly after the last change. The grid's row height follows the density (`useRowHeight`; changing it re-creates the grid).
+
 SQL editor autocompletion: lang-sql completes tables and `alias.column` from the schema namespace; `lib/sqlAssist.ts` adds bare column names from the tables the statement mentions and whole join clauses after `JOIN`, using the Ask engine's `Model` (so inferred keys count). The parsing is in `src/shared/sqlComplete.ts`.
 
 Exports: the save dialog's chosen extension picks the format (xlsx, csv, tsv, json, md, sql). Row formatting lives in `src/shared/rows.ts` so both processes use it; `src/shared/xlsx.ts` writes the workbook XML and `src/main/zip.ts` zips it, with no spreadsheet dependency.
