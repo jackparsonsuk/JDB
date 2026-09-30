@@ -2,6 +2,11 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 0.5.9
+- Stored procedures are much easier to read. **Formatted** lays the source out with one statement per line, indented blocks and IF / ELSE bodies, and long lists and conditions split over lines. Only spacing and keyword capitals change; switch to **As written** to see the original.
+- An **Outline** beside the source maps the routine: each IF, ELSE, loop and TRY / CATCH, every statement with the table it touches, and comment headings. Click one to jump to it. **Changes** narrows it to the lines that write, call other routines, raise errors or handle transactions.
+- Lines that write to a table, call another routine or control a transaction are marked in the margin, so you can see at a glance what a procedure changes.
+
 ## 0.5.8
 - Stored procedures, functions and triggers. Switch a connection in the sidebar to **Routines** to browse them, and open one to read its source with its parameters and the tables it reads and writes. "Script call" writes a ready-to-fill EXEC for it.
 - Search inside routine source: click **{ }** next to the routines filter to find every procedure or trigger that mentions a table, column or any text. Routines also show up in Ctrl+K.
