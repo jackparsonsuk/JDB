@@ -44,6 +44,7 @@ export interface Api {
    * inside that transaction, and its changes are kept only once the transaction is committed.
    */
   runQuery(connectionId: string, sql: string, runId?: string, transactionId?: string): Promise<QueryResult>
+  // A failed runQuery's Error may carry `sqlLine`: the 1-based line in `sql` the server reported (SQL Server).
   cancelQuery(runId: string): Promise<void>
   /** Runs a write's row-count preview (a SELECT COUNT(*)); refused if it could write, stopped after 10 s. */
   countForWrite(connectionId: string, sql: string): Promise<WriteCount>

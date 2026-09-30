@@ -20,7 +20,9 @@ function handle<A extends unknown[], R>(channel: string, fn: (...args: A) => R |
     try {
       return { ok: true, value: await fn(...(args as A)) }
     } catch (error) {
-      return { ok: false, error: (error as Error)?.message ?? String(error) }
+      // sqlLine: where in the SQL a query error happened (SQL Server), for the editor to point at.
+      const sqlLine = (error as { sqlLine?: unknown })?.sqlLine
+      return { ok: false, error: (error as Error)?.message ?? String(error), ...(typeof sqlLine === 'number' && { sqlLine }) }
     }
   })
 }

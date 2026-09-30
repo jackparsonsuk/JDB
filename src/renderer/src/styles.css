@@ -355,6 +355,8 @@ body.resizing-cols { cursor: col-resize; user-select: none; }
 .filter-editor .filter-cancel { border: none; border-radius: 0 6px 6px 0; background: none; padding: 0 8px; height: 100%; }
 
 .error-bar { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: pre-wrap; font-family: var(--mono); font-size: 12px; }
+.error-help { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-family: var(--sans); color: var(--text); }
+.error-help .small-button { font: 12px var(--mono); padding: 1px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-2); color: var(--accent); }
 
 .statusbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 10px; border-top: 1px solid var(--border); background: var(--bg-2); font-size: 12px; }
 .pager { display: flex; align-items: center; gap: 4px; }
@@ -1148,3 +1150,11 @@ button.linkish:hover:not(:disabled) { background: none; text-decoration: underli
 .lookup-dialog p { font-size: 12px; margin: 0 0 12px; }
 .lookup-dialog-labels { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .lookup-dialog-columns { max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; display: flex; flex-direction: column; gap: 2px; }
+
+/* Query parameters (ParamDialog) */
+.param-dialog { width: 560px; }
+.param-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.param-row { display: grid; grid-template-columns: 170px 1fr 90px; gap: 8px; align-items: center; }
+.param-name { display: flex; flex-direction: column; font: 600 12px var(--mono); overflow: hidden; }
+.param-name .muted { font: 11px var(--sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.param-preview { max-height: 200px; overflow: auto; font: 11px var(--mono); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; white-space: pre-wrap; margin: 0 0 12px; }

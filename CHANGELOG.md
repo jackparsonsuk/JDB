@@ -2,6 +2,12 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 1.4.0
+- **Query parameters.** Write `:customerId` (or `@customerId`) in a query and running it asks for a value first. Values are written to suit the column they're compared with (quoted for text, as they are for numbers, dates the safe way), and `IN (:ids)` takes a comma-separated list. You can also choose Text, Number, NULL or raw SQL for a value, see the finished SQL before it runs, and each value is remembered for next time. Great for saved queries.
+- In scripts that declare their own variables (`DECLARE @x`, `SET @x = …`), `@x` is left alone as the database's variable, and only `:name` asks.
+- **Errors point at the SQL.** When a query fails, the line it failed on is highlighted and the bad name is underlined. **Line N** in the error jumps to it.
+- For a misspelt column or table, the error suggests the nearest real names ("Did you mean OrderNumber?"), and clicking one fixes it in the editor.
+
 ## 1.3.0
 - **Lookups.** Click a cell in a column like OrderStatusId and the side panel lists the values it can take with their labels ("Draft", "Final", "Insurer"…), with the current one highlighted. Search the list, and with ✎ Edit on, click a value to set the cell.
 - Foreign keys work straight away. For a column without one, right-click its header and choose **Look up values in another table…**, then pick the table, its key and the columns to show. It's remembered, and other connections with the same table use it too.

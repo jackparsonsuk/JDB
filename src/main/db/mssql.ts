@@ -547,8 +547,15 @@ async function runBatches(newRequest: () => Promise<sql.Request>, text: string, 
   const started = Date.now()
   const resultSets: ResultSet[] = []
   const rowsAffected: number[] = []
-  // GO is a client-side batch separator, not T-SQL, so split on it like SSMS does.
-  for (const batch of text.split(/^\s*GO\s*;?\s*$/im).filter((b) => b.trim())) {
+  // GO is a client-side batch separator, not T-SQL, so split on it like SSMS does. The capture
+  // keeps the separators, so each batch knows the line it starts on for error positions.
+  let firstLine = 1
+  const pieces = text.split(/(^\s*GO\s*;?\s*$)/im)
+  for (let i = 0; i < pieces.length; i++) {
+    const batch = pieces[i]
+    const startLine = firstLine
+    firstLine += batch.split('\n').length - 1
+    if (i % 2 === 1 || !batch.trim()) continue
     const request = await newRequest()
     if (signal?.aborted) throw new QueryCancelledError()
     request.arrayRowMode = true
@@ -561,6 +568,9 @@ async function runBatches(newRequest: () => Promise<sql.Request>, text: string, 
       rowsAffected.push(...result.rowsAffected)
     } catch (error) {
       if ((error as { code?: string }).code === 'ECANCEL') throw new QueryCancelledError()
+      // The server counts lines from the start of the batch; the editor wants them from the top.
+      const line = (error as { lineNumber?: number }).lineNumber
+      if (typeof line === 'number' && line > 0) Object.assign(error as object, { sqlLine: startLine + line - 1 })
       throw error
     } finally {
       signal?.removeEventListener('abort', onAbort)

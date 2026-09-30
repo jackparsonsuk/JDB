@@ -18,7 +18,8 @@ export function EditorMenu({ x, y, view, running, onRun, onFormat, onSave, onClo
   y: number
   view: EditorView
   running: boolean
-  onRun(sql: string): void
+  /** `from`: where the SQL starts in the editor, for pointing at errors. */
+  onRun(sql: string, from: number): void
   onFormat(): void
   onSave(): void
   onClose(): void
@@ -60,19 +61,19 @@ export function EditorMenu({ x, y, view, running, onRun, onFormat, onSave, onClo
 
   return (
     <div ref={ref} className="menu editor-menu" style={position} onMouseDown={(e) => e.stopPropagation()}>
-      <button disabled={running || !selected.trim()} onClick={act(() => onRun(selected))}>Run selection<kbd>Ctrl+Enter</kbd></button>
+      <button disabled={running || !selected.trim()} onClick={act(() => onRun(selected, range.from))}>Run selection<kbd>Ctrl+Enter</kbd></button>
       <button
         disabled={running || !statement}
         title={statement ? statement.text.slice(0, 300) : undefined}
         onClick={act(() => {
           if (!statement) return
           view.dispatch({ selection: { anchor: statement.from, head: statement.to } })
-          onRun(statement.text)
+          onRun(statement.text, statement.from)
         })}
       >
         Run statement at cursor<kbd>Ctrl+Shift+Enter</kbd>
       </button>
-      <button disabled={running || !all.trim()} onClick={act(() => onRun(all))}>Run all</button>
+      <button disabled={running || !all.trim()} onClick={act(() => onRun(all, 0))}>Run all</button>
       <div className="menu-sep" />
       <button disabled={!selected} onClick={act(() => { window.api.copy(selected); replaceSelection('') })}>Cut<kbd>Ctrl+X</kbd></button>
       <button disabled={!selected} onClick={act(() => window.api.copy(selected))}>Copy<kbd>Ctrl+C</kbd></button>

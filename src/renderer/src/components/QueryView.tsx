@@ -30,6 +30,25 @@ import { EditorMenu, statementUnderCursor } from './EditorMenu'
 import { UpdateChangesView } from './UpdateChangesView'
 import { isBefore, readAfter, readBefore, type UpdateChanges } from '../lib/updateChanges'
 import { layoutSql } from '@shared/sqlLayout'
+import { findParams, type QueryParam } from '@shared/params'
+import { explainError, type ErrorHelp } from '@shared/sqlErrors'
+import { errorMarks, setErrorMark } from '../lib/errorMark'
+import { ParamDialog } from './ParamDialog'
+
+/** Where SQL being run came from in the editor, so an error can be pointed at: its text (before parameters are filled in) and offset. */
+interface Origin {
+  source: string
+  from: number
+}
+
+/** A failed run: the server's message and what could be worked out from it, against the editor text as it was. */
+interface RunError {
+  message: string
+  help?: ErrorHelp
+  /** Editor offsets of the spot and line start, valid while the editor still holds `doc`. */
+  mark?: { line: number; from?: number; to?: number }
+  doc?: string
+}
 
 const emptySelection: Selection = { rows: new Set(), active: null }
 
@@ -49,7 +68,9 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   const unsaved = !!savedQuery && text !== savedQuery.sql
   const [saving, setSaving] = useState(false)
   /** A write waiting for the user to confirm it in WriteConfirmDialog. */
-  const [pendingWrite, setPendingWrite] = useState<{ sql: string; keyword: string } | null>(null)
+  const [pendingWrite, setPendingWrite] = useState<{ sql: string; keyword: string; origin?: Origin } | null>(null)
+  /** SQL with parameters, waiting for their values. */
+  const [paramRun, setParamRun] = useState<{ origin: Origin; params: QueryParam[] } | null>(null)
   const [saveDialog, setSaveDialog] = useState(false)
   useEffect(() => {
     setTabUnsaved(tab.id, unsaved)
@@ -61,7 +82,8 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     else rememberTab(tab.id, { sql: text })
   }, [tab.id, text, rememberTab])
   const [result, setResult] = useState<QueryResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [runError, setRunError] = useState<RunError | null>(null)
+  const setError = useCallback((message: string | null) => setRunError(message === null ? null : { message }), [])
   const [running, setRunning] = useState(false)
   const [runStarted, setRunStarted] = useState(0)
   /** Cross-database runs: which step is running, and what each step did once finished. */
@@ -162,10 +184,31 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     return extensions
   }, [conn?.kind, conn?.id, tableList, model, savedQueries])
 
-  /** `confirmed`: the user has already agreed to this write in WriteConfirmDialog. */
-  const execute = useCallback(async (sqlText: string, confirmed = false) => {
+  /** Points the editor at a failed run's error, when the editor still holds the SQL that ran. */
+  const showError = useCallback((message: string, statement: string, origin: Origin | undefined, serverLine?: number) => {
+    const help = explainError(message, origin?.source ?? statement, model, serverLine)
+    const view = viewRef.current
+    if (!view || !origin || !help.line || view.state.sliceDoc(origin.from, origin.from + origin.source.length) !== origin.source) {
+      setRunError({ message, help })
+      return
+    }
+    const firstLine = view.state.doc.lineAt(origin.from).number
+    const mark = {
+      line: firstLine + help.line - 1,
+      ...(help.spot && { from: origin.from + help.spot.from, to: origin.from + help.spot.to })
+    }
+    view.dispatch({ effects: setErrorMark.of(mark) })
+    setRunError({ message, help, mark, doc: view.state.doc.toString() })
+  }, [model])
+
+  /**
+   * `confirmed`: the user has already agreed to this write in WriteConfirmDialog. `origin`: where
+   * in the editor the SQL came from, for pointing at errors.
+   */
+  const execute = useCallback(async (sqlText: string, confirmed = false, origin?: Origin) => {
     const statement = sqlText.trim()
     if (!statement || !conn || running) return
+    viewRef.current?.dispatch({ effects: setErrorMark.of(null) })
 
     const keyword = findWriteKeyword(statement)
     // Writes on prod are staged in a transaction, so the commit is the confirmation.
@@ -174,7 +217,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     const stage = !!keyword && !conn.readOnly && level === 'protected' && !txn.idRef.current
     if (keyword && !conn.readOnly && level !== 'relaxed' && !stage && !txn.idRef.current && !confirmed) {
       // Asks, saying how many rows it would touch; Run calls back here with confirmed.
-      setPendingWrite({ sql: statement, keyword })
+      setPendingWrite({ sql: statement, keyword, origin })
       return
     }
 
@@ -201,13 +244,23 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
         txn.record({ sql: statement, write: !!keyword, rowsAffected: 0, durationMs: 0, error: message })
         if (!(await txn.stillOpen())) message += '\n\nThe server rolled back the transaction, so none of its changes were kept.'
       }
-      setError(message)
+      showError(message, statement, origin, (e as { sqlLine?: number }).sqlLine)
       setResult(null)
     } finally {
       runRef.current = null
       setRunning(false)
     }
-  }, [conn, running, tab.connectionId, txn, safety, model])
+  }, [conn, running, tab.connectionId, txn, safety, model, showError])
+
+  /** Runs SQL from the editor, asking for its parameters' values first when it has any. */
+  const runSql = useCallback((sqlText: string, from: number) => {
+    const lead = sqlText.length - sqlText.trimStart().length
+    const origin = { source: sqlText.trim(), from: from + lead }
+    if (!origin.source || !conn || running) return
+    const params = findParams(origin.source, conn.kind, model)
+    if (params.length) setParamRun({ origin, params })
+    else execute(origin.source, false, origin)
+  }, [conn, running, model, execute])
 
   const commit = useCallback(async () => {
     if (!conn || !txn.tx) return
@@ -255,7 +308,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     if (!plan) {
       setText(translated.sql ?? '')
       setStepRuns(null)
-      execute(translated.sql ?? '')
+      execute(translated.sql ?? '', false, { source: (translated.sql ?? '').trim(), from: 0 })
       return
     }
     if (running) return
@@ -283,8 +336,9 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     const view = viewRef.current
     const range = view?.state.selection.main
     const selected = view && range && !range.empty ? view.state.sliceDoc(range.from, range.to) : ''
-    execute(selected || text)
-  }, [execute, text])
+    if (selected.trim()) runSql(selected, range!.from)
+    else runSql(text, 0)
+  }, [runSql, text])
 
   /** Ctrl+Shift+Enter: selects and runs the statement the cursor is in. */
   const runStatement = useCallback(() => {
@@ -292,8 +346,8 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     const statement = view && statementUnderCursor(view)
     if (!view || !statement) return
     view.dispatch({ selection: { anchor: statement.from, head: statement.to } })
-    execute(statement.text)
-  }, [execute])
+    runSql(statement.text, statement.from)
+  }, [runSql])
 
   /** Shift+Alt+F: lays the whole editor out, as one change so Ctrl+Z puts it back. */
   const format = useCallback(() => {
@@ -437,7 +491,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
               value={text}
               height="100%"
               theme={scheme}
-              extensions={[...language, ...editorPrefs, runKeymap]}
+              extensions={[...language, ...editorPrefs, errorMarks, runKeymap]}
               onChange={setText}
               onCreateEditor={(view) => {
                 viewRef.current = view
@@ -448,7 +502,20 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
           </div>
           <div className="splitter" onMouseDown={startResize} />
 
-          {error && <div className="error-bar">{error}</div>}
+          {runError && (
+            <ErrorBar
+              error={runError}
+              view={viewRef.current}
+              onGo={() => {
+                const view = viewRef.current
+                const mark = runError.mark
+                if (!view || !mark || view.state.doc.toString() !== runError.doc) return
+                const at = mark.from ?? view.state.doc.line(mark.line).from
+                view.dispatch({ selection: mark.from !== undefined ? { anchor: mark.from, head: mark.to } : { anchor: at }, scrollIntoView: true })
+                view.focus()
+              }}
+            />
+          )}
           {running && !result && (
             <div className="results running">
               <LoadingBar label={`${stepLabel ?? 'Running query'}… ${((Date.now() - runStarted) / 1000).toFixed(1)}s`} overlay={false} />
@@ -548,10 +615,27 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
           y={menu.y}
           view={viewRef.current}
           running={running}
-          onRun={execute}
+          onRun={runSql}
           onFormat={format}
           onSave={save}
           onClose={closeMenu}
+        />
+      )}
+      {paramRun && (
+        <ParamDialog
+          sql={paramRun.origin.source}
+          kind={conn.kind}
+          params={paramRun.params}
+          onCancel={() => {
+            setParamRun(null)
+            viewRef.current?.focus()
+          }}
+          onRun={(bound) => {
+            const { origin } = paramRun
+            setParamRun(null)
+            viewRef.current?.focus()
+            execute(bound, false, origin)
+          }}
         />
       )}
       {pendingWrite && (
@@ -564,11 +648,49 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
             viewRef.current?.focus()
           }}
           onRun={() => {
-            const { sql: statement } = pendingWrite
+            const { sql: statement, origin } = pendingWrite
             setPendingWrite(null)
-            execute(statement, true)
+            execute(statement, true, origin)
           }}
         />
+      )}
+    </div>
+  )
+}
+
+/** A failed run's message, with a link to where it went wrong and fixes for misspelt names. */
+function ErrorBar({ error, view, onGo }: { error: RunError; view: EditorView | null; onGo(): void }) {
+  const { help, mark } = error
+  // The editor may have changed since; offsets are only good for the text they were worked out on.
+  const current = !!view && !!mark && view.state.doc.toString() === error.doc
+  const fix = (name: string): void => {
+    if (!view || !current || mark?.from === undefined || mark.to === undefined) return
+    view.dispatch({ changes: { from: mark.from, to: mark.to, insert: name }, selection: { anchor: mark.from + name.length } })
+    view.focus()
+  }
+  return (
+    <div className="error-bar">
+      <div>{error.message}</div>
+      {help && (help.line || help.unknown) && (
+        <div className="error-help">
+          {help.line && (
+            <button className="small-button" disabled={!current} title={current ? 'Show it in the editor' : 'The SQL has changed since it ran'} onClick={onGo}>
+              Line {mark?.line ?? help.line}
+            </button>
+          )}
+          {help.unknown && help.unknown.suggestions.length > 0 && (
+            <>
+              <span>Did you mean</span>
+              {help.unknown.suggestions.map((s) => (
+                <button key={s} className="small-button" disabled={!current || mark?.from === undefined} title={`Replace ${help.unknown!.name} with ${s}`} onClick={() => fix(s)}>{s}</button>
+              ))}
+              <span>?</span>
+            </>
+          )}
+          {help.unknown && !help.unknown.suggestions.length && (
+            <span>No {help.unknown.kind} with a similar name was found.</span>
+          )}
+        </div>
       )}
     </div>
   )
