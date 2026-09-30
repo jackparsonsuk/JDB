@@ -5,6 +5,7 @@ What changed in each JDB release, newest first. JDB shows these notes after it u
 ## 0.5.10
 - Choosing **What's new** (or any command that opens a window) in Ctrl+K with Enter no longer closes it again straight away.
 - Release notes show button and menu names in bold, and the Close button stays in view while you scroll them.
+- A tidier table filter bar. Number and date columns start on **=** and text columns on **contains**, the column list shows each column's type, and Apply waits until there's a value. Click a filter chip to change it instead of removing and re-adding it.
 
 ## 0.5.9
 - Stored procedures are much easier to read. **Formatted** lays the source out with one statement per line, indented blocks and IF / ELSE bodies, and long lists and conditions split over lines. Only spacing and keyword capitals change; switch to **As written** to see the original.

@@ -273,8 +273,31 @@ body.resizing-cols { cursor: col-resize; user-select: none; }
 
 .filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .chip { display: inline-flex; align-items: center; gap: 5px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 12px; padding: 1px 4px 1px 10px; font-size: 12px; }
-.filter-editor { display: inline-flex; gap: 4px; align-items: center; }
-.filter-editor input { width: 140px; }
+/* Filter chips: click the body to change a filter, ✕ to remove it */
+.filter-chip { padding: 0 2px 0 0; gap: 0; overflow: hidden; }
+.filter-chip .chip-body { display: inline-flex; align-items: baseline; gap: 5px; border: none; background: none; border-radius: 0; padding: 2px 4px 2px 10px; font-size: 12px; }
+.filter-chip .chip-body:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.chip-column { font-weight: 600; }
+.chip-op { color: var(--text-dim); }
+.chip-value { font-family: var(--mono); font-size: 11.5px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-chip .chip-remove { opacity: 0.6; }
+.filter-chip .chip-remove:hover { opacity: 1; }
+.add-filter { color: var(--text-dim); }
+.add-filter:hover:not(:disabled) { color: var(--text); }
+
+/* The filter editor reads as one control: column | operator | value | Apply */
+.filter-editor { display: inline-flex; align-items: stretch; height: 28px; border: 1px solid var(--accent); border-radius: 7px; background: var(--bg); box-shadow: 0 0 0 3px var(--accent-soft); }
+.filter-editor select, .filter-editor input { border: none; border-radius: 0; background: transparent; height: 100%; padding: 0 8px; font-size: 12.5px; }
+.filter-editor select:focus, .filter-editor input:focus { outline: none; background: var(--bg-2); }
+.filter-editor > * + * { border-left: 1px solid var(--border) !important; }
+.filter-editor .filter-column { max-width: 240px; font-weight: 600; border-radius: 6px 0 0 6px; }
+.filter-editor .filter-op { color: var(--accent); font-weight: 600; }
+.filter-editor .filter-value { width: 170px; }
+.filter-editor .filter-value.numeric { font-family: var(--mono); }
+.filter-editor .filter-apply { border: none; border-radius: 0; background: var(--accent); color: #fff; font-weight: 600; padding: 0 12px; }
+.filter-editor .filter-apply:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 85%, #000); }
+.filter-editor .filter-apply:disabled { background: var(--bg-3); color: var(--text-dim); cursor: default; }
+.filter-editor .filter-cancel { border: none; border-radius: 0 6px 6px 0; background: none; padding: 0 8px; height: 100%; }
 
 .error-bar { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: pre-wrap; font-family: var(--mono); font-size: 12px; }
 

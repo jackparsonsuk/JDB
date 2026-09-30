@@ -11,6 +11,7 @@ import { runExport } from '../lib/exporting'
 import { useTableEdits } from '../lib/useTableEdits'
 import { SaveChangesDialog } from './SaveChangesDialog'
 import { ColumnFinder } from './ColumnFinder'
+import { isNumericType } from '@shared/edits'
 
 const PAGE_SIZES = [50, 100, 250, 500]
 const OPS: { op: FilterOp; label: string; needsValue: boolean }[] = [
@@ -25,6 +26,18 @@ const OPS: { op: FilterOp; label: string; needsValue: boolean }[] = [
 ]
 
 const emptySelection: Selection = { rows: new Set(), active: null }
+
+const DATE_TYPE = /^(date|datetime|datetime2|smalldatetime|datetimeoffset|timestamp|time|year)\b/i
+
+/** Numbers and dates are usually looked up exactly; text is usually searched. */
+const defaultOp = (dataType?: string): FilterOp => (dataType && (isNumericType(dataType) || DATE_TYPE.test(dataType)) ? '=' : 'contains')
+
+const needsValue = (op: FilterOp): boolean => OPS.find((o) => o.op === op)?.needsValue ?? true
+
+/** A filter's value as its chip shows it: text in quotes, so spaces and empty strings are visible. */
+function chipValue(value: string, dataType?: string): string {
+  return dataType && (isNumericType(dataType) || DATE_TYPE.test(dataType)) ? value : `"${value}"`
+}
 
 /** `focused`: this tab is showing in the focused pane, so it owns the keyboard. */
 export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' }>; focused: boolean }) {
@@ -42,6 +55,8 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
   const [selection, setSelection] = useState<Selection>(emptySelection)
   const [showInspector, setShowInspector] = useState(true)
   const [draft, setDraft] = useState<ColumnFilter | null>(null)
+  /** The chip being changed, when the draft edits an existing filter rather than adding one. */
+  const [editing, setEditing] = useState<number | null>(null)
   const [quickFind, setQuickFind] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [exporting, setExporting] = useState(false)
@@ -243,26 +258,61 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
 
         <div className="filters">
           {filters.map((f, i) => (
-            <span key={i} className="chip">
-              <span>{f.column}</span>
-              <span className="muted">{OPS.find((o) => o.op === f.op)?.label}</span>
-              {f.value !== undefined && OPS.find((o) => o.op === f.op)?.needsValue && <span>{f.value}</span>}
-              <button className="icon small" onClick={() => applyFilters(filters.filter((_, j) => j !== i))}>✕</button>
-            </span>
+            editing === i && draft ? (
+              <FilterEditor
+                key={i}
+                draft={draft}
+                columns={columnNames}
+                columnInfo={columnInfo}
+                onChange={setDraft}
+                onApply={() => {
+                  applyFilters(filters.map((old, j) => (j === i ? draft : old)))
+                  setDraft(null)
+                  setEditing(null)
+                }}
+                onCancel={() => {
+                  setDraft(null)
+                  setEditing(null)
+                }}
+              />
+            ) : (
+              <span key={i} className="chip filter-chip">
+                <button
+                  className="chip-body"
+                  title="Click to change this filter"
+                  onClick={() => {
+                    setDraft({ ...f, value: f.value ?? '' })
+                    setEditing(i)
+                  }}
+                >
+                  <span className="chip-column">{f.column}</span>
+                  <span className="chip-op">{OPS.find((o) => o.op === f.op)?.label}</span>
+                  {f.value !== undefined && needsValue(f.op) && <span className="chip-value">{chipValue(f.value, columnInfo.get(f.column)?.dataType)}</span>}
+                </button>
+                <button className="icon small chip-remove" title="Remove this filter" onClick={() => applyFilters(filters.filter((_, j) => j !== i))}>✕</button>
+              </span>
+            )
           ))}
-          {draft ? (
+          {draft && editing === null ? (
             <FilterEditor
               draft={draft}
               columns={columnNames}
+              columnInfo={columnInfo}
               onChange={setDraft}
               onApply={() => {
-                addFilter(draft.column, draft.op, draft.value)
+                addFilter(draft.column, draft.op, needsValue(draft.op) ? draft.value : undefined)
                 setDraft(null)
               }}
               onCancel={() => setDraft(null)}
             />
-          ) : (
-            <button className="ghost" onClick={() => setDraft({ column: columnNames[0] ?? '', op: 'contains', value: '' })}>
+          ) : !draft && (
+            <button
+              className="ghost add-filter"
+              onClick={() => {
+                const column = columnNames[0] ?? ''
+                setDraft({ column, op: defaultOp(columnInfo.get(column)?.dataType), value: '' })
+              }}
+            >
               + Filter
             </button>
           )}
@@ -448,31 +498,67 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
   )
 }
 
-function FilterEditor({ draft, columns, onChange, onApply, onCancel }: {
+function FilterEditor({ draft, columns, columnInfo, onChange, onApply, onCancel }: {
   draft: ColumnFilter
   columns: string[]
+  columnInfo: Map<string, ColumnInfo>
   onChange(filter: ColumnFilter): void
   onApply(): void
   onCancel(): void
 }) {
-  const needsValue = OPS.find((o) => o.op === draft.op)?.needsValue ?? true
+  const valueRef = useRef<HTMLInputElement>(null)
+  const type = columnInfo.get(draft.column)?.dataType
+  const wantsValue = needsValue(draft.op)
+  const ready = !!draft.column && (!wantsValue || (draft.value ?? '') !== '')
+  const numeric = !!type && isNumericType(type)
+  const hint = !type ? 'value' : numeric ? 'number' : DATE_TYPE.test(type) ? 'e.g. 2026-09-30' : 'text'
+
+  const apply = (): void => {
+    if (ready) onApply()
+    else valueRef.current?.focus()
+  }
   const onKey = (e: React.KeyboardEvent): void => {
-    if (e.key === 'Enter') onApply()
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      apply()
+    }
     if (e.key === 'Escape') onCancel()
   }
+  // Picking another column: an untouched operator follows the new column's type.
+  const pickColumn = (column: string): void => {
+    const op = draft.value ? draft.op : defaultOp(columnInfo.get(column)?.dataType)
+    onChange({ ...draft, column, op })
+    requestAnimationFrame(() => valueRef.current?.focus())
+  }
+  const pickOp = (op: FilterOp): void => {
+    onChange({ ...draft, op })
+    if (needsValue(op)) requestAnimationFrame(() => valueRef.current?.focus())
+  }
+
   return (
     <span className="filter-editor" onKeyDown={onKey}>
-      <select value={draft.column} onChange={(e) => onChange({ ...draft, column: e.target.value })}>
-        {columns.map((c) => <option key={c}>{c}</option>)}
+      <select className="filter-column" value={draft.column} onChange={(e) => pickColumn(e.target.value)} title={type ? `${draft.column} · ${type}` : draft.column}>
+        {columns.map((c) => {
+          const t = columnInfo.get(c)?.dataType
+          return <option key={c} value={c}>{t ? `${c}  ·  ${t}` : c}</option>
+        })}
       </select>
-      <select value={draft.op} onChange={(e) => onChange({ ...draft, op: e.target.value as FilterOp })}>
+      <select className="filter-op" value={draft.op} onChange={(e) => pickOp(e.target.value as FilterOp)}>
         {OPS.map((o) => <option key={o.op} value={o.op}>{o.label}</option>)}
       </select>
-      {needsValue && (
-        <input autoFocus value={draft.value ?? ''} onChange={(e) => onChange({ ...draft, value: e.target.value })} />
+      {wantsValue && (
+        <input
+          ref={valueRef}
+          className={`filter-value ${numeric ? 'numeric' : ''}`}
+          autoFocus
+          placeholder={hint}
+          inputMode={numeric ? 'decimal' : undefined}
+          value={draft.value ?? ''}
+          onChange={(e) => onChange({ ...draft, value: e.target.value })}
+        />
       )}
-      <button onClick={onApply}>Apply</button>
-      <button className="icon small" onClick={onCancel}>✕</button>
+      <button className="filter-apply" disabled={!ready} onClick={apply} title={ready ? 'Apply (Enter)' : 'Type a value first'}>Apply</button>
+      <button className="icon small filter-cancel" onClick={onCancel} title="Cancel (Esc)">✕</button>
     </span>
   )
 }
