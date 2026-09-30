@@ -7,6 +7,7 @@ import { DataGrid, type Selection } from './DataGrid'
 import { RowInspector } from './RowInspector'
 import { recordKey } from './RecordView'
 import { toast } from './Toast'
+import { confirm } from './Confirm'
 import { runExport } from '../lib/exporting'
 import { useTableEdits } from '../lib/useTableEdits'
 import { SaveChangesDialog } from './SaveChangesDialog'
@@ -396,8 +397,15 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
           </span>
           <div className="toolbar-right">
             <button
-              onClick={() => {
-                if (window.confirm(`Discard ${edits.count} unsaved change${edits.count === 1 ? '' : 's'}?`)) edits.discard()
+              onClick={async () => {
+                const ok = await confirm({
+                  title: `Discard ${edits.count} change${edits.count === 1 ? '' : 's'}?`,
+                  message: `The rows you edited in ${tab.table.name} go back to how they were. Nothing has been saved yet.`,
+                  confirmLabel: 'Discard changes',
+                  cancelLabel: 'Keep editing',
+                  tone: 'danger'
+                })
+                if (ok) edits.discard()
               }}
             >
               Discard

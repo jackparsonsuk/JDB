@@ -4,6 +4,7 @@ import { sameRoutine } from '@shared/routines'
 import * as panes from '@shared/panes'
 import type { CloseScope, PaneId, Panes } from '@shared/panes'
 import { forgetAllNlEngines, forgetNlEngine } from './lib/useNl'
+import { confirm } from './components/Confirm'
 
 export type Tab = (
   | {
@@ -412,22 +413,27 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
   const setActiveTab = useCallback((id: string) => setLayout((s) => panes.activate(s, id)), [])
   const focusPane = useCallback((pane: PaneId) => setLayout((s) => panes.focusPane(s, pane)), [])
   const moveTab = useCallback((id: string, pane: PaneId) => setLayout((s) => panes.moveTab(s, id, pane)), [])
-  const closeTab = useCallback((id: string) => {
+  const closeTab = useCallback(async (id: string) => {
     const warning = closeWarnings.get(id)
-    if (warning && !window.confirm(`${warning}\n\nClose the tab anyway?`)) return
+    if (warning && !(await confirm({ title: 'Close this tab?', message: warning, confirmLabel: 'Close tab', cancelLabel: 'Keep it open', tone: 'warning' }))) return
     setLayout((s) => panes.closeTab(s, id))
   }, [])
 
-  const closeTabs = useCallback((id: string, scope: CloseScope) => {
+  const closeTabs = useCallback(async (id: string, scope: CloseScope) => {
     let ids = panes.tabsToClose(layoutRef.current, id, scope)
     const warned = ids.filter((t) => closeWarnings.has(t))
     if (warned.length) {
-      const list = warned.map((t) => `• ${closeWarnings.get(t)}`).join('\n')
-      const plural = warned.length === 1 ? 'tab has' : 'tabs have'
-      // Cancel still closes the tabs that have nothing to lose.
-      if (!window.confirm(`${warned.length} ${plural} unsaved work:\n\n${list}\n\nClose ${warned.length === 1 ? 'it' : 'them'} too?`)) {
-        ids = ids.filter((t) => !closeWarnings.has(t))
-      }
+      const one = warned.length === 1
+      // Keeping them open still closes the tabs that have nothing to lose.
+      const closeAll = await confirm({
+        title: `${warned.length} tab${one ? ' has' : 's have'} unsaved work`,
+        items: warned.map((t) => closeWarnings.get(t)!),
+        message: ids.length > warned.length ? `The other ${ids.length - warned.length} close either way.` : undefined,
+        confirmLabel: one ? 'Close it too' : 'Close them too',
+        cancelLabel: one ? 'Keep it open' : 'Keep them open',
+        tone: 'warning'
+      })
+      if (!closeAll) ids = ids.filter((t) => !closeWarnings.has(t))
     }
     setLayout((s) => panes.closeTabs(s, ids, scope === 'all' ? undefined : id))
   }, [])

@@ -866,6 +866,27 @@ html.slop ::selection { background: #ff4ecd; color: #fff; }
 .hidden-card code { font: 12px var(--mono); color: var(--text); background: var(--bg-3); padding: 1px 5px; border-radius: 4px; }
 .grant { margin: 14px 0 0; padding: 8px 12px; font: 12px var(--mono); text-align: left; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; user-select: all; }
 
+/* Confirmations: JDB's own dialog in place of the browser's confirm box */
+.overlay.confirm-overlay { z-index: 60; backdrop-filter: blur(2px); }
+.dialog.confirm { width: 440px; padding: 20px 22px 18px; animation: confirm-in 120ms ease-out; }
+@keyframes confirm-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
+.confirm-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.confirm-head h2 { margin: 0; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+.confirm-icon { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font: 800 15px var(--sans); color: var(--tone); background: color-mix(in srgb, var(--tone) 16%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tone) 35%, transparent); }
+.confirm.tone-default { --tone: var(--accent); }
+.confirm.tone-warning { --tone: var(--env-test); }
+.confirm.tone-danger { --tone: var(--danger); }
+.confirm.tone-danger { border-top: 3px solid var(--danger); }
+.confirm.tone-warning { border-top: 3px solid var(--env-test); }
+.confirm-message { margin-left: 42px; color: var(--text-dim); line-height: 1.55; font-size: 13px; }
+.confirm-message strong { color: var(--text); }
+.confirm-items { margin: 10px 0 0 42px; padding: 8px 12px 8px 26px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; line-height: 1.5; max-height: 30vh; overflow-y: auto; }
+.confirm-items li + li { margin-top: 4px; }
+.confirm-actions { justify-content: flex-end; margin-top: 18px; }
+.confirm-actions button { min-width: 84px; }
+button.primary.danger-solid { background: var(--danger); border-color: var(--danger); }
+button.primary.warn-solid { background: var(--env-test); border-color: var(--env-test); color: #1f1600; }
+
 /* Saved queries: the save dialog */
 textarea { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 6px 8px; outline: none; resize: vertical; font-size: 13px; }
 textarea:focus { border-color: var(--accent); }

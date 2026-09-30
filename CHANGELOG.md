@@ -7,6 +7,7 @@ What changed in each JDB release, newest first. JDB shows these notes after it u
 - **Snippets.** Save a query for **Any connection** and it works everywhere: start typing its name in any query and pick it from the suggestions to drop its SQL in.
 - Saved queries travel with shared connection files: exporting all connections includes them, and exporting a folder includes the queries for its connections.
 - **See how many rows a write will change before it runs.** On shared connections, running an UPDATE, DELETE or INSERT now shows how many rows it would touch, for example "12 rows to update in dbo.Orders", and warns in red when there's no WHERE clause. Cancel is the default, so Enter never runs it by accident.
+- Questions like "Delete this connection?" or "Close this tab?" now appear in JDB's own style instead of the plain Windows box, with the choice spelled out on the buttons. Anything that deletes or discards starts on Cancel.
 
 ## 0.5.10
 - Choosing **What's new** (or any command that opens a window) in Ctrl+K with Enter no longer closes it again straight away.

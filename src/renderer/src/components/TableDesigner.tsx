@@ -5,6 +5,7 @@ import { useAppState, useCloseWarning, useTableList, type Tab } from '../state'
 import { LoadingBar } from './DataGrid'
 import { SaveChangesDialog } from './SaveChangesDialog'
 import { toast } from './Toast'
+import { confirm } from './Confirm'
 
 const NOTES = {
   mssql: 'These run in one transaction, so if any step fails nothing changes. Changing a column\'s type can rewrite and lock the whole table while it runs.',
@@ -62,8 +63,14 @@ export function TableDesigner({ tab }: { tab: Extract<Tab, { kind: 'design' }> }
   const addColumn = (): void =>
     setDrafts((d) => [...d, { name: '', dataType: conn.kind === 'mssql' ? 'nvarchar(50)' : 'varchar(255)', nullable: true, default: '' }])
 
-  const refresh = (): void => {
-    if (changes && !window.confirm(`Discard ${changes} unsaved change${changes === 1 ? '' : 's'} and reload?`)) return
+  const refresh = async (): Promise<void> => {
+    if (changes && !(await confirm({
+      title: 'Reload the design?',
+      message: `Your ${changes} unsaved change${changes === 1 ? '' : 's'} to ${tab.table.name} will be lost.`,
+      confirmLabel: 'Discard and reload',
+      cancelLabel: 'Keep editing',
+      tone: 'danger'
+    }))) return
     setReloadKey((k) => k + 1)
   }
 

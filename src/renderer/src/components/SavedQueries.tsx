@@ -4,6 +4,7 @@ import { useAppState } from '../state'
 import { fuzzyScore } from '../lib/fuzzy'
 import { SaveQueryDialog } from './SaveQueryDialog'
 import { toast } from './Toast'
+import { confirm } from './Confirm'
 
 const OPEN_KEY = 'jdb.sidebar.savedOpen'
 const CLOSED_FOLDERS_KEY = 'jdb.sidebar.savedClosedFolders'
@@ -78,7 +79,13 @@ export function SavedQueries() {
   }, [savedQueries, filter])
 
   const remove = async (q: SavedQuery): Promise<void> => {
-    if (!window.confirm(`Delete the saved query "${q.name}"? Tabs showing it keep their text.`)) return
+    const ok = await confirm({
+      title: `Delete ${q.name}?`,
+      message: 'Tabs showing it keep their text, as ordinary queries.',
+      confirmLabel: 'Delete query',
+      tone: 'danger'
+    })
+    if (!ok) return
     try {
       await deleteQuery(q.id)
       toast(`Deleted ${q.name}`)

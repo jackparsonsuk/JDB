@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { AuthType, ConnectionConfig, ConnectionInput, DbKind, EnvTag } from '@shared/types'
 import { useAppState } from '../state'
 import { toast } from './Toast'
+import { confirm } from './Confirm'
 
 const DEFAULT_PORTS: Record<DbKind, number> = { mssql: 1433, mysql: 3306 }
 
@@ -69,7 +70,13 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConf
   }
 
   const remove = async (): Promise<void> => {
-    if (!window.confirm(`Delete the connection "${form.name}"? This only removes it from JDB.`)) return
+    const ok = await confirm({
+      title: `Delete ${form.name}?`,
+      message: 'This only removes the connection from JDB; nothing changes on the server. Its saved queries stay, as queries for any connection.',
+      confirmLabel: 'Delete connection',
+      tone: 'danger'
+    })
+    if (!ok) return
     await window.api.deleteConnection(form.id)
     forgetTables(form.id)
     await reloadConnections()

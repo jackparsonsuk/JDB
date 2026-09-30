@@ -3,6 +3,7 @@ import type { ConnectionConfig, RoutineInfo, RoutineKind, RoutineSource, TableIn
 import { ROUTINE_LABELS, searchSources } from '@shared/routines'
 import { useOpenLink } from '../lib/openLink'
 import { SavedQueries } from './SavedQueries'
+import { confirm } from './Confirm'
 import { useAppState } from '../state'
 import { fuzzyScore } from '../lib/fuzzy'
 import { appVersion } from '../lib/version'
@@ -85,7 +86,11 @@ export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig
 
   const removeFolder = async (folder: string): Promise<void> => {
     const ids = connections.filter((c) => c.folder === folder).map((c) => c.id)
-    if (ids.length && !window.confirm(`Remove the folder "${folder}"? Its ${ids.length} connection${ids.length === 1 ? '' : 's'} move to the top level.`)) return
+    if (ids.length && !(await confirm({
+      title: `Remove the folder ${folder}?`,
+      message: `Its ${ids.length} connection${ids.length === 1 ? '' : 's'} move to the top level; none are deleted.`,
+      confirmLabel: 'Remove folder'
+    }))) return
     if (ids.length) await moveTo(ids, '')
     rememberEmpty(emptyFolders.filter((f) => f !== folder))
   }

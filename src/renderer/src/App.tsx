@@ -12,6 +12,7 @@ import { RoutineView } from './components/RoutineView'
 import { ConnectionDialog } from './components/ConnectionDialog'
 import { CommandPalette } from './components/CommandPalette'
 import { toast, ToastHost } from './components/Toast'
+import { ConfirmHost } from './components/Confirm'
 import { LinksDialog } from './components/LinksDialog'
 import { SlopLayer } from './components/SlopLayer'
 import { WhatsNewDialog } from './components/WhatsNewDialog'
@@ -219,6 +220,7 @@ export function App() {
       )}
       {linksFor && <LinksDialog connectionId={linksFor} onClose={() => setLinksFor(null)} />}
       <WhatsNewDialog />
+      <ConfirmHost />
       <ToastHost />
       <SlopLayer />
     </div>

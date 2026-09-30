@@ -22,6 +22,7 @@ import { toast } from './Toast'
 import { snippetCompletions } from '../lib/snippets'
 import { SaveQueryDialog } from './SaveQueryDialog'
 import { WriteConfirmDialog } from './WriteConfirmDialog'
+import { confirm } from './Confirm'
 
 const emptySelection: Selection = { rows: new Set(), active: null }
 
@@ -169,7 +170,13 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     if (!conn || !txn.tx) return
     const { statements, rows } = stagedChanges(txn.tx)
     if (conn.env === 'prod' && statements > 0) {
-      const ok = window.confirm(`Commit ${statements} change${statements === 1 ? '' : 's'} (${formatCount(rows)} rows affected) to ${conn.name} (PROD)?`)
+      const ok = await confirm({
+        title: `Commit to ${conn.name}?`,
+        message: <>This makes {statements} change{statements === 1 ? '' : 's'} permanent on <strong>production</strong>: {formatCount(rows)} row{rows === 1 ? '' : 's'} affected.</>,
+        confirmLabel: 'Commit',
+        cancelLabel: 'Not yet',
+        tone: 'danger'
+      })
       if (!ok) return
     }
     setError(null)
