@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useClickableNames } from '../lib/clickableNames'
 import CodeMirror, { EditorView, type Extension } from '@uiw/react-codemirror'
 import { EditorSelection, EditorState } from '@codemirror/state'
 import { sql, MSSQL, MySQL } from '@codemirror/lang-sql'
@@ -87,17 +88,21 @@ export function RoutineView({ tab }: { tab: Extract<Tab, { kind: 'routine' }> })
     : null), [def, conn, tab.routine, tableList, routineList])
 
   const layout = useMemo(() => (def?.definition && conn ? layoutSql(def.definition, conn.kind, formatted) : null), [def, conn, formatted])
+  // Ctrl+click a table or routine in the source to open it; unqualified names are this routine's schema's (or dbo's).
+  const nameDefaults = useMemo(() => (conn?.kind === 'mssql' ? [schema, 'dbo'] : [schema]), [conn?.kind, schema])
+  const names = useClickableNames(tab.connectionId, tab.pane, conn?.kind, nameDefaults)
   const shown = layout?.text ?? def?.definition ?? null
 
   const extensions = useMemo<Extension[]>(() => [
     sql({ dialect: conn?.kind === 'mssql' ? MSSQL : MySQL, upperCaseKeywords: true }),
     EditorState.readOnly.of(true),
     EditorView.lineWrapping,
+    names,
     effectMarkers(layout?.outline ?? []),
     EditorView.updateListener.of((update) => {
       if (update.selectionSet || update.docChanged) setCursorLine(update.state.doc.lineAt(update.state.selection.main.head).number)
     })
-  ], [conn?.kind, layout])
+  ], [conn?.kind, layout, names])
 
   const jumpTo = useCallback((line: number) => {
     const view = viewRef.current
@@ -374,7 +379,7 @@ function Overview({ def, conn, uses }: { def: RoutineDefinition; conn: Connectio
           {def.created && <><dt>Created</dt><dd>{parseStamp(def.created)?.toLocaleString() ?? def.created}</dd></>}
           {info.modified && <><dt>{kind === 'trigger' && conn.kind === 'mysql' ? 'Created' : 'Changed'}</dt><dd>{parseStamp(info.modified)?.toLocaleString() ?? info.modified}</dd></>}
         </dl>
-        {uses && <div className="side-hint muted">Tables and calls are read from the source, so dynamic SQL isn't covered.</div>}
+        {uses && <div className="side-hint muted">Tables and calls are read from the source, so dynamic SQL isn't covered. Ctrl+click a name in the source to open it (Shift as well: beside).</div>}
       </Section>
     </>
   )

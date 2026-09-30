@@ -7,6 +7,8 @@ What changed in each JDB release, newest first. JDB shows these notes after it u
 - In scripts that declare their own variables (`DECLARE @x`, `SET @x = …`), `@x` is left alone as the database's variable, and only `:name` asks.
 - **Errors point at the SQL.** When a query fails, the line it failed on is highlighted and the bad name is underlined. **Line N** in the error jumps to it.
 - For a misspelt column or table, the error suggests the nearest real names ("Did you mean OrderNumber?"), and clicking one fixes it in the editor.
+- **Ctrl+click a name to open it.** In the SQL editor and in stored procedure source, hold Ctrl and the table or procedure under the pointer is underlined. Click to open it; Shift+Ctrl+click opens it beside.
+- It follows aliases too: Ctrl+click `o` in `o.Status` opens the table `o` stands for, and Ctrl+click `Status` opens that table at the Status column.
 
 ## 1.3.0
 - **Lookups.** Click a cell in a column like OrderStatusId and the side panel lists the values it can take with their labels ("Draft", "Final", "Insurer"…), with the current one highlighted. Search the list, and with ✎ Edit on, click a value to set the cell.
