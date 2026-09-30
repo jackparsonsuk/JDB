@@ -250,9 +250,10 @@ function GridSection({ a }: { a: Appearance }) {
           ))}
         </div>
       </Group>
-      <Group title="SQL editor" onReset={a.wordWrap || a.tabSize ? () => resetAppearance(['wordWrap', 'tabSize']) : undefined}>
+      <Group title="SQL editor" onReset={a.wordWrap === false || a.tabSize ? () => resetAppearance(['wordWrap', 'tabSize']) : undefined}>
         <label className="toggle">
-          <input type="checkbox" checked={!!a.wordWrap} onChange={(e) => updateAppearance({ wordWrap: e.target.checked || undefined })} />
+          {/* Wrapping is on unless switched off, so only "off" is stored. */}
+          <input type="checkbox" checked={a.wordWrap !== false} onChange={(e) => updateAppearance({ wordWrap: e.target.checked ? undefined : false })} />
           <span className="toggle-track"><span className="toggle-thumb" /></span>
           Wrap long lines
         </label>

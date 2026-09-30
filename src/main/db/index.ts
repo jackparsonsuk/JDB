@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import type { ColumnFilter, ConnectionConfig, KeyKind, QueryResult, RoutineRef, RoutineSource, RowsRequest, SchemaTable, TableRef, ValueLookup, WriteCount } from '@shared/types'
+import type { ColumnFilter, ConnectionConfig, KeyKind, QueryResult, ResultSet, RoutineRef, RoutineSource, RowsRequest, SchemaTable, TableRef, ValueLookup, WriteCount } from '@shared/types'
 import { findImplicitCommit, findTransactionControl, findWriteKeyword } from '@shared/sqlGuard'
 import { addHistory, getConnection } from '../store'
 import { TimeoutError, type Driver, type DriverTransaction } from './driver'
@@ -226,6 +226,28 @@ export async function countForWrite(connectionId: string, sql: string): Promise<
   } catch (error) {
     if (controller.signal.aborted) return { status: 'timeout', seconds: WRITE_COUNT_TIMEOUT_MS / 1000 }
     return { status: 'failed', error: String((error as Error).message ?? error) }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Reads the rows an UPDATE touches, before and after it runs (see @shared/writeDiff). Like
+ * countForWrite: refused if it could write, stopped after WRITE_COUNT_TIMEOUT_MS and kept out of
+ * the history. With `transactionId` it reads inside that transaction, so staged changes show.
+ */
+export async function snapshotRows(connectionId: string, sql: string, transactionId?: string): Promise<ResultSet> {
+  const keyword = findWriteKeyword(sql)
+  if (keyword) throw new Error(`The read contains ${keyword}, so it wasn't run.`)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), WRITE_COUNT_TIMEOUT_MS)
+  try {
+    const result = await withDriver(connectionId, (driver) =>
+      transactionId ? openTransaction(transactionId, connectionId).tx.query(sql, controller.signal) : driver.query(sql, controller.signal))
+    return result.resultSets[0] ?? { columns: [], rows: [] }
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`Reading the rows took over ${WRITE_COUNT_TIMEOUT_MS / 1000} s, so it was stopped.`)
+    throw error
   } finally {
     clearTimeout(timer)
   }

@@ -26,6 +26,10 @@ import { snippetCompletions } from '../lib/snippets'
 import { SaveQueryDialog } from './SaveQueryDialog'
 import { WriteConfirmDialog } from './WriteConfirmDialog'
 import { confirm } from './Confirm'
+import { EditorMenu, statementUnderCursor } from './EditorMenu'
+import { UpdateChangesView } from './UpdateChangesView'
+import { isBefore, readAfter, readBefore, type UpdateChanges } from '../lib/updateChanges'
+import { layoutSql } from '@shared/sqlLayout'
 
 const emptySelection: Selection = { rows: new Set(), active: null }
 
@@ -36,9 +40,9 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   const scheme = useColorScheme()
   const [text, setText] = useState(tab.initialSql)
   const { wordWrap, tabSize } = useAppearance()
-  /** Word wrap and tab size from Settings; unset keeps CodeMirror's defaults. */
+  /** Word wrap (on unless switched off) and tab size from Settings; unset tab size keeps CodeMirror's default. */
   const editorPrefs = useMemo<Extension[]>(() => [
-    ...(wordWrap ? [EditorView.lineWrapping] : []),
+    ...(wordWrap !== false ? [EditorView.lineWrapping] : []),
     ...(tabSize ? [EditorState.tabSize.of(tabSize), indentUnit.of(' '.repeat(tabSize))] : [])
   ], [wordWrap, tabSize])
   const savedQuery = tab.savedId ? savedQueries.find((q) => q.id === tab.savedId) : undefined
@@ -75,7 +79,13 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   const [selection, setSelection] = useState<Selection>(emptySelection)
   const [editorHeight, setEditorHeight] = useState(220)
   const [showHistory, setShowHistory] = useState(false)
-  const [showAsk, setShowAsk] = useState(!tab.initialSql)
+  // New tabs open as plain SQL; Ask is one click away.
+  const [showAsk, setShowAsk] = useState(false)
+  /** What the last UPDATE changed, and whether its tab is the one showing. */
+  const [changes, setChanges] = useState<UpdateChanges | null>(null)
+  const [showChanges, setShowChanges] = useState(false)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
   const viewRef = useRef<EditorView | null>(null)
   const txn = useTransaction(tab.connectionId)
   const staged = txn.tx ? stagedChanges(txn.tx).statements : 0
@@ -154,10 +164,16 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
 
     const { id } = startRun()
     let transactionId = txn.idRef.current
+    setChanges(null)
     try {
       if (stage) transactionId = await txn.begin()
+      // Reads an UPDATE's rows first, so the result can show what it changed (MySQL only reports a count).
+      const before = keyword === 'UPDATE' && !conn.readOnly ? await readBefore(conn, model, statement, transactionId ?? undefined) : null
       const r = await window.api.runQuery(tab.connectionId, statement, id, transactionId ?? undefined)
+      const found = before && (isBefore(before) ? await readAfter(conn, before, transactionId ?? undefined) : before)
       setResult(r)
+      setChanges(found)
+      setShowChanges(!!found && r.resultSets.length === 0)
       setResultIndex(Math.max(0, r.resultSets.length - 1))
       setSelection(emptySelection)
       if (transactionId) {
@@ -175,7 +191,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
       runRef.current = null
       setRunning(false)
     }
-  }, [conn, running, tab.connectionId, txn, safety])
+  }, [conn, running, tab.connectionId, txn, safety, model])
 
   const commit = useCallback(async () => {
     if (!conn || !txn.tx) return
@@ -254,6 +270,24 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     execute(selected || text)
   }, [execute, text])
 
+  /** Ctrl+Shift+Enter: selects and runs the statement the cursor is in. */
+  const runStatement = useCallback(() => {
+    const view = viewRef.current
+    const statement = view && statementUnderCursor(view)
+    if (!view || !statement) return
+    view.dispatch({ selection: { anchor: statement.from, head: statement.to } })
+    execute(statement.text)
+  }, [execute])
+
+  /** Shift+Alt+F: lays the whole editor out, as one change so Ctrl+Z puts it back. */
+  const format = useCallback(() => {
+    const view = viewRef.current
+    if (!view || !conn) return
+    const layout = layoutSql(view.state.doc.toString(), conn.kind, true)
+    if (layout.formatted) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: layout.text } })
+    else toast(layout.problem ?? "Couldn't format this SQL")
+  }, [conn])
+
   /** Ctrl+S: updates the saved query this tab holds, or asks for a name for a new one. */
   const save = useCallback(async () => {
     if (!savedQuery || !unsaved) {
@@ -274,13 +308,15 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
 
   const runKeymap = useMemo(
     () => Prec.highest(keymap.of([
+      { key: 'Mod-Shift-Enter', run: () => { runStatement(); return true } },
       { key: 'Mod-Enter', run: () => { run(); return true } },
+      { key: 'Shift-Alt-f', run: () => { format(); return true } },
       { key: 'F5', run: () => { run(); return true } },
       { key: 'Mod-s', run: () => { save(); return true } },
       // Tab accepts the highlighted completion like Enter; with no list open it indents as before.
       { key: 'Tab', run: acceptCompletion }
     ])),
-    [run, save]
+    [run, runStatement, format, save]
   )
 
   const startResize = (event: React.MouseEvent): void => {
@@ -328,7 +364,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
             ? 'Esc cancels the running query'
             : !txn.tx && !conn.readOnly && safety(conn) === 'protected'
               ? `Ctrl+Enter runs · writes on ${environment(conn.env).name.toUpperCase()} are staged until you commit`
-              : 'Ctrl+Enter runs the selection, or everything'}
+              : 'Ctrl+Enter runs the selection, or everything · Ctrl+Shift+Enter the statement at the cursor · right-click for more'}
         </span>
         <div className="toolbar-right">
           <button
@@ -372,7 +408,15 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
               }}
             />
           )}
-          <div className="editor" style={{ height: editorHeight }}>
+          <div
+            className="editor"
+            style={{ height: editorHeight }}
+            onContextMenu={(e) => {
+              if (!viewRef.current) return
+              e.preventDefault()
+              setMenu({ x: e.clientX, y: e.clientY })
+            }}
+          >
             <CodeMirror
               value={text}
               height="100%"
@@ -398,8 +442,13 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
           {result && (
             <div className="results">
               <div className="result-tabs">
+                {changes && (
+                  <button className={showChanges ? 'on' : ''} title="The rows the UPDATE changed, before and after" onClick={() => setShowChanges(true)}>
+                    Changes{'diff' in changes && <span className="muted"> ({formatCount(changes.diff.changed.length)})</span>}
+                  </button>
+                )}
                 {result.resultSets.map((s, i) => (
-                  <button key={i} className={i === resultIndex ? 'on' : ''} onClick={() => { setResultIndex(i); setSelection(emptySelection) }}>
+                  <button key={i} className={i === resultIndex && !showChanges ? 'on' : ''} onClick={() => { setResultIndex(i); setShowChanges(false); setSelection(emptySelection) }}>
                     Result {i + 1} <span className="muted">({formatCount(s.rows.length)})</span>
                   </button>
                 ))}
@@ -413,7 +462,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
                   </span>
                 )}
                 <span className="muted result-meta">
-                  {set && (
+                  {set && !showChanges && (
                     <button
                       className="result-export"
                       title="Save this result set to a file (Excel, CSV, JSON…)"
@@ -426,7 +475,9 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
                   {result.resultSets.length === 0 && ` · ${result.rowsAffected.reduce((a, b) => a + b, 0)} rows affected`}
                 </span>
               </div>
-              {set ? (
+              {showChanges && changes ? (
+                <UpdateChangesView changes={changes} rowsAffected={result.rowsAffected.reduce((a, b) => a + b, 0)} />
+              ) : set ? (
                 <div className="view-body">
                   <DataGrid
                     loadingLabel={running ? `${stepLabel ?? 'Running query'}… ${((Date.now() - runStarted) / 1000).toFixed(1)}s` : undefined}
@@ -473,6 +524,18 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
             toast(`Saved ${saved.name}`)
             viewRef.current?.focus()
           }}
+        />
+      )}
+      {menu && viewRef.current && (
+        <EditorMenu
+          x={menu.x}
+          y={menu.y}
+          view={viewRef.current}
+          running={running}
+          onRun={execute}
+          onFormat={format}
+          onSave={save}
+          onClose={closeMenu}
         />
       )}
       {pendingWrite && (

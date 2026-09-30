@@ -2,6 +2,13 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 1.2.0
+- **See what an UPDATE changed.** After an UPDATE runs, a **Changes** tab lists each row it changed, with the old value crossed out next to the new one. It also says when rows matched but already had those values, or when nothing matched at all, so you can tell on MySQL whether it worked. It works inside transactions too, so you can check staged changes before you commit. It needs a table with a primary key and doesn't cover joined updates.
+- **Query tabs open as plain SQL**, with the editor ready to type in. ✦ Ask is still one click away on the toolbar.
+- **Right-click in the SQL editor** to run the selection, the statement under the cursor or everything, plus cut, copy, paste, toggle comment, format and save.
+- **Ctrl+Shift+Enter** runs the statement the cursor is in, and **Shift+Alt+F** formats the SQL (Ctrl+Z undoes it).
+- **Long lines wrap** in the SQL editor by default, so a long pasted WHERE clause stays on screen. You can switch this off in Settings → Grid & editor.
+
 ## 1.1.0
 - **Settings** (Ctrl+, or the ⚙ in the sidebar) to make OverlookDB your own. Changes show straight away.
 - New themes: **Dim** (a softer dark), **Midnight** (near-black) and **High contrast**, alongside Light, Dark and following Windows.

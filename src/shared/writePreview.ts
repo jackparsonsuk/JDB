@@ -28,7 +28,7 @@ const isComment = (t: SqlToken): boolean => t.type === 'line-comment' || t.type 
 const word = (t: SqlToken | undefined): string | null => (t && t.type === 'word' ? t.upper : null)
 
 /** The statements in a batch, split at top-level semicolons, without empty ones. */
-function statements(tokens: SqlToken[]): SqlToken[][] {
+export function statements(tokens: SqlToken[]): SqlToken[][] {
   const out: SqlToken[][] = [[]]
   let depth = 0
   for (const t of tokens) {
@@ -47,7 +47,7 @@ function statements(tokens: SqlToken[]): SqlToken[][] {
 }
 
 /** Indexes of `words` at the statement's top level (outside parentheses), in order. */
-function topLevel(tokens: SqlToken[], words: string[]): { word: string; at: number }[] {
+export function topLevel(tokens: SqlToken[], words: string[]): { word: string; at: number }[] {
   const found: { word: string; at: number }[] = []
   let depth = 0
   tokens.forEach((t, at) => {
@@ -107,7 +107,7 @@ export function previewWrite(sql: string, kind: DbKind): WritePreview {
 }
 
 /** Clauses that change which or how many rows a write touches, so a plain count would be wrong. */
-function limiting(t: SqlToken[]): string | null {
+export function limiting(t: SqlToken[]): string | null {
   const found = topLevel(t, ['TOP', 'LIMIT', 'OUTPUT', 'RETURNING', 'ORDER'])[0]
   return found ? found.word : null
 }

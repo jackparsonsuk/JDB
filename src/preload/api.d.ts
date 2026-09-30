@@ -1,5 +1,5 @@
 import type {
-  CellValue, ColumnFilter, ColumnSummary, ConnectionConfig, DbKind, ExportResult, TableExportRequest, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RoutineDefinition, RoutineInfo, RoutineRef, RoutineSource, SavedQuery, SavedQueryInput, WriteCount, RowsRequest, RowsResult, SavedSession,
+  CellValue, ColumnFilter, ColumnSummary, ConnectionConfig, DbKind, ExportResult, TableExportRequest, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, ResultSet, RoutineDefinition, RoutineInfo, RoutineRef, RoutineSource, SavedQuery, SavedQueryInput, WriteCount, RowsRequest, RowsResult, SavedSession,
   SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ThemeSetting, UpdateCheck, ValueLookup
 } from '../shared/types'
 import type { ImportSummary } from '../shared/collection'
@@ -44,6 +44,8 @@ export interface Api {
   cancelQuery(runId: string): Promise<void>
   /** Runs a write's row-count preview (a SELECT COUNT(*)); refused if it could write, stopped after 10 s. */
   countForWrite(connectionId: string, sql: string): Promise<WriteCount>
+  /** Reads the rows an UPDATE touches, for the before / after comparison; refused if it could write, stopped after 10 s, kept out of history. */
+  snapshotRows(connectionId: string, sql: string, transactionId?: string): Promise<ResultSet>
   /** Runs grid edits in one transaction, rolling all back unless each matches exactly one row. Returns how many ran. */
   applyChanges(connectionId: string, statements: string[]): Promise<number>
   /** Opens a transaction on a connection of its own and returns its id. Refused on read-only connections. */
@@ -90,6 +92,8 @@ export interface Api {
   /** Scales the whole window (interface size). */
   setZoom(factor: number): Promise<void>
   copy(text: string): Promise<void>
+  /** The clipboard's text, for the SQL editor's Paste menu item. */
+  pasteText(): Promise<string>
   /** The version of a downloaded update waiting to install, or null. */
   readyUpdate(): Promise<string | null>
   /** Quits and installs the downloaded update. */
