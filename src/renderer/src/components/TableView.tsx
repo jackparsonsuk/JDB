@@ -42,7 +42,7 @@ function chipValue(value: string, dataType?: string): string {
 
 /** `focused`: this tab is showing in the focused pane, so it owns the keyboard. */
 export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' }>; focused: boolean }) {
-  const { connection, openQuery, openRecord, open, links, tables, rememberTab, schemaVersions } = useAppState()
+  const { connection, openQuery, openRecord, open, links, tables, rememberTab, schemaVersions, safety } = useAppState()
   useTableList(tab.connectionId)
   const schemaVersion = schemaVersions[tab.connectionId] ?? 0
   const conn = connection(tab.connectionId)
@@ -356,7 +356,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
             {exporting ? 'Exporting…' : 'Export'}
           </button>
           <button
-            className={`ghost ${editMode ? 'on' : ''} ${editMode && conn.env === 'prod' ? 'prod-edit' : ''}`}
+            className={`ghost ${editMode ? 'on' : ''} ${editMode && safety(conn) === 'protected' ? 'prod-edit' : ''}`}
             disabled={!!editBlocked}
             title={editBlocked ?? (editMode ? 'Stop editing (staged changes are kept)' : 'Edit cells, add and delete rows. Nothing is saved until you review and save.')}
             onClick={() => setEditMode((m) => !m)}

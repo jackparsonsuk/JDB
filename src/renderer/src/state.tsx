@@ -5,6 +5,7 @@ import * as panes from '@shared/panes'
 import type { CloseScope, PaneId, Panes } from '@shared/panes'
 import { forgetAllNlEngines, forgetNlEngine } from './lib/useNl'
 import { confirm } from './components/Confirm'
+import { envInfo, type EnvironmentDef, type EnvSafety } from '@shared/environments'
 
 export type Tab = (
   | {
@@ -76,6 +77,17 @@ interface AppState {
   open(target: OpenTarget, pane?: PaneId): void
   openTable(connectionId: string, table: TableRef, filters?: ColumnFilter[], pane?: PaneId): void
   openQuery(connectionId: string, sql?: string): void
+  /** The user's own environments; the built-ins come from @shared/environments. */
+  environments: EnvironmentDef[]
+  saveEnvironments(environments: EnvironmentDef[]): Promise<void>
+  /** Re-reads them, e.g. after an import added some. */
+  reloadEnvironments(): void
+  /** Removes an environment, moving its connections to `moveTo`. */
+  deleteEnvironment(id: string, moveTo: string): Promise<void>
+  /** An environment's name, colour and safety; unknown ones are treated as protected. */
+  environment(id: string): EnvironmentDef
+  /** How careful to be with writes on a connection, from its environment. */
+  safety(connection: ConnectionConfig): EnvSafety
   /** Saved queries, loaded at startup. */
   savedQueries: SavedQuery[]
   /** Adds or updates a saved query and returns it as stored. */
@@ -363,6 +375,23 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     setLayout((s) => panes.addTab(s, { kind: 'query', id: nextTabId(), pane: s.focused, connectionId, title, initialSql: sql }))
   }, [])
 
+  const [environments, setEnvironments] = useState<EnvironmentDef[]>([])
+  useEffect(() => {
+    window.api.listEnvironments().then(setEnvironments).catch(() => undefined)
+  }, [])
+  const reloadEnvironments = useCallback(() => {
+    window.api.listEnvironments().then(setEnvironments).catch(() => undefined)
+  }, [])
+  const saveEnvironments = useCallback(async (next: EnvironmentDef[]) => {
+    setEnvironments(await window.api.saveEnvironments(next))
+  }, [])
+  const deleteEnvironment = useCallback(async (id: string, moveTo: string) => {
+    setEnvironments(await window.api.deleteEnvironment(id, moveTo))
+    await reloadConnections()
+  }, [reloadConnections])
+  const environment = useCallback((id: string) => envInfo(id, environments), [environments])
+  const safety = useCallback((c: ConnectionConfig) => envInfo(c.env, environments).safety, [environments])
+
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([])
   const reloadQueries = useCallback(async () => {
     setSavedQueries(await window.api.listQueries())
@@ -461,6 +490,12 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     open,
     openTable,
     openQuery,
+    environments,
+    saveEnvironments,
+    reloadEnvironments,
+    deleteEnvironment,
+    environment,
+    safety,
     savedQueries,
     saveQuery,
     deleteQuery,
@@ -480,7 +515,7 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     rememberTab,
     initialRatio,
     rememberRatio
-  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, routines, loadRoutines, layout, setActiveTab, focusPane, moveTab, open, openTable, openQuery, savedQueries, saveQuery, deleteQuery, reloadQueries, openSaved, linkQueryTab, unsavedTabs, setTabUnsaved, openRecord, closeTab, closeTabs, pinTab, reorderTab, schemaVersions, schemaChanged, rememberTab, initialRatio, rememberRatio])
+  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, routines, loadRoutines, layout, setActiveTab, focusPane, moveTab, open, openTable, openQuery, environments, saveEnvironments, reloadEnvironments, deleteEnvironment, environment, safety, savedQueries, saveQuery, deleteQuery, reloadQueries, openSaved, linkQueryTab, unsavedTabs, setTabUnsaved, openRecord, closeTab, closeTabs, pinTab, reorderTab, schemaVersions, schemaChanged, rememberTab, initialRatio, rememberRatio])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

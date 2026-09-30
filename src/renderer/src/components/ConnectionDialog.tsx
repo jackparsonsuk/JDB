@@ -3,6 +3,7 @@ import type { AuthType, ConnectionConfig, ConnectionInput, DbKind, EnvTag } from
 import { useAppState } from '../state'
 import { toast } from './Toast'
 import { confirm } from './Confirm'
+import { allEnvironments, envInfo, SAFETY_LABELS } from '@shared/environments'
 import { APP_NAME } from '@shared/brand'
 
 const DEFAULT_PORTS: Record<DbKind, number> = { mssql: 1433, mysql: 3306 }
@@ -29,7 +30,7 @@ function blank(): ConnectionConfig {
 }
 
 export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConfig | null; onClose(): void }) {
-  const { connections, reloadConnections, forgetTables } = useAppState()
+  const { connections, reloadConnections, forgetTables, environments } = useAppState()
   const folders = [...new Set(connections.map((c) => c.folder).filter((f): f is string => !!f))].sort()
   const [form, setForm] = useState<ConnectionConfig>(initial ?? blank())
   const [password, setPassword] = useState<string | undefined>(undefined)
@@ -150,11 +151,12 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConf
             </label>
             <label className="grow">Environment
               <select value={form.env} onChange={(e) => set('env', e.target.value as EnvTag)}>
-                <option value="local">Local</option>
-                <option value="dev">Dev</option>
-                <option value="test">Test</option>
-                <option value="prod">Production</option>
+                {allEnvironments(environments).map((e) => (
+                  <option key={e.id} value={e.id}>{e.name} · {SAFETY_LABELS[e.safety].name.toLowerCase()}</option>
+                ))}
+                {!allEnvironments(environments).some((e) => e.id === form.env) && <option value={form.env}>{form.env} (not defined, treated as protected)</option>}
               </select>
+              <span className="field-hint">{SAFETY_LABELS[envInfo(form.env, environments).safety].note}. Add your own in Settings → Environments.</span>
             </label>
           </div>
 

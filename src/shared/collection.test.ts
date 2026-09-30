@@ -18,7 +18,7 @@ const link: CrossLink = {
 
 describe('connection collections', () => {
   it('round-trips connections and the links between them, without ids or passwords', () => {
-    const file = buildCollection([shop, jobs], [link], [], new Date('2026-09-29T00:00:00Z'))
+    const file = buildCollection([shop, jobs], [link], [], [], new Date('2026-09-29T00:00:00Z'))
     const text = JSON.stringify(file)
     expect(text).not.toContain('hasPassword')
     expect(text).not.toContain('"id"')
@@ -43,6 +43,17 @@ describe('connection collections', () => {
       { name: 'Row count', sql: 'SELECT COUNT(*) FROM x', description: 'any table' },
       { name: 'Elsewhere', sql: 'SELECT 1' }
     ])
+  })
+
+  it('carries the custom environments its connections use, and only those', () => {
+    const uat = { id: 'uat', name: 'UAT', safety: 'confirm' as const, color: '#a371f7' }
+    const demo = { id: 'demo', name: 'Demo', safety: 'relaxed' as const, color: '#1fb8a6' }
+    const file = buildCollection([{ ...jobs, env: 'uat' }, shop], [], [], [uat, demo])
+    expect(file.environments).toEqual([uat])
+    const parsed = parseCollection(JSON.parse(JSON.stringify(file)))
+    expect(parsed.environments).toEqual([uat])
+    expect(parsed.connections[0].env).toBe('uat')
+    expect(() => parseCollection({ format: 'jdb-connections', version: 1, connections: [{ name: 'X', host: 'h', kind: 'mysql', env: 'Bad Env!' }] })).toThrow(/invalid environment/)
   })
 
   it('reads files without queries, and skips broken ones', () => {

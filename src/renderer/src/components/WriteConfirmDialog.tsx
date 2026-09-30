@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ConnectionConfig, WriteCount } from '@shared/types'
 import { previewWrite } from '@shared/writePreview'
 import { formatCount } from '../lib/format'
+import { useAppState } from '../state'
 
 const VERBS = { update: 'update', delete: 'delete', insert: 'insert' } as const
 
@@ -17,6 +18,7 @@ export function WriteConfirmDialog({ connection, sql, keyword, onRun, onCancel }
   onRun(): void
   onCancel(): void
 }) {
+  const { environment, safety } = useAppState()
   const preview = useMemo(() => previewWrite(sql, connection.kind), [sql, connection.kind])
   const [count, setCount] = useState<WriteCount | null>(null)
   const [showSql, setShowSql] = useState(false)
@@ -55,7 +57,7 @@ export function WriteConfirmDialog({ connection, sql, keyword, onRun, onCancel }
         <h2>
           Run {keyword} on{' '}
           <span className={`pill env-${connection.env}`}><span className="env-dot" />{connection.name}</span>{' '}
-          <span className={`env-name env-${connection.env}`}>{connection.env}</span>
+          <span className={`env-name env-${connection.env}`}>{environment(connection.env).name}</span>
         </h2>
 
         <div className={`write-impact ${big || known?.noWhere ? 'warn' : ''} ${none ? 'none' : ''}`}>
@@ -90,7 +92,7 @@ export function WriteConfirmDialog({ connection, sql, keyword, onRun, onCancel }
         {showSql && known?.countSql && <pre className="sql-preview count-sql">{known.countSql}</pre>}
 
         <div className="dialog-actions">
-          <button className={`primary ${connection.env === 'prod' || big || known?.noWhere ? 'prod' : ''}`} onClick={onRun}>
+          <button className={`primary ${safety(connection) === 'protected' || big || known?.noWhere ? 'prod' : ''}`} onClick={onRun}>
             {rows !== null && known ? `${known.verb[0].toUpperCase()}${known.verb.slice(1)} ${formatCount(rows)} row${rows === 1 ? '' : 's'}` : `Run ${keyword}`}
           </button>
           <button ref={cancelRef} onClick={onCancel} style={{ marginLeft: 'auto' }}>Cancel</button>

@@ -1,6 +1,7 @@
 export type DbKind = 'mssql' | 'mysql'
 export type AuthType = 'sql' | 'entra-browser' | 'entra-default'
-export type EnvTag = 'local' | 'dev' | 'test' | 'prod'
+/** An environment id: one of the built-ins (local, dev, test, prod) or one the user added; see @shared/environments. */
+export type EnvTag = string
 
 export interface ConnectionConfig {
   id: string

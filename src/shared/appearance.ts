@@ -1,4 +1,6 @@
-import type { EnvTag } from './types'
+import { DEFAULT_ENV_COLORS, type BuiltinEnv } from './environments'
+
+export { DEFAULT_ENV_COLORS }
 
 /**
  * How the app looks beyond the theme: accent and environment colours, fonts, interface size,
@@ -8,8 +10,8 @@ import type { EnvTag } from './types'
 export interface Appearance {
   /** #rrggbb; none uses the theme's own accent. */
   accent?: string
-  /** Colours for environment dots, tabs and banners; missing ones keep their defaults. */
-  env?: Partial<Record<EnvTag, string>>
+  /** Colours for the built-in environments' dots, tabs and banners (custom ones carry their own). */
+  env?: Partial<Record<BuiltinEnv, string>>
   /** A font family name for the interface; none uses Segoe UI. */
   uiFont?: string
   /** Scales the whole interface, grid included. */
@@ -35,7 +37,6 @@ export const DENSITIES: Density[] = ['compact', 'comfortable', 'spacious']
 export const ROW_HEIGHTS: Record<Density, number> = { compact: 22, comfortable: 26, spacious: 32 }
 export const CODE_SIZES = { min: 10, max: 18, default: 13 }
 
-export const DEFAULT_ENV_COLORS: Record<EnvTag, string> = { local: '#3fb950', dev: '#58a6ff', test: '#d29922', prod: '#f85149' }
 
 /** Swatches offered for the accent; any #rrggbb can be picked as well. */
 export const ACCENT_PRESETS: { name: string; color: string }[] = [
@@ -58,8 +59,8 @@ export function parseAppearance(raw: unknown): Appearance {
   const out: Appearance = {}
   if (typeof r.accent === 'string' && HEX.test(r.accent)) out.accent = r.accent.toLowerCase()
   if (typeof r.env === 'object' && r.env !== null) {
-    const env: Partial<Record<EnvTag, string>> = {}
-    for (const tag of Object.keys(DEFAULT_ENV_COLORS) as EnvTag[]) {
+    const env: Partial<Record<BuiltinEnv, string>> = {}
+    for (const tag of Object.keys(DEFAULT_ENV_COLORS) as BuiltinEnv[]) {
       const value = (r.env as Record<string, unknown>)[tag]
       if (typeof value === 'string' && HEX.test(value)) env[tag] = value.toLowerCase()
     }

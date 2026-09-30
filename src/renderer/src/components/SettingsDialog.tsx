@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { EnvTag, ThemeSetting } from '@shared/types'
-import { ACCENT_PRESETS, CODE_SIZES, DEFAULT_ENV_COLORS, DENSITIES, UI_SCALES, type Appearance, type Density } from '@shared/appearance'
+import type { ThemeSetting } from '@shared/types'
+import { ACCENT_PRESETS, CODE_SIZES, DENSITIES, UI_SCALES, type Appearance, type Density } from '@shared/appearance'
 import { APP_NAME } from '@shared/brand'
 import { resetAppearance, updateAppearance, useAppearance } from '../lib/appearance'
 import { setTheme, THEME_LABELS, THEMES, useTheme } from '../lib/theme'
 import { CODE_FONTS, isInstalled, UI_FONTS } from '../lib/fonts'
+import { EnvironmentSettings } from './EnvironmentSettings'
 
 type Section = 'theme' | 'env' | 'fonts' | 'grid'
 
@@ -24,7 +25,6 @@ const THEME_PREVIEW: Record<Exclude<ThemeSetting, 'system'>, [string, string, st
   contrast: ['#000000', '#0a0a0a', '#ffffff', '#8a8a8a']
 }
 
-const ENV_LABELS: Record<EnvTag, string> = { local: 'Local', dev: 'Dev', test: 'Test', prod: 'Prod' }
 const DENSITY_LABELS: Record<Density, string> = { compact: 'Compact', comfortable: 'Comfortable', spacious: 'Spacious' }
 const SAMPLE_SQL = "SELECT o.Id, o.Total >= 100 AS Big\nFROM dbo.Orders o -- 0Oo 1lI\nWHERE o.Status != 'closed'"
 
@@ -56,7 +56,7 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
         </nav>
         <div className="settings-body">
           {section === 'theme' && <ThemeSection theme={theme} a={a} />}
-          {section === 'env' && <EnvSection a={a} />}
+          {section === 'env' && <EnvironmentSettings a={a} />}
           {section === 'fonts' && <FontSection a={a} />}
           {section === 'grid' && <GridSection a={a} />}
           <div className="settings-actions">
@@ -149,43 +149,6 @@ function ThemeThumb({ theme, accent }: { theme: ThemeSetting; accent?: string })
         <span className="thumb-line short" style={{ background: text, opacity: 0.3 }} />
       </span>
     </span>
-  )
-}
-
-function EnvSection({ a }: { a: Appearance }) {
-  const set = (tag: EnvTag, color: string | undefined): void => {
-    const env = { ...a.env }
-    if (color && color !== DEFAULT_ENV_COLORS[tag]) env[tag] = color
-    else delete env[tag]
-    updateAppearance({ env: Object.keys(env).length ? env : undefined })
-  }
-  return (
-    <Group
-      title="Environment colours"
-      note="Used on tabs, sidebar dots and the banner above each tab, so you can tell at a glance which database you're on. Prod is red by default; pick something unmistakable if you change it."
-      onReset={a.env ? () => updateAppearance({ env: undefined }) : undefined}
-    >
-      <div className="env-rows">
-        {(Object.keys(DEFAULT_ENV_COLORS) as EnvTag[]).map((tag) => {
-          const color = a.env?.[tag] ?? DEFAULT_ENV_COLORS[tag]
-          return (
-            <div key={tag} className="env-row">
-              <label className="color-well" title={`Pick the ${ENV_LABELS[tag]} colour`}>
-                <span style={{ background: color }} />
-                <input type="color" value={color} onChange={(e) => set(tag, e.target.value)} />
-              </label>
-              <span className="env-row-name">{ENV_LABELS[tag]}</span>
-              <span className={`env-preview env-${tag}`}>
-                <span className="env-dot" />
-                <span>Orders {tag}</span>
-                <span className="env-name">{tag}</span>
-              </span>
-              {a.env?.[tag] && <button className="linkish" onClick={() => set(tag, undefined)}>Default</button>}
-            </div>
-          )
-        })}
-      </div>
-    </Group>
   )
 }
 

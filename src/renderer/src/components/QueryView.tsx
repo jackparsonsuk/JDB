@@ -31,7 +31,7 @@ const emptySelection: Selection = { rows: new Set(), active: null }
 
 /** `active`: the tab is showing in its pane; `focused`: and that pane has the keyboard. */
 export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 'query' }>; active: boolean; focused: boolean }) {
-  const { connection, tables, loadTables, rememberTab, savedQueries, saveQuery, linkQueryTab, setTabUnsaved } = useAppState()
+  const { connection, tables, loadTables, rememberTab, savedQueries, saveQuery, linkQueryTab, setTabUnsaved, safety, environment } = useAppState()
   const conn = connection(tab.connectionId)
   const scheme = useColorScheme()
   const [text, setText] = useState(tab.initialSql)
@@ -143,8 +143,10 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
 
     const keyword = findWriteKeyword(statement)
     // Writes on prod are staged in a transaction, so the commit is the confirmation.
-    const stage = !!keyword && !conn.readOnly && conn.env === 'prod' && !txn.idRef.current
-    if (keyword && !conn.readOnly && conn.env !== 'local' && !stage && !txn.idRef.current && !confirmed) {
+    // Protected environments (prod and the like) stage writes; relaxed ones (local) just run them.
+    const level = safety(conn)
+    const stage = !!keyword && !conn.readOnly && level === 'protected' && !txn.idRef.current
+    if (keyword && !conn.readOnly && level !== 'relaxed' && !stage && !txn.idRef.current && !confirmed) {
       // Asks, saying how many rows it would touch; Run calls back here with confirmed.
       setPendingWrite({ sql: statement, keyword })
       return
@@ -173,15 +175,15 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
       runRef.current = null
       setRunning(false)
     }
-  }, [conn, running, tab.connectionId, txn])
+  }, [conn, running, tab.connectionId, txn, safety])
 
   const commit = useCallback(async () => {
     if (!conn || !txn.tx) return
     const { statements, rows } = stagedChanges(txn.tx)
-    if (conn.env === 'prod' && statements > 0) {
+    if (safety(conn) === 'protected' && statements > 0) {
       const ok = await confirm({
         title: `Commit to ${conn.name}?`,
-        message: <>This makes {statements} change{statements === 1 ? '' : 's'} permanent on <strong>production</strong>: {formatCount(rows)} row{rows === 1 ? '' : 's'} affected.</>,
+        message: <>This makes {statements} change{statements === 1 ? '' : 's'} permanent on <strong>{environment(conn.env).name}</strong>: {formatCount(rows)} row{rows === 1 ? '' : 's'} affected.</>,
         confirmLabel: 'Commit',
         cancelLabel: 'Not yet',
         tone: 'danger'
@@ -195,7 +197,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     } catch (e) {
       setError((e as Error).message)
     }
-  }, [conn, txn])
+  }, [conn, txn, safety, environment])
 
   const rollback = useCallback(async () => {
     setError(null)
@@ -324,8 +326,8 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
         <span className="muted hint">
           {running
             ? 'Esc cancels the running query'
-            : !txn.tx && !conn.readOnly && conn.env === 'prod'
-              ? 'Ctrl+Enter runs · writes on PROD are staged until you commit'
+            : !txn.tx && !conn.readOnly && safety(conn) === 'protected'
+              ? `Ctrl+Enter runs · writes on ${environment(conn.env).name.toUpperCase()} are staged until you commit`
               : 'Ctrl+Enter runs the selection, or everything'}
         </span>
         <div className="toolbar-right">

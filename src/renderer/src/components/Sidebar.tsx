@@ -38,7 +38,7 @@ function writeList(key: string, values: Iterable<string>): void {
 }
 
 export function Sidebar({ onEdit, onNew, onLinks, onSettings }: { onEdit(c: ConnectionConfig): void; onNew(): void; onLinks(c: ConnectionConfig): void; onSettings(): void }) {
-  const { connections, reloadConnections, setLinks, reloadQueries } = useAppState()
+  const { connections, reloadConnections, setLinks, reloadQueries, reloadEnvironments } = useAppState()
   const scheme = useColorScheme()
   const update = useUpdate()
   const [collapsed, setCollapsed] = useState(() => new Set(readList(COLLAPSED_KEY)))
@@ -118,12 +118,14 @@ export function Sidebar({ onEdit, onNew, onLinks, onSettings }: { onEdit(c: Conn
       if (!summary) return
       await reloadConnections()
       await reloadQueries()
+      reloadEnvironments()
       setLinks(await window.api.listLinks())
       const parts = [
         `Imported ${summary.added.length} connection${summary.added.length === 1 ? '' : 's'}`,
         summary.existing.length ? `${summary.existing.length} already here` : '',
         summary.links ? `${summary.links} link${summary.links === 1 ? '' : 's'}` : '',
-        summary.queries ? `${summary.queries} saved quer${summary.queries === 1 ? 'y' : 'ies'}` : ''
+        summary.queries ? `${summary.queries} saved quer${summary.queries === 1 ? 'y' : 'ies'}` : '',
+        summary.environments.length ? `environment${summary.environments.length === 1 ? '' : 's'} ${summary.environments.join(', ')}` : ''
       ].filter(Boolean)
       const notes = [
         summary.added.length ? 'Add passwords in each connection\'s settings.' : '',
@@ -307,7 +309,7 @@ function SidebarMenu({ children, onClose }: { children: ReactNode; onClose(): vo
 }
 
 function ConnectionNode({ connection, onEdit, onLinks }: { connection: ConnectionConfig; onEdit(): void; onLinks(): void }) {
-  const { tables, loadTables, forgetTables, routines, loadRoutines, openTable, openQuery } = useAppState()
+  const { tables, loadTables, forgetTables, routines, loadRoutines, openTable, openQuery, environment } = useAppState()
   const [expanded, setExpanded] = useState(false)
   const [filter, setFilter] = useState('')
   const [mode, setMode] = useState<'tables' | 'routines'>('tables')
@@ -345,10 +347,10 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
           e.dataTransfer.setData(CONNECTION_DRAG, connection.id)
           e.dataTransfer.effectAllowed = 'move'
         }}
-        title={`${connection.name} · ${connection.env}${connection.readOnly ? ' · read-only' : ''}\nDrag onto a folder to file it`}
+        title={`${connection.name} · ${environment(connection.env).name}${connection.readOnly ? ' · read-only' : ''}\nDrag onto a folder to file it`}
       >
         <span className={`chevron ${expanded ? 'open' : ''}`}>›</span>
-        <span className="env-dot" title={connection.env} />
+        <span className="env-dot" title={environment(connection.env).name} />
         <span className="conn-name">{connection.name}</span>
         {connection.readOnly && <span className="lock" title="Read-only">🔒</span>}
         <span className="conn-actions" onClick={(e) => e.stopPropagation()}>

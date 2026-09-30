@@ -15,6 +15,7 @@ import { toast, ToastHost } from './components/Toast'
 import { ConfirmHost } from './components/Confirm'
 import { Logo } from './components/Logo'
 import { SettingsDialog } from './components/SettingsDialog'
+import { environmentCss } from '@shared/environments'
 import { LinksDialog } from './components/LinksDialog'
 import { SlopLayer } from './components/SlopLayer'
 import { WhatsNewDialog } from './components/WhatsNewDialog'
@@ -78,7 +79,7 @@ function useSidebar() {
 
 export function App() {
   const sidebar = useSidebar()
-  const { layout, activeTabId, setActiveTab, closeTab, moveTab, focusPane, connections, openQuery, initialRatio, rememberRatio } = useAppState()
+  const { layout, activeTabId, setActiveTab, closeTab, moveTab, focusPane, connections, openQuery, initialRatio, rememberRatio, environments } = useAppState()
   const [editing, setEditing] = useState<ConnectionConfig | null | 'new'>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -228,6 +229,8 @@ export function App() {
       {linksFor && <LinksDialog connectionId={linksFor} onClose={() => setLinksFor(null)} />}
       <WhatsNewDialog />
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {/* Custom environments' colours, as the built-ins get theirs from the stylesheet. */}
+      <style>{environmentCss(environments)}</style>
       <ConfirmHost />
       <ToastHost />
       <SlopLayer />
@@ -237,7 +240,7 @@ export function App() {
 
 /** A pane's tab bar and the environment banner for the tab it shows. */
 function PaneHead({ pane, split }: { pane: PaneId; split: boolean }) {
-  const { layout, setActiveTab, closeTab, pinTab, reorderTab, focusPane, connection, unsavedTabs } = useAppState()
+  const { layout, setActiveTab, closeTab, pinTab, reorderTab, focusPane, connection, unsavedTabs, environment } = useAppState()
   const [menu, setMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
   const own = tabsIn(layout, pane)
 
@@ -340,7 +343,7 @@ function PaneHead({ pane, split }: { pane: PaneId; split: boolean }) {
         <div className="env-banner">
           <span className="env-dot" />
           <span>{activeConn.name}</span>
-          <span className="env-name">{activeConn.env}</span>
+          <span className="env-name">{environment(activeConn.env).name}</span>
           {activeConn.readOnly ? <span className="ro">read-only</span> : <span className="rw">writes allowed</span>}
         </div>
       )}

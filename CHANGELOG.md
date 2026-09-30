@@ -8,6 +8,8 @@ What changed in each JDB release, newest first. JDB shows these notes after it u
 - Pick an **accent colour** from the swatches or any colour you like, and change the **environment colours** used for local, dev, test and prod.
 - Choose the **interface font**, the **code font** and its size (with ligatures for fonts that have them), and scale the whole interface from 90% to 125%.
 - **Row density** for tables and results (compact, comfortable or spacious), and word wrap and indent size in the SQL editor.
+- **Your own environments**, like UAT, Staging or Demo, alongside local, dev, test and prod. Give each a colour and a safety level: **Relaxed** (writes just run), **Confirm** (writes ask first, with a row count) or **Protected** (writes go in a transaction you commit, like prod). Add them in Settings → Environments, then pick them for a connection.
+- Environments travel with shared connection files. A shared file can add new ones but never make yours less careful, and anything protected still arrives read-only.
 
 ## 1.0.0
 - **JDB is now OverlookDB**, with a new logo: an O with the sun rising over the horizon. Everything else stays where it was: your connections, saved passwords, links and settings carry over, and updates keep arriving as before.

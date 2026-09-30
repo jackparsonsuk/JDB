@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ConnectionConfig } from '@shared/types'
 import { toast } from './Toast'
+import { useAppState } from '../state'
 
 /** How the grid's edits are saved; the designer passes its own. */
 const GRID_NOTE = 'These run in one transaction. If any of them fails or matches anything other than exactly one row, nothing is saved.'
@@ -19,6 +20,7 @@ export function SaveChangesDialog({ connection, statements, onClose, onSaved, on
   /** Opens the statements in a query tab instead, e.g. to run them in a staged transaction. */
   onOpenSql(sql: string): void
 }) {
+  const { environment, safety } = useAppState()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const sql = statements.join('\n')
@@ -41,13 +43,13 @@ export function SaveChangesDialog({ connection, statements, onClose, onSaved, on
         <h2>
           Save {n} {noun}{n === 1 ? '' : 's'} to{' '}
           <span className={`pill env-${connection.env}`}><span className="env-dot" />{connection.name}</span>{' '}
-          <span className={`env-name env-${connection.env}`}>{connection.env}</span>
+          <span className={`env-name env-${connection.env}`}>{environment(connection.env).name}</span>
         </h2>
         <p className="muted">{note}</p>
         <pre className="sql-preview">{sql}</pre>
         {error && <div className="status error">{error}</div>}
         <div className="dialog-actions">
-          <button className={`primary ${connection.env === 'prod' ? 'prod' : ''}`} disabled={saving} onClick={save} autoFocus>
+          <button className={`primary ${safety(connection) === 'protected' ? 'prod' : ''}`} disabled={saving} onClick={save} autoFocus>
             {saving ? 'Saving…' : `Save to ${connection.name}`}
           </button>
           <button disabled={saving} onClick={() => onOpenSql(sql)} title="Open these statements in a query tab to run them yourself">

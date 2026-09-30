@@ -27,7 +27,7 @@ const MAX_RESULTS = 60
 const COLUMN_QUERY_MIN = 2
 
 export function CommandPalette({ onClose, onNewConnection, onLinks, onSettings }: { onClose(): void; onNewConnection(): void; onLinks(connectionId: string): void; onSettings(): void }) {
-  const { connections, tables, loadTables, routines, loadRoutines, openTable, openQuery, open, savedQueries, openSaved, activeTabId, tabs } = useAppState()
+  const { connections, tables, loadTables, routines, loadRoutines, openTable, openQuery, open, savedQueries, openSaved, activeTabId, tabs, environment } = useAppState()
   const theme = useTheme()
   const slop = useSlop()
   const [query, setQuery] = useState('')
@@ -118,7 +118,7 @@ export function CommandPalette({ onClose, onNewConnection, onLinks, onSettings }
       out.push({
         key: `q:${c.id}`,
         label: `New query on ${c.name}`,
-        detail: c.env,
+        detail: environment(c.env).name,
         icon: '⌨',
         haystack: `new query sql ${c.name}`,
         bias: -5,
@@ -206,7 +206,7 @@ export function CommandPalette({ onClose, onNewConnection, onLinks, onSettings }
       })
     }
     return out
-  }, [connections, tables, routines, open, openTable, openQuery, loadTables, onNewConnection, onLinks, onSettings, theme, savedQueries, openSaved, activeTabId, tabs])
+  }, [connections, tables, routines, open, openTable, openQuery, loadTables, onNewConnection, onLinks, onSettings, theme, savedQueries, openSaved, activeTabId, tabs, environment])
 
   const results = useMemo(() => {
     // The slop easter egg only shows when typed in full, so it never turns up in normal searches.

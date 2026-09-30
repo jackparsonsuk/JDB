@@ -1,4 +1,5 @@
-import type { AuthType, ConnectionConfig, CrossLink, DbKind, EnvTag, LinkEnd, SavedQuery } from './types'
+import type { AuthType, ConnectionConfig, CrossLink, DbKind, LinkEnd, SavedQuery } from './types'
+import { isBuiltinEnv, parseEnvironments, type EnvironmentDef } from './environments'
 import { APP_NAME } from './brand'
 
 /**
@@ -13,6 +14,8 @@ export interface ConnectionCollection {
   links: CollectionLink[]
   /** Saved queries; older files have none. */
   queries: CollectionQuery[]
+  /** The custom environments the connections use; older files have none. */
+  environments: EnvironmentDef[]
 }
 
 /** A saved query without its id or dates; `connection` is the ref of the connection it runs on, if any. */
@@ -45,14 +48,18 @@ export interface ImportSummary {
   madeReadOnly: string[]
   /** Saved queries added (ones already here with the same name, folder and SQL are skipped). */
   queries: number
+  /** Custom environments added from the file. */
+  environments: string[]
 }
 
 const FORMAT = 'jdb-connections'
 const KINDS: ReadonlySet<string> = new Set<DbKind>(['mssql', 'mysql'])
 const AUTH: ReadonlySet<string> = new Set<AuthType>(['sql', 'entra-browser', 'entra-default'])
-const ENVS: ReadonlySet<string> = new Set<EnvTag>(['local', 'dev', 'test', 'prod'])
+/** An environment id: a built-in or a custom one (lowercase letters, digits and dashes). */
+const ENV_ID = /^[a-z][a-z0-9-]{0,23}$/
 
-export function buildCollection(connections: ConnectionConfig[], links: CrossLink[], queries: SavedQuery[] = [], now = new Date()): ConnectionCollection {
+export function buildCollection(connections: ConnectionConfig[], links: CrossLink[], queries: SavedQuery[] = [], environments: EnvironmentDef[] = [], now = new Date()): ConnectionCollection {
+  const used = new Set(connections.map((c) => c.env))
   const refs = new Map(connections.map((c, i) => [c.id, `c${i + 1}`]))
   const end = (e: LinkEnd): CollectionLinkEnd => ({ connection: refs.get(e.connectionId)!, table: e.table, column: e.column })
   return {
@@ -64,6 +71,8 @@ export function buildCollection(connections: ConnectionConfig[], links: CrossLin
     links: links
       .filter((l) => refs.has(l.from.connectionId) && refs.has(l.to.connectionId))
       .map((l) => ({ from: end(l.from), to: end(l.to), status: l.status, source: l.source })),
+    // Only the custom environments these connections use; everyone has the built-ins.
+    environments: environments.filter((e) => used.has(e.id) && !isBuiltinEnv(e.id)).map(({ builtin: _builtin, ...e }) => e),
     queries: queries.map((q) => ({
       name: q.name,
       ...(q.folder && { folder: q.folder }),
@@ -96,7 +105,7 @@ export function parseCollection(raw: unknown): ConnectionCollection {
     const connection = typeof q.connection === 'string' && refs.has(q.connection) ? q.connection : undefined
     return [{ name: q.name.trim(), sql: q.sql, ...(folder && { folder }), ...(description && { description }), ...(connection && { connection }) }]
   })
-  return { format: FORMAT, version: 1, exportedAt: typeof raw.exportedAt === 'string' ? raw.exportedAt : '', connections, links, queries }
+  return { format: FORMAT, version: 1, exportedAt: typeof raw.exportedAt === 'string' ? raw.exportedAt : '', connections, links, queries, environments: parseEnvironments(raw.environments) }
 }
 
 function parseConnection(value: unknown, index: number): CollectionConnection {
@@ -116,7 +125,7 @@ function parseConnection(value: unknown, index: number): CollectionConnection {
   const authType = value.authType === undefined ? 'sql' : text('authType')
   if (!AUTH.has(authType)) throw new Error(`${where} (${name}) has an unknown sign-in type "${authType}".`)
   const env = value.env === undefined ? 'test' : text('env')
-  if (!ENVS.has(env)) throw new Error(`${where} (${name}) has an unknown environment "${env}".`)
+  if (!ENV_ID.test(env)) throw new Error(`${where} (${name}) has an invalid environment "${env}".`)
   const port = value.port === undefined ? (kind === 'mysql' ? 3306 : 1433) : Number(value.port)
   if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new Error(`${where} (${name}) has an invalid port.`)
   const folder = text('folder').trim()
@@ -130,7 +139,7 @@ function parseConnection(value: unknown, index: number): CollectionConnection {
     database: text('database'),
     user: text('user'),
     authType: authType as AuthType,
-    env: env as EnvTag,
+    env,
     // Anything unclear comes in read-only.
     readOnly: value.readOnly !== false,
     ...(tenantId && { tenantId }),

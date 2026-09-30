@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto'
 import type { ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, LinkEnd, SavedQuery, SavedQueryInput, SavedSession, ThemeSetting } from '@shared/types'
 import { sameDatabase, type ConnectionCollection, type ImportSummary } from '@shared/collection'
 import { parseAppearance, type Appearance } from '@shared/appearance'
+import { mergeEnvironments, parseEnvironments, safetyOf, type EnvironmentDef } from '@shared/environments'
 
 interface StoredConnection extends ConnectionConfig {
   /** Password encrypted with the OS keychain (DPAPI on Windows), base64 encoded. */
@@ -102,7 +103,12 @@ export function setFolder(ids: string[], folder: string): void {
 export function importCollection(collection: ConnectionCollection): ImportSummary {
   const stored = loadStored()
   const idForRef = new Map<string, string>()
-  const summary: ImportSummary = { added: [], existing: [], links: 0, madeReadOnly: [], queries: 0 }
+  const summary: ImportSummary = { added: [], existing: [], links: 0, madeReadOnly: [], queries: 0, environments: [] }
+  // Environments first, so the connections' safety is judged by the merged list. A file can add
+  // environments but never loosen one already defined here.
+  const merged = mergeEnvironments(listEnvironments(), collection.environments)
+  if (merged.added.length) writeJson('environments.json', merged.environments)
+  summary.environments = merged.added
   const added: StoredConnection[] = []
   for (const { ref, ...incoming } of collection.connections) {
     const match = [...stored, ...added].find((c) => sameDatabase(c, incoming))
@@ -111,7 +117,8 @@ export function importCollection(collection: ConnectionCollection): ImportSummar
       summary.existing.push(match.name)
       continue
     }
-    const readOnly = incoming.readOnly || incoming.env === 'prod'
+    // Protected environments (prod, or any the user marks so) always arrive read-only.
+    const readOnly = incoming.readOnly || safetyOf(incoming.env, merged.environments) === 'protected'
     if (readOnly && !incoming.readOnly) summary.madeReadOnly.push(incoming.name)
     const connection: StoredConnection = { ...incoming, readOnly, id: randomUUID() }
     added.push(connection)
@@ -179,6 +186,29 @@ export function saveLinks(links: CrossLink[]): CrossLink[] {
 export function deleteLink(id: string): CrossLink[] {
   const next = listLinks().filter((l) => l.id !== id)
   writeJson('links.json', next)
+  return next
+}
+
+/** The user's own environments (the built-ins aren't stored). */
+export function listEnvironments(): EnvironmentDef[] {
+  return parseEnvironments(readJson<unknown>('environments.json', []))
+}
+
+/** Replaces the user's environments; invalid entries are dropped. Returns what was kept. */
+export function saveEnvironments(environments: unknown): EnvironmentDef[] {
+  const clean = parseEnvironments(environments)
+  writeJson('environments.json', clean)
+  return clean
+}
+
+/** Removes an environment, moving any connections that use it to `moveTo` first. */
+export function deleteEnvironment(id: string, moveTo: string): EnvironmentDef[] {
+  const stored = loadStored()
+  if (stored.some((c) => c.env === id)) {
+    writeJson('connections.json', stored.map((c) => (c.env === id ? { ...c, env: moveTo } : c)))
+  }
+  const next = listEnvironments().filter((e) => e.id !== id)
+  writeJson('environments.json', next)
   return next
 }
 

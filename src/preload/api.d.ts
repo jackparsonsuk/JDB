@@ -4,6 +4,7 @@ import type {
 } from '../shared/types'
 import type { ImportSummary } from '../shared/collection'
 import type { Appearance } from '../shared/appearance'
+import type { EnvironmentDef } from '../shared/environments'
 
 export interface Api {
   listConnections(): Promise<ConnectionConfig[]>
@@ -65,6 +66,11 @@ export interface Api {
   discoverLinks(connectionA: string, connectionB: string): Promise<LinkCandidate[]>
   verifyLink(from: LinkEnd, to: LinkEnd): Promise<LinkOverlap>
   listHistory(): Promise<HistoryEntry[]>
+  /** The user's own environments (built-ins aren't included). */
+  listEnvironments(): Promise<EnvironmentDef[]>
+  saveEnvironments(environments: EnvironmentDef[]): Promise<EnvironmentDef[]>
+  /** Removes an environment, moving the connections that use it to `moveTo`. */
+  deleteEnvironment(id: string, moveTo: string): Promise<EnvironmentDef[]>
   listQueries(): Promise<SavedQuery[]>
   /** Adds a query (no id) or updates the one with its id. */
   saveQuery(input: SavedQueryInput): Promise<SavedQuery>

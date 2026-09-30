@@ -26,7 +26,7 @@ export async function exportConnections(ids: string[] | null, suggestedName: str
   if (choice.canceled || !choice.filePath) return null
   // Everything goes with a full export; a folder takes the queries tied to its connections.
   const queries = store.listQueries().filter((q) => !ids || (q.connectionId && ids.includes(q.connectionId)))
-  const collection = buildCollection(chosen, store.listLinks(), queries)
+  const collection = buildCollection(chosen, store.listLinks(), queries, store.listEnvironments())
   await writeFile(choice.filePath, JSON.stringify(collection, null, 2), 'utf8')
   return { path: choice.filePath, connections: collection.connections.length, links: collection.links.length, queries: collection.queries.length }
 }

@@ -76,6 +76,9 @@ export function registerIpc(): void {
   handle('links:verify', (from: LinkEnd, to: LinkEnd) => verifyLink(from, to))
 
   handle('history:list', () => store.listHistory())
+  handle('envs:list', () => store.listEnvironments())
+  handle('envs:save', (environments: unknown) => store.saveEnvironments(environments))
+  handle('envs:delete', (id: string, moveTo: string) => store.deleteEnvironment(id, moveTo))
   handle('queries:list', () => store.listQueries())
   handle('queries:save', (input: SavedQueryInput) => store.saveQuery(input))
   handle('queries:delete', (id: string) => store.deleteQuery(id))
