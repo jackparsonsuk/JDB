@@ -30,6 +30,7 @@ import { EditorMenu, statementUnderCursor } from './EditorMenu'
 import { UpdateChangesView } from './UpdateChangesView'
 import { isBefore, readAfter, readBefore, type UpdateChanges } from '../lib/updateChanges'
 import { layoutSql } from '@shared/sqlLayout'
+import { useClickableNames } from '../lib/clickableNames'
 
 const emptySelection: Selection = { rows: new Set(), active: null }
 
@@ -153,6 +154,9 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     return () => { live = false }
   }, [conn])
   const tableList = tables[tab.connectionId]?.tables
+  // Ctrl+click a table, routine or alias to open it; unqualified names are dbo's, or the connection's database's.
+  const nameDefaults = useMemo(() => (conn?.kind === 'mssql' ? ['dbo'] : conn?.database ? [conn.database] : []), [conn?.kind, conn?.database])
+  const names = useClickableNames(tab.connectionId, tab.pane, conn?.kind, nameDefaults)
   const language = useMemo(() => {
     const dialect = conn?.kind === 'mssql' ? MSSQL : MySQL
     const { schema, defaultSchema } = sqlNamespace(tableList ?? [], model)
@@ -380,7 +384,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
             ? 'Esc cancels the running query'
             : !txn.tx && !conn.readOnly && safety(conn) === 'protected'
               ? `Ctrl+Enter runs · writes on ${environment(conn.env).name.toUpperCase()} are staged until you commit`
-              : 'Ctrl+Enter runs the selection, or everything · Ctrl+Shift+Enter the statement at the cursor · right-click for more'}
+              : 'Ctrl+Enter runs the selection, or everything · Ctrl+Shift+Enter the statement at the cursor · Ctrl+click a table to open it'}
         </span>
         <div className="toolbar-right">
           <button
@@ -437,7 +441,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
               value={text}
               height="100%"
               theme={scheme}
-              extensions={[...language, ...editorPrefs, runKeymap]}
+              extensions={[...language, ...editorPrefs, names, runKeymap]}
               onChange={setText}
               onCreateEditor={(view) => {
                 viewRef.current = view

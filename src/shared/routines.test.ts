@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { callTemplate, findInSource, routineUses, searchSources, stripLiterals } from './routines'
+import { callTemplate, findInSource, nameAt, routineUses, searchSources, stripLiterals } from './routines'
 import type { RoutineDefinition, RoutineRef, TableRef } from './types'
 
 const tables: TableRef[] = [
@@ -146,5 +146,42 @@ describe('callTemplate', () => {
 
   it('has nothing for triggers', () => {
     expect(callTemplate('mssql', def({ routine: { schema: 'dbo', name: 't', kind: 'trigger' } }))).toBeNull()
+  })
+})
+
+describe('nameAt', () => {
+  const at = (sql: string, word: string, kind: 'mssql' | 'mysql' = 'mssql', nth = 0) => {
+    let pos = -1
+    for (let i = 0; i <= nth; i++) pos = sql.indexOf(word, pos + 1)
+    const hit = nameAt(sql, kind, pos + 1, tables, routines, kind === 'mssql' ? ['dbo'] : ['dbo'])
+    return hit && { text: sql.slice(hit.from, hit.to), target: hit.target }
+  }
+
+  it('opens tables, preferring the default schema, and quoted names', () => {
+    expect(at('SELECT * FROM Orders o', 'Orders')).toEqual({ text: 'Orders', target: { kind: 'table', table: { schema: 'dbo', name: 'Orders' } } })
+    expect(at('SELECT * FROM [audit].[Orders]', 'Orders')?.target).toEqual({ kind: 'table', table: { schema: 'audit', name: 'Orders' } })
+    expect(at('SELECT * FROM audit.Orders', 'audit')).toMatchObject({ text: 'audit.Orders', target: { table: { schema: 'audit' } } })
+  })
+
+  it('opens procedures and functions', () => {
+    expect(at('EXEC dbo.LogChange @id = 1', 'LogChange')?.target).toEqual({ kind: 'routine', routine: { schema: 'dbo', name: 'LogChange', kind: 'procedure' } })
+    expect(at('SELECT dbo.fnTotal(Id) FROM Orders', 'fnTotal')?.target).toMatchObject({ kind: 'routine', routine: { name: 'fnTotal' } })
+  })
+
+  it('follows aliases to their table, and alias.column to that column', () => {
+    const sql = 'SELECT o.Status, l.Qty FROM Orders o JOIN OrderLines AS l ON l.OrderId = o.Id'
+    expect(at(sql, 'o.')).toEqual({ text: 'o', target: { kind: 'table', table: { schema: 'dbo', name: 'Orders' } } })
+    expect(at(sql, 'Qty')).toEqual({ text: 'l.Qty', target: { kind: 'table', table: { schema: 'dbo', name: 'OrderLines' }, column: 'Qty' } })
+  })
+
+  it('ignores strings, comments, variables and unknown names', () => {
+    expect(at("SELECT 'Orders' -- Orders", 'Orders')).toBeNull()
+    expect(at("SELECT 'x' -- Orders", 'Orders')).toBeNull()
+    expect(at('SELECT @Orders', 'Orders')).toBeNull()
+    expect(at('SELECT Nope FROM Orders', 'Nope')).toBeNull()
+  })
+
+  it('reads MySQL backticks', () => {
+    expect(at('SELECT * FROM `Status`', 'Status', 'mysql')?.target).toMatchObject({ table: { name: 'Status' } })
   })
 })

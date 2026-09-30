@@ -1,4 +1,5 @@
 import type { DbKind, RoutineDefinition, RoutineKind, RoutineRef, RoutineSource, TableRef } from './types'
+import { mentionedTables } from './sqlComplete'
 
 /** Where a routine's source mentions a table, and whether it reads it, writes it, or both. */
 export interface TableUse {
@@ -13,7 +14,8 @@ export interface RoutineUses {
   calls: RoutineRef[]
 }
 
-type Token = { chain: string[]; quoted: boolean } | { punct: string }
+/** `parts`: where each name of the chain sits in the source, inside any quotes. */
+type Token = { chain: string[]; quoted: boolean; parts: { from: number; to: number }[] } | { punct: string }
 
 /**
  * Blanks out comments and string literals, keeping offsets, so names inside them aren't read as
@@ -75,11 +77,12 @@ function tokenize(source: string, kind: DbKind): Token[] {
   const text = stripLiterals(source, kind)
   const tokens: Token[] = []
   let i = 0
-  const readPart = (): { name: string; quoted: boolean } | null => {
+  const readPart = (): { name: string; quoted: boolean; from: number; to: number } | null => {
     const c = text[i]
     const close = c === '[' && kind === 'mssql' ? ']' : c === '`' ? '`' : c === '"' && kind === 'mssql' ? '"' : null
     if (close) {
-      let j = i + 1
+      const from = i + 1
+      let j = from
       let name = ''
       while (j < text.length) {
         if (text[j] === close) {
@@ -89,14 +92,15 @@ function tokenize(source: string, kind: DbKind): Token[] {
         name += text[j++]
       }
       i = j + 1
-      return { name, quoted: true }
+      return { name, quoted: true, from, to: j }
     }
     if (c && WORD_START.test(c)) {
+      const from = i
       let j = i + 1
       while (j < text.length && WORD_PART.test(text[j])) j++
       const name = text.slice(i, j)
       i = j
-      return { name, quoted: false }
+      return { name, quoted: false, from, to: j }
     }
     return null
   }
@@ -113,6 +117,7 @@ function tokenize(source: string, kind: DbKind): Token[] {
       continue
     }
     const chain = [first.name]
+    const parts = [{ from: first.from, to: first.to }]
     let quoted = first.quoted
     // Follow dots, allowing `db..table` (an empty schema) and spaces around the dot.
     for (;;) {
@@ -121,13 +126,14 @@ function tokenize(source: string, kind: DbKind): Token[] {
       if (text[i] !== '.') { i = save; break }
       i++
       skipSpace()
-      if (text[i] === '.') { chain.push(''); continue }
+      if (text[i] === '.') { chain.push(''); parts.push({ from: i, to: i }); continue }
       const part = readPart()
       if (!part) { i = save; break }
       chain.push(part.name)
+      parts.push({ from: part.from, to: part.to })
       quoted = quoted || part.quoted
     }
-    tokens.push({ chain, quoted })
+    tokens.push({ chain, quoted, parts })
   }
   return tokens
 }
@@ -276,6 +282,56 @@ export function routineUses(
     tables: [...uses.values()].sort((a, b) => Number(b.writes) - Number(a.writes) || sort(a.table, b.table)),
     calls: [...calls.values()].sort(sort)
   }
+}
+
+/** What a name in SQL refers to, for Ctrl+click: a table (at a column, for `alias.column`) or a routine. */
+export type NameTarget =
+  | { kind: 'table'; table: TableRef; column?: string }
+  | { kind: 'routine'; routine: RoutineRef }
+
+export interface NameAt {
+  /** The span to underline: the clicked chain up to the part that resolved. */
+  from: number
+  to: number
+  target: NameTarget
+}
+
+/**
+ * The table, routine or alias under `pos` in some SQL. Tries the chain up to the part at `pos`
+ * first (so `dbo` in `dbo.Orders` opens Orders, and `o` in `o.Name` its table), then the whole
+ * chain. `defaults` are the schemas unqualified names belong to, in order of preference.
+ */
+export function nameAt(source: string, kind: DbKind, pos: number, tables: TableRef[], routines: RoutineRef[], defaults: string[]): NameAt | null {
+  const tokens = tokenize(source, kind)
+  const hit = tokens.find((t) => 'chain' in t && t.parts.some((p) => p.from <= pos && pos <= p.to && p.to > p.from))
+  if (!hit || !('chain' in hit)) return null
+  const k = hit.parts.findIndex((p) => p.from <= pos && pos <= p.to)
+  const tableIndex = index(tables)
+  const routineIndex = index(routines.filter((r) => r.kind !== 'trigger'))
+  const span = (last: number): { from: number; to: number } => ({ from: hit.parts[0].from, to: hit.parts[last].to })
+
+  const aliases = new Map<string, TableRef>()
+  for (const m of mentionedTables(source)) {
+    if (!m.alias) continue
+    const table = resolve(m.schema ? [m.schema, m.name] : [m.name], tableIndex, defaults)
+    if (table) aliases.set(m.alias.toLowerCase(), table)
+  }
+
+  for (const upTo of [k, hit.chain.length - 1]) {
+    const chain = hit.chain.slice(0, upTo + 1)
+    // Variables and temp tables aren't anything to open.
+    if (/^[@#]/.test(chain[chain.length - 1])) continue
+    const table = resolve(chain, tableIndex, defaults)
+    if (table) return { ...span(upTo), target: { kind: 'table', table: { schema: table.schema, name: table.name } } }
+    const routine = resolve(chain, routineIndex, defaults)
+    if (routine) return { ...span(upTo), target: { kind: 'routine', routine: { schema: routine.schema, name: routine.name, kind: routine.kind } } }
+  }
+  const aliased = aliases.get(hit.chain[0].toLowerCase())
+  if (aliased) {
+    const column = k >= 1 && hit.chain.length === 2 ? hit.chain[1] : undefined
+    return { ...span(column ? 1 : 0), target: { kind: 'table', table: { schema: aliased.schema, name: aliased.name }, ...(column && { column }) } }
+  }
+  return null
 }
 
 export interface SourceMatch {
