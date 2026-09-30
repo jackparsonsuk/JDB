@@ -1,21 +1,25 @@
-# JDB
+# OverlookDB
+
+Formerly JDB. The installer, install folder and release files keep the JDB name, so existing installs update in place.
 
 A streamlined desktop database viewer for SQL Server / Azure SQL and MySQL, built for reading data safely. Writes are deliberately guarded.
 
 ## Install
 
-Download `JDB Setup x.y.z.exe` from the [latest release](https://github.com/jackparsonsUK/jdb-releases/releases/latest) and run it. Windows may warn about an unknown publisher because the installer isn't code-signed; choose **More info → Run anyway**.
+Download `JDB-Setup-x.y.z.exe` from the [latest release](https://github.com/jackparsonsUK/jdb-releases/releases/latest) and run it. Windows may warn about an unknown publisher because the installer isn't code-signed; choose **More info → Run anyway**.
 
-Once installed, JDB checks for new releases in the background. A new version downloads by itself and installs the next time you close JDB, or straight away from **Restart to update** in the sidebar.
+Once installed, OverlookDB checks for new releases in the background. A new version downloads by itself and installs the next time you close it, or straight away from **Restart to update** in the sidebar.
 
 ## Features
 
 - **Tables and queries**: a virtualised grid with filters, sorting, column stats and exports (xlsx, csv, tsv, json, md, sql). The SQL editor completes tables, columns and whole join clauses.
 - **Ask**: type a question in plain English ("orders from last week without an invoice") and get SQL. It's rule-based and works offline, driven only by the connected schema.
-- **Record explorer**: follow a row through its parents and children, including across databases that can't join each other, through links JDB discovers by sampling values.
+- **Record explorer**: follow a row through its parents and children, including across databases that can't join each other, through links OverlookDB discovers by sampling values.
 - **Editing, carefully**: grid edits are staged and saved in one transaction where each statement must match exactly one row. On production connections, writes run in a staged transaction you commit or roll back.
 - **Table designer**: change columns and keys, previewing the ALTER script before it runs.
-- **Connections**: SQL logins or Microsoft Entra sign-in, organised in folders, shareable as a collection file without passwords.
+- **Saved queries and snippets**: keep queries by name and folder, find them from the sidebar or Ctrl+K, and insert snippets by name as you type.
+- **Row counts before writes**: on shared connections, an UPDATE, DELETE or INSERT shows how many rows it would touch before it runs.
+- **Connections**: SQL logins or Microsoft Entra sign-in, organised in folders, shareable as a collection file (with saved queries) without passwords.
 
 ## Safety model
 

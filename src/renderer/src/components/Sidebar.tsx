@@ -3,6 +3,7 @@ import type { ConnectionConfig, RoutineInfo, RoutineKind, RoutineSource, TableIn
 import { ROUTINE_LABELS, searchSources } from '@shared/routines'
 import { useOpenLink } from '../lib/openLink'
 import { SavedQueries } from './SavedQueries'
+import { Logo } from './Logo'
 import { confirm } from './Confirm'
 import { useAppState } from '../state'
 import { fuzzyScore } from '../lib/fuzzy'
@@ -11,6 +12,7 @@ import { useUpdate } from '../lib/useUpdate'
 import { setTheme, useColorScheme } from '../lib/theme'
 import { formatCount } from '../lib/format'
 import { toast } from './Toast'
+import { APP_NAME } from '@shared/brand'
 
 /** Drag type for moving a connection between sidebar folders. */
 const CONNECTION_DRAG = 'application/x-jdb-connection'
@@ -160,7 +162,7 @@ export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig
   return (
     <nav className="sidebar">
       <div className="sidebar-head">
-        <span className="brand">JDB</span>
+        <Logo className="brand" size={22} />
         <button
           className="icon"
           title={`Switch to ${scheme === 'dark' ? 'light' : 'dark'} mode (Ctrl+K "theme" to follow Windows)`}
@@ -176,7 +178,7 @@ export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig
               <button onClick={() => { setMenu(false); setNaming(true) }}>New folder</button>
               <div className="menu-sep" />
               <button onClick={() => { setMenu(false); importConnections() }}>Import connections…</button>
-              <button disabled={!connections.length} onClick={() => { setMenu(false); exportConnections(null, 'JDB connections') }}>Export all connections…</button>
+              <button disabled={!connections.length} onClick={() => { setMenu(false); exportConnections(null, `${APP_NAME} connections`) }}>Export all connections…</button>
               <div className="menu-label">Exports leave out passwords</div>
             </SidebarMenu>
           )}
@@ -223,11 +225,11 @@ export function Sidebar({ onEdit, onNew, onLinks }: { onEdit(c: ConnectionConfig
       <div className="sidebar-foot muted">
         <span>Ctrl+K to jump anywhere</span>
         {update.version ? (
-          <button className="update" title={`JDB ${update.version} has downloaded; restart to install it`} onClick={update.install}>
+          <button className="update" title={`${APP_NAME} ${update.version} has downloaded; restart to install it`} onClick={update.install}>
             Restart to update
           </button>
         ) : (
-          <span className="version" title="JDB version">{appVersion}</span>
+          <span className="version" title={`${APP_NAME} version`}>{appVersion}</span>
         )}
       </div>
     </nav>

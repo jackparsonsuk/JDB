@@ -3,6 +3,7 @@ import type { AuthType, ConnectionConfig, ConnectionInput, DbKind, EnvTag } from
 import { useAppState } from '../state'
 import { toast } from './Toast'
 import { confirm } from './Confirm'
+import { APP_NAME } from '@shared/brand'
 
 const DEFAULT_PORTS: Record<DbKind, number> = { mssql: 1433, mysql: 3306 }
 
@@ -72,7 +73,7 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConf
   const remove = async (): Promise<void> => {
     const ok = await confirm({
       title: `Delete ${form.name}?`,
-      message: 'This only removes the connection from JDB; nothing changes on the server. Its saved queries stay, as queries for any connection.',
+      message: `This only removes the connection from ${APP_NAME}; nothing changes on the server. Its saved queries stay, as queries for any connection.`,
       confirmLabel: 'Delete connection',
       tone: 'danger'
     })

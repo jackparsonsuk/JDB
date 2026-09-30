@@ -1,33 +1,55 @@
-// Draws the app icon, the letters JDB in green on a transparent background, at every size Windows
-// uses, and writes build/icon.ico (installer and exe) and resources/icon.png (window icon).
-// Run with `npm run icon`. Each size is drawn separately so small ones stay crisp.
+// Draws the app icon, the OverlookDB mark (an O with a horizon across it and a sun rising inside,
+// on a green tile), at every size Windows uses, and writes build/icon.ico (installer and exe) and
+// resources/icon.png (window icon). Run with `npm run icon`. Each size is drawn separately so small
+// ones stay crisp. The in-app logo (src/renderer/src/components/Logo.tsx) uses the same shapes.
 const { app, BrowserWindow } = require('electron')
 const { mkdirSync, writeFileSync } = require('node:fs')
 const { join } = require('node:path')
 
-const GREEN = '#3fb950'
 const SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 const PNG_SIZE = 512
 const root = join(__dirname, '..')
 
-/** Runs in the hidden page: draws JDB to fill a size x size canvas and returns it as a PNG data URL. */
-function draw(size, green) {
+/** Runs in the hidden page: draws the mark on a size x size canvas and returns it as a PNG data URL. */
+function draw(size) {
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
   const ctx = canvas.getContext('2d')
-  const text = 'JDB'
-  // Tiny icons get a little less padding so the letters stay legible.
-  const pad = size <= 24 ? 0 : size * 0.04
-  ctx.font = `900 100px "Segoe UI Black", "Segoe UI", Arial, sans-serif`
-  const wide = ctx.measureText(text)
-  const scale = Math.min((size - pad * 2) / wide.width, (size * 0.9) / (wide.actualBoundingBoxAscent + wide.actualBoundingBoxDescent))
-  ctx.font = `900 ${100 * scale}px "Segoe UI Black", "Segoe UI", Arial, sans-serif`
-  const m = ctx.measureText(text)
-  const x = (size - m.width) / 2
-  const y = (size + m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2
-  ctx.fillStyle = green
-  ctx.fillText(text, x, y)
+  // Shapes are laid out on a 100-unit square, like the SVG logo.
+  ctx.scale(size / 100, size / 100)
+  // Below ~20px the sun turns to mush, so small icons are the ring and horizon only, drawn bolder.
+  const small = size < 20
+
+  const tile = ctx.createLinearGradient(0, 0, 100, 100)
+  tile.addColorStop(0, '#4cc764')
+  tile.addColorStop(1, '#1f7a33')
+  ctx.fillStyle = tile
+  ctx.beginPath()
+  ctx.roundRect(0, 0, 100, 100, 24)
+  ctx.fill()
+
+  ctx.fillStyle = '#fff'
+  ctx.strokeStyle = '#fff'
+  if (!small) {
+    // The sun, half risen above the horizon: a half disc sitting on the line.
+    ctx.beginPath()
+    ctx.arc(50, 60, 14, Math.PI, 0)
+    ctx.closePath()
+    ctx.fill()
+  }
+
+  ctx.lineWidth = small ? 11 : 9
+  ctx.beginPath()
+  ctx.arc(50, 50, 28, 0, Math.PI * 2)
+  ctx.stroke()
+
+  ctx.lineWidth = small ? 10 : 7
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(12, 60)
+  ctx.lineTo(88, 60)
+  ctx.stroke()
   return canvas.toDataURL('image/png')
 }
 
@@ -56,10 +78,8 @@ function ico(pngs) {
 app.whenReady().then(async () => {
   const window = new BrowserWindow({ show: false })
   await window.loadURL('data:text/html,<!doctype html><html><body></body></html>')
-  // Make sure the font is ready before measuring.
-  await window.webContents.executeJavaScript('document.fonts.ready.then(() => true)')
   const render = async (size) => {
-    const url = await window.webContents.executeJavaScript(`(${draw.toString()})(${size}, ${JSON.stringify(GREEN)})`)
+    const url = await window.webContents.executeJavaScript(`(${draw.toString()})(${size})`)
     return Buffer.from(url.split(',')[1], 'base64')
   }
   const pngs = []

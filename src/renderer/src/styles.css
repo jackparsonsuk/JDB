@@ -129,7 +129,12 @@ kbd {
 .sidebar { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg-2); border-right: 1px solid var(--border); }
 .sidebar-head { display: flex; align-items: center; gap: 2px; padding: 10px 12px; }
 .sidebar-head .brand { margin-right: auto; }
-.brand { font-weight: 700; letter-spacing: 0.5px; }
+/* The OverlookDB logo: the mark and the name */
+.logo { display: inline-flex; align-items: center; gap: 8px; }
+.logo-mark { flex-shrink: 0; display: block; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25)); }
+.logo-name { font-weight: 700; letter-spacing: 0.2px; white-space: nowrap; }
+.logo-suffix { font-weight: 500; margin-left: 1px; color: var(--env-local); }
+.brand .logo-name { font-size: 14px; }
 .sidebar-list { flex: 1; overflow-y: auto; }
 .sidebar-foot { padding: 8px 12px; font-size: 11px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 8px; }
 .sidebar-foot .version { white-space: nowrap; }
@@ -457,7 +462,10 @@ tr:hover .fk-jump { opacity: 1; }
 .palette-foot { padding: 6px 14px; font-size: 11px; border-top: 1px solid var(--border); }
 
 .welcome { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
-.welcome h1 { margin: 0; font-size: 42px; letter-spacing: 2px; }
+.welcome h1 { margin: 0; font-size: 42px; letter-spacing: 0.5px; }
+.welcome-title { display: flex; align-items: baseline; gap: 12px; }
+.welcome-title .logo { gap: 16px; align-self: center; }
+.welcome-title .logo-mark { filter: drop-shadow(0 4px 14px rgba(63, 185, 80, 0.3)); }
 .shortcuts { list-style: none; padding: 0; margin: 8px 0; display: grid; grid-template-columns: auto auto; gap: 8px 28px; }
 .shortcuts li { display: flex; gap: 10px; align-items: center; }
 .shortcuts kbd { min-width: 90px; text-align: center; }

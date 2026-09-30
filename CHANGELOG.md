@@ -2,7 +2,8 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
-## 0.6.0
+## 1.0.0
+- **JDB is now OverlookDB**, with a new logo: an O with the sun rising over the horizon. Everything else stays where it was: your connections, saved passwords, links and settings carry over, and updates keep arriving as before.
 - **Saved queries.** Press **Ctrl+S** in a query tab to keep a query by name, in a folder if you like. Open it again from **Saved queries** at the bottom of the sidebar or from Ctrl+K. After that Ctrl+S saves changes to it, and a dot on the tab shows when there are some.
 - **Snippets.** Save a query for **Any connection** and it works everywhere: start typing its name in any query and pick it from the suggestions to drop its SQL in.
 - Saved queries travel with shared connection files: exporting all connections includes them, and exporting a folder includes the queries for its connections.

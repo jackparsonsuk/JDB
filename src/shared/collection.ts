@@ -1,4 +1,5 @@
 import type { AuthType, ConnectionConfig, CrossLink, DbKind, EnvTag, LinkEnd, SavedQuery } from './types'
+import { APP_NAME } from './brand'
 
 /**
  * A shareable file of connections (and the cross-database links between them), like a Postman
@@ -76,8 +77,8 @@ export function buildCollection(connections: ConnectionConfig[], links: CrossLin
 
 /** Checks a collection file, keeping only known fields; throws with a readable reason. */
 export function parseCollection(raw: unknown): ConnectionCollection {
-  if (!isObject(raw) || raw.format !== FORMAT) throw new Error('This is not a JDB connections file.')
-  if (raw.version !== 1) throw new Error(`This file is from a newer version of JDB (format ${String(raw.version)}).`)
+  if (!isObject(raw) || raw.format !== FORMAT) throw new Error(`This is not an ${APP_NAME} connections file.`)
+  if (raw.version !== 1) throw new Error(`This file is from a newer version of ${APP_NAME} (format ${String(raw.version)}).`)
   if (!Array.isArray(raw.connections)) throw new Error('The file has no connections.')
   const connections = raw.connections.map((c, i) => parseConnection(c, i))
   const refs = new Set(connections.map((c) => c.ref))

@@ -2,7 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-JDB is a desktop database viewer (Electron + React + TypeScript, built with electron-vite) for SQL Server / Azure SQL and MySQL. It is a DBeaver replacement focused on reading data safely; writes are deliberately guarded.
+OverlookDB (formerly JDB) is a desktop database viewer (Electron + React + TypeScript, built with electron-vite) for SQL Server / Azure SQL and MySQL. It is a DBeaver replacement focused on reading data safely; writes are deliberately guarded.
+
+The name people see comes from `APP_NAME` in `src/shared/brand.ts`, and the logo from `components/Logo.tsx` (in the app) and `scripts/make-icon.cjs` (the icon), which draw the same shapes. Everything else keeps the JDB name on purpose: the installer and exe, `productName`, app id and pinned `nsis.guid`, the install folder and `%APPDATA%\JDB` userData (which holds the key that decrypts saved passwords), the jdb-releases repo, the `jdb-connections` file format and `.jdb.json` extension, and `jdb.*` localStorage keys. Renaming any of those breaks upgrades, passwords or shared files.
 
 ## Commands
 
@@ -17,7 +19,7 @@ npx vitest run src/shared/nl/translate.test.ts -t "EXISTS"  # tests matching a n
 npm run dist         # Windows NSIS installer into dist/
 npm run deploy       # build and copy over the locally installed app, then relaunch it
 npm run release      # build and publish a GitHub Release (needs GH_TOKEN); installed apps auto-update from it. See RELEASE.md
-npm run icon         # redraw build/icon.ico and resources/icon.png (green "JDB") from scripts/make-icon.cjs
+npm run icon         # redraw build/icon.ico and resources/icon.png (the OverlookDB mark) from scripts/make-icon.cjs
 ```
 
 There is no linter configured. Tests live next to the code as `*.test.ts` and only cover `src/shared` (pure logic).

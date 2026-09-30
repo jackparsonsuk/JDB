@@ -10,6 +10,7 @@ import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancel
 import { buildWhere } from './filters'
 import { isNumericType } from '@shared/edits'
 import { getEntraToken } from './entra'
+import { APP_NAME } from '@shared/brand'
 
 const AZURE_SQL_SCOPE = 'https://database.windows.net/.default'
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000
@@ -40,7 +41,7 @@ export class MssqlDriver implements Driver {
       options: {
         encrypt: true,
         trustServerCertificate: this.config.trustServerCertificate ?? false,
-        appName: 'JDB'
+        appName: APP_NAME
       }
     }
 

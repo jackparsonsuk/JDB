@@ -1,5 +1,6 @@
 import type { DbKind, DesignColumn, TableDesign, TableRef } from './types'
 import { qualifiedName, quoteIdent } from './rows'
+import { APP_NAME } from './brand'
 
 /** A column as edited in the designer. Defaults are SQL expressions; '' means none. */
 export interface ColumnDraft {
@@ -80,7 +81,7 @@ export function designProblems(design: TableDesign, drafts: ColumnDraft[]): stri
     }
   }
   for (const d of kept) {
-    if (/[\]`]/.test(d.name)) problems.push(`${d.name} contains a bracket or backtick, which JDB won't write into a script.`)
+    if (/[\]`]/.test(d.name)) problems.push(`${d.name} contains a bracket or backtick, which ${APP_NAME} won't write into a script.`)
     if (d.original === undefined && !d.nullable && !d.default.trim()) {
       problems.push(`New column ${d.name || '(unnamed)'} is NOT NULL with no default, which fails on a table that has rows.`)
     }

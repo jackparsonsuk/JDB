@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 import changelogText from '../../../../CHANGELOG.md?raw'
 import { changesSince, compareVersions, parseChangelog, type ChangelogEntry } from '@shared/changelog'
 import { toast } from '../components/Toast'
+import { APP_NAME } from '@shared/brand'
 
 /** CHANGELOG.md, bundled at build time, so an updated app knows its own notes offline. */
 export const changelog = parseChangelog(changelogText)
@@ -68,5 +69,5 @@ export async function announceUpdate(): Promise<void> {
     const connections = await window.api.listConnections().catch(() => [])
     entries = connections.length ? changelog.filter((e) => e.version === current) : []
   }
-  if (entries.length) toast(`Updated to JDB ${current}`, false, { label: "What's new", run: () => openWhatsNew(entries) })
+  if (entries.length) toast(`Updated to ${APP_NAME} ${current}`, false, { label: "What's new", run: () => openWhatsNew(entries) })
 }

@@ -6,6 +6,7 @@ import { getTheme } from './store'
 import { startUpdater } from './updater'
 // Copied next to the built main process; the packaged exe gets build/icon.ico from electron-builder.
 import icon from '../../resources/icon.png?asset'
+import { APP_NAME } from '@shared/brand'
 
 /** Unsaved work the renderer has reported, listed when closing would lose it. */
 let unsavedWork: string[] = []
@@ -22,7 +23,7 @@ function createWindow(): void {
     show: false,
     // Matches --bg so the window doesn't flash the wrong colour before the page paints.
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#15171c' : '#ffffff',
-    title: 'JDB',
+    title: APP_NAME,
     icon,
     autoHideMenuBar: true,
     webPreferences: {
@@ -40,7 +41,7 @@ function createWindow(): void {
     const choice = dialog.showMessageBoxSync(window, {
       type: 'warning',
       title: 'Unsaved work',
-      message: 'Close JDB and lose unsaved work?',
+      message: `Close ${APP_NAME} and lose unsaved work?`,
       detail: `${list}\n\nOpen transactions are rolled back, so nothing they changed is kept.`,
       buttons: ['Close anyway', 'Cancel'],
       defaultId: 1,

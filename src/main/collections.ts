@@ -3,8 +3,9 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { buildCollection, parseCollection, type ImportSummary } from '@shared/collection'
 import * as store from './store'
+import { APP_NAME } from '@shared/brand'
 
-const FILTERS = [{ name: 'JDB connections', extensions: ['json'] }]
+const FILTERS = [{ name: `${APP_NAME} connections`, extensions: ['json'] }]
 
 /** Collection files are small; anything bigger is not one and isn't worth parsing. */
 const MAX_FILE_BYTES = 5 * 1024 * 1024
@@ -38,7 +39,7 @@ export async function importConnections(): Promise<ImportSummary | null> {
   const path = choice.filePaths[0]
   if (choice.canceled || !path) return null
   const text = await readFile(path, 'utf8')
-  if (text.length > MAX_FILE_BYTES) throw new Error('That file is too big to be a JDB connections file.')
+  if (text.length > MAX_FILE_BYTES) throw new Error(`That file is too big to be an ${APP_NAME} connections file.`)
   let raw: unknown
   try {
     raw = JSON.parse(text)

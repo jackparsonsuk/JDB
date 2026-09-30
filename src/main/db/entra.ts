@@ -4,6 +4,7 @@ import {
 } from '@azure/msal-node'
 import type { AccessToken } from '@azure/identity'
 import { readTokenCache, writeTokenCache } from '../store'
+import { APP_NAME } from '@shared/brand'
 
 /**
  * Entra browser sign-in with a token cache that survives restarts. After the first sign-in,
@@ -48,7 +49,7 @@ function pickAccount(accounts: AccountInfo[], tenantId: string | undefined): Acc
 }
 
 const PAGE = (title: string, body: string): string =>
-  `<!doctype html><title>JDB</title><body style="font:15px 'Segoe UI',sans-serif;padding:40px"><h2>${title}</h2><p>${body}</p></body>`
+  `<!doctype html><title>${APP_NAME}</title><body style="font:15px 'Segoe UI',sans-serif;padding:40px"><h2>${title}</h2><p>${body}</p></body>`
 
 export async function getEntraToken(scope: string, tenantId: string | undefined): Promise<AccessToken> {
   const pca = client(tenantId)
@@ -71,8 +72,8 @@ export async function getEntraToken(scope: string, tenantId: string | undefined)
       openBrowser: async (url) => {
         await shell.openExternal(url)
       },
-      successTemplate: PAGE('Signed in to JDB', 'You can close this tab.'),
-      errorTemplate: PAGE('Sign-in failed', 'Close this tab and try again in JDB.')
+      successTemplate: PAGE(`Signed in to ${APP_NAME}`, 'You can close this tab.'),
+      errorTemplate: PAGE('Sign-in failed', `Close this tab and try again in ${APP_NAME}.`)
     }).finally(() => signingIn.delete(key))
     signingIn.set(key, pending)
   }

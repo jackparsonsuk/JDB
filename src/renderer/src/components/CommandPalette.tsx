@@ -8,6 +8,7 @@ import { fuzzyScore } from '../lib/fuzzy'
 import { toggleSlop, useSlop } from '../lib/slop'
 import { checkForUpdates } from '../lib/useUpdate'
 import { openWhatsNew } from '../lib/whatsNew'
+import { APP_NAME } from '@shared/brand'
 
 interface Item {
   key: string
@@ -168,7 +169,7 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
     out.push({
       key: 'update-check',
       label: 'Check for updates',
-      detail: 'look for a new JDB release now',
+      detail: `look for a new ${APP_NAME} release now`,
       icon: '⟳',
       haystack: 'check for updates update upgrade new version release',
       bias: -10,

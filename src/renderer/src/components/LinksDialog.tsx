@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ColumnInfo, ConnectionConfig, CrossLink, LinkCandidate, LinkEnd, LinkOverlap } from '@shared/types'
 import { useAppState } from '../state'
 import { toast } from './Toast'
+import { APP_NAME } from '@shared/brand'
 
 interface Group {
   key: string
@@ -106,7 +107,7 @@ export function LinksDialog({ connectionId, onClose }: { connectionId: string; o
       <div className="dialog links-dialog" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
         <h2>Cross-database links</h2>
         <p className="muted small">
-          Links let JDB jump between databases that can't join each other, e.g. an order in one database to its job in another.
+          Links let {APP_NAME} jump between databases that can't join each other, e.g. an order in one database to its job in another.
           Discovery matches column names, then checks real values on both sides. Everything is read-only.
         </p>
 

@@ -57,7 +57,7 @@ describe('connection collections', () => {
   })
 
   it('rejects other files and bad connections with a reason', () => {
-    expect(() => parseCollection({ info: { schema: 'postman' } })).toThrow(/not a JDB connections file/)
+    expect(() => parseCollection({ info: { schema: 'postman' } })).toThrow(/not an OverlookDB connections file/)
     expect(() => parseCollection({ format: 'jdb-connections', version: 2, connections: [] })).toThrow(/newer version/)
     expect(() => parseCollection({ format: 'jdb-connections', version: 1, connections: [{ name: 'X', host: 'h', kind: 'oracle' }] })).toThrow(/unknown database type/)
   })

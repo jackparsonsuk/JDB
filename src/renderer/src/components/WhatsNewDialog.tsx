@@ -1,5 +1,7 @@
 import { useEffect, type ReactNode } from 'react'
 import { closeWhatsNew, useWhatsNew } from '../lib/whatsNew'
+import { APP_NAME } from '@shared/brand'
+import { compareVersions } from '@shared/changelog'
 
 /** A note's **bold** runs, which the changelog uses for button and menu names. */
 function renderNote(note: string): ReactNode[] {
@@ -27,7 +29,8 @@ export function WhatsNewDialog() {
         <h2>What's new</h2>
         {entries.map((entry) => (
           <section key={entry.version}>
-            <h3>JDB {entry.version}</h3>
+            {/* Versions before 1.0.0 were released as JDB. */}
+            <h3>{compareVersions(entry.version, '1.0.0') < 0 ? 'JDB' : APP_NAME} {entry.version}</h3>
             <ul>
               {entry.notes.map((note, i) => (
                 <li key={i}>{renderNote(note)}</li>

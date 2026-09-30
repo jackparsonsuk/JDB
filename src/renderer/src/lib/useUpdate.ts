@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from '../components/Toast'
+import { APP_NAME } from '@shared/brand'
 
 const install = (): void => {
   window.api.installUpdate().catch((e) => toast(`Update failed: ${(e as Error).message}`, true))
@@ -11,9 +12,9 @@ export function checkForUpdates(): void {
   window.api.checkForUpdates().then(
     (result) => {
       if (result.state === 'dev') toast('Updates only apply to the installed app')
-      else if (result.state === 'current') toast(`JDB ${result.version} is up to date`)
-      else if (result.state === 'downloading') toast(`Downloading JDB ${result.version}. You'll be told when it's ready.`)
-      else if (result.state === 'ready') toast(`JDB ${result.version} is ready. It installs when you close JDB.`, false, { label: 'Restart now', run: install })
+      else if (result.state === 'current') toast(`${APP_NAME} ${result.version} is up to date`)
+      else if (result.state === 'downloading') toast(`Downloading ${APP_NAME} ${result.version}. You'll be told when it's ready.`)
+      else if (result.state === 'ready') toast(`${APP_NAME} ${result.version} is ready. It installs when you close ${APP_NAME}.`, false, { label: 'Restart now', run: install })
       else toast(`Couldn't check for updates: ${result.error}`, true)
     },
     (e) => toast(`Couldn't check for updates: ${(e as Error).message}`, true)
@@ -31,7 +32,7 @@ export function useUpdate(): { version: string | null; install(): void } {
     window.api.readyUpdate().then((v) => v && setVersion(v), () => undefined)
     return window.api.onUpdateReady((v) => {
       setVersion(v)
-      toast(`JDB ${v} is ready. It installs when you close JDB.`, false, { label: 'Restart now', run: install })
+      toast(`${APP_NAME} ${v} is ready. It installs when you close ${APP_NAME}.`, false, { label: 'Restart now', run: install })
     })
   }, [])
   return { version, install }
