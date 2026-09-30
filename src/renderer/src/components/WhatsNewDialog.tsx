@@ -1,4 +1,12 @@
+import type { ReactNode } from 'react'
 import { closeWhatsNew, useWhatsNew } from '../lib/whatsNew'
+
+/** A note's **bold** runs, which the changelog uses for button and menu names. */
+function renderNote(note: string): ReactNode[] {
+  return note.split(/(\*\*[^*]+\*\*)/).map((part, i) =>
+    part.startsWith('**') && part.endsWith('**') && part.length > 4 ? <strong key={i}>{part.slice(2, -2)}</strong> : part
+  )
+}
 
 /** The release notes for the versions an update brought, or the whole changelog from the palette. */
 export function WhatsNewDialog() {
@@ -13,7 +21,7 @@ export function WhatsNewDialog() {
             <h3>JDB {entry.version}</h3>
             <ul>
               {entry.notes.map((note, i) => (
-                <li key={i}>{note}</li>
+                <li key={i}>{renderNote(note)}</li>
               ))}
             </ul>
           </section>

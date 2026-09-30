@@ -216,7 +216,9 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
   const choose = (item: Item | undefined): void => {
     if (!item) return
     onClose()
-    item.run()
+    // After the key press is over: a command that opens a dialog moves focus to its button, and the
+    // same Enter would then press it (What's new opened and shut at once).
+    setTimeout(item.run, 0)
   }
 
   const onKey = (e: React.KeyboardEvent): void => {

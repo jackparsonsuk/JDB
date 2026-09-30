@@ -420,6 +420,9 @@ tr:hover .fk-jump { opacity: 1; }
 .dialog-actions { display: flex; gap: 8px; margin-top: 16px; }
 .whats-new h3 { margin: 14px 0 4px; font-size: 13px; color: var(--accent); }
 .whats-new ul { margin: 0; padding-left: 18px; line-height: 1.5; }
+.whats-new li + li { margin-top: 3px; }
+/* The whole changelog is long; keep Close in reach while it scrolls. */
+.whats-new .dialog-actions { position: sticky; bottom: -18px; margin: 16px -20px -18px; padding: 12px 20px; background: var(--bg-2); border-top: 1px solid var(--border); }
 
 .palette { width: 620px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: 0 16px 50px rgba(0, 0, 0, 0.45); }
 .palette-input { width: 100%; border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 14px 16px; font-size: 15px; background: transparent; }
