@@ -1,6 +1,9 @@
 import type { CellValue, DbKind, TableRef } from './types'
 
 /** Text formats rows can be copied or saved as. */
+/** The most rows a table page may hold: the grid copes, and one page stays a modest read on a shared server. */
+export const MAX_PAGE_SIZE = 10_000
+
 export type CopyFormat = 'tsv' | 'csv' | 'json' | 'markdown' | 'insert'
 
 export const COPY_FORMATS: { format: CopyFormat; label: string }[] = [

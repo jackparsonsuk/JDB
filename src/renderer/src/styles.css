@@ -361,6 +361,7 @@ body.resizing-cols { cursor: col-resize; user-select: none; }
 .statusbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 10px; border-top: 1px solid var(--border); background: var(--bg-2); font-size: 12px; }
 .pager { display: flex; align-items: center; gap: 4px; }
 .pager select { padding: 2px 4px; }
+.pager .page-size-input { width: 90px; padding: 2px 6px; }
 
 /* Grid */
 .grid-wrap { flex: 1; min-width: 0; position: relative; display: flex; }

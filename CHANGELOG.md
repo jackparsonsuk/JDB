@@ -2,6 +2,9 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 1.5.0
+- **More rows per page.** Tables can show 1,000 rows a page, or pick **Custom…** and type your own number (up to 10,000). The size you pick is remembered for the next table you open.
+
 ## 1.4.0
 - **Query parameters.** Write `:customerId` (or `@customerId`) in a query and running it asks for a value first. Values are written to suit the column they're compared with (quoted for text, as they are for numbers, dates the safe way), and `IN (:ids)` takes a comma-separated list. You can also choose Text, Number, NULL or raw SQL for a value, see the finished SQL before it runs, and each value is remembered for next time. Great for saved queries.
 - In scripts that declare their own variables (`DECLARE @x`, `SET @x = …`), `@x` is left alone as the database's variable, and only `:name` asks.
