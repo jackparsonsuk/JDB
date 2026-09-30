@@ -23,6 +23,8 @@ export function TableDesigner({ tab }: { tab: Extract<Tab, { kind: 'design' }> }
   const [loading, setLoading] = useState(true)
   const [reloadKey, setReloadKey] = useState(0)
   const [reviewing, setReviewing] = useState<string[] | null>(null)
+  /** Narrows the column list by name, type, key or comment; columns being added always show. */
+  const [columnFilter, setColumnFilter] = useState('')
   const version = schemaVersions[tab.connectionId] ?? 0
 
   useEffect(() => {
@@ -83,6 +85,12 @@ export function TableDesigner({ tab }: { tab: Extract<Tab, { kind: 'design' }> }
     }
   }
 
+  const needle = columnFilter.trim().toLowerCase()
+  const matchesFilter = (draft: ColumnDraft, original: DesignColumn | undefined): boolean =>
+    !needle || !original || [draft.name, draft.dataType, original.name, original.comment, original.references && `${original.references.name}.${original.references.column}`]
+      .some((text) => !!text && text.toLowerCase().includes(needle))
+  const shown = drafts.filter((d) => matchesFilter(d, d.original !== undefined ? byName.get(d.original) : undefined)).length
+
   return (
     <div className="view">
       <div className="toolbar">
@@ -93,6 +101,15 @@ export function TableDesigner({ tab }: { tab: Extract<Tab, { kind: 'design' }> }
         </div>
         {!editable && <span className="muted hint">Read-only connection: structure only</span>}
         <div className="toolbar-right">
+          <input
+            className="search"
+            placeholder="Find column…"
+            value={columnFilter}
+            onChange={(e) => setColumnFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setColumnFilter('')
+            }}
+          />
           {editable && <button className="ghost" onClick={addColumn} disabled={!design}>+ Column</button>}
           <button className="ghost" onClick={() => openTable(tab.connectionId, tab.table)}>Open data</button>
           <button className="ghost" title="Reload the structure" onClick={refresh}>⟳</button>
@@ -120,7 +137,7 @@ export function TableDesigner({ tab }: { tab: Extract<Tab, { kind: 'design' }> }
         {design && (
           <>
             <section>
-              <h3>Columns</h3>
+              <h3>Columns{needle && <span className="muted"> · {shown} of {drafts.length} match “{columnFilter.trim()}”</span>}</h3>
               <datalist id={`types-${conn.kind}`}>
                 {TYPE_SUGGESTIONS[conn.kind].map((t) => <option key={t} value={t} />)}
               </datalist>
@@ -139,6 +156,7 @@ export function TableDesigner({ tab }: { tab: Extract<Tab, { kind: 'design' }> }
                 <tbody>
                   {drafts.map((draft, i) => {
                     const original = draft.original !== undefined ? byName.get(draft.original) : undefined
+                    if (!matchesFilter(draft, original)) return null
                     const changed = (field: keyof ColumnDraft, value: unknown): string =>
                       original && !draft.drop && String(value) !== String(field === 'default' ? original.default ?? '' : original[field as keyof DesignColumn]) ? 'changed' : ''
                     const computed = !!original?.computed

@@ -385,6 +385,8 @@ body.resizing-cols { cursor: col-resize; user-select: none; }
 /* The clicked cell's column, and the Excel-style summary of it across the selected rows. */
 .grid col.col-active { background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .grid th.col-active { box-shadow: inset 0 -2px 0 var(--accent); color: var(--accent); }
+/* The clicked cell itself, on the active row. */
+.grid tbody tr td.cell-active { outline: 2px solid var(--accent); outline-offset: -2px; background: color-mix(in srgb, var(--accent) 22%, var(--bg)); color: var(--text); }
 .grid-wrap { position: relative; }
 .grid-stats { position: absolute; right: 20px; bottom: 18px; z-index: 4; display: flex; gap: 14px; align-items: baseline; padding: 4px 12px; font-size: 12px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); color: var(--text-dim); pointer-events: auto; }
 .grid-stats b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -1127,3 +1129,22 @@ button.linkish:hover:not(:disabled) { background: none; text-decoration: underli
 .density-rows.compact span { height: 9px; }
 .density-rows.comfortable span { height: 12px; }
 .density-rows.spacious span { height: 15px; }
+
+/* Lookup side panel (LookupPanel) and its set-up dialog (LookupDialog) */
+.lookup-panel .lookup-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lookup-panel .lookup-title .muted { font-weight: 400; }
+.lookup-current { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.lookup-current code { font: 11px var(--mono); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lookup-tools { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.lookup-tools .search { width: 100%; }
+.lookup-list { flex: 1; overflow-y: auto; padding: 4px; position: relative; min-height: 60px; }
+.lookup-item { display: flex; align-items: baseline; gap: 10px; width: 100%; background: none; border: none; border-radius: 4px; padding: 4px 8px; text-align: left; font-size: 12px; }
+.lookup-item:hover { background: var(--bg-hover); }
+.lookup-item.current { background: var(--accent-soft); color: var(--accent); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
+.lookup-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lookup-key { flex: 0 1 45%; min-width: 0; font: 11px var(--mono); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lookup-foot { padding: 6px 10px; border-top: 1px solid var(--border); font-size: 11px; line-height: 1.4; }
+.lookup-dialog { width: 560px; }
+.lookup-dialog p { font-size: 12px; margin: 0 0 12px; }
+.lookup-dialog-labels { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.lookup-dialog-columns { max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; display: flex; flex-direction: column; gap: 2px; }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CellValue, ColumnFilter, ColumnInfo, FilterOp, RowsResult, TableDetails, TableSort } from '@shared/types'
+import type { CellValue, ColumnFilter, ColumnInfo, FilterOp, RowsResult, TableDetails, TableRef, TableSort } from '@shared/types'
 import { useAppState, useCloseWarning, useTableList, type OpenTarget, type Tab } from '../state'
 import { incomingLinks, outgoingLinks } from '@shared/links'
 import { formatCount, selectSql } from '../lib/format'
@@ -13,6 +13,10 @@ import { useTableEdits } from '../lib/useTableEdits'
 import { SaveChangesDialog } from './SaveChangesDialog'
 import { ColumnFinder } from './ColumnFinder'
 import { isNumericType } from '@shared/edits'
+import { displayValue } from '@shared/rows'
+import { useColumnLookup } from '../lib/lookups'
+import { LookupPanel } from './LookupPanel'
+import { LookupDialog } from './LookupDialog'
 
 const PAGE_SIZES = [50, 100, 250, 500]
 const OPS: { op: FilterOp; label: string; needsValue: boolean }[] = [
@@ -170,6 +174,21 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
     () => new Map<string, ColumnInfo>(details?.columns.map((c) => [c.name, c]) ?? []),
     [details]
   )
+
+  /** The clicked cell's column, and the lookup its values point into (a foreign key, or one set up by hand). */
+  const [activeColumn, setActiveColumn] = useState<string | null>(null)
+  const tableList = tables[tab.connectionId]?.tables
+  const hasTable = useCallback(
+    (t: TableRef) => !!tableList?.some((x) => x.schema.toLowerCase() === t.schema.toLowerCase() && x.name.toLowerCase() === t.name.toLowerCase()),
+    [tableList]
+  )
+  const lookup = useColumnLookup(tab.connectionId, tab.table, activeColumn ? columnInfo.get(activeColumn) : undefined, hasTable)
+  /** The user closed the lookup panel, so row details show even on lookup columns. */
+  const [preferRow, setPreferRow] = useState(false)
+  const [lookupDialog, setLookupDialog] = useState<string | null>(null)
+  const columnMenu = useCallback((column: string) => [
+    { label: 'Look up values in another table…', run: () => setLookupDialog(column) }
+  ], [])
 
   const visibleRows = useMemo(() => {
     if (!result) return []
@@ -438,9 +457,36 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
           onFilter={addFilter}
           copyTarget={{ kind: conn.kind, table: tab.table }}
           focusColumn={focusColumn}
+          onActiveColumnChange={setActiveColumn}
+          columnMenu={columnMenu}
         />
-        {showInspector && activeRow && (
+        {showInspector && lookup && !preferRow && activeColumn && columnInfo.get(activeColumn) && (() => {
+          const ci = columnNames.indexOf(activeColumn)
+          const row = selection.active
+          const setBlocked = !canEditNow ? editBlocked ?? 'turn on ✎ Edit to set values'
+            : row === null ? 'select a row first'
+              : !edits.grid.canEdit(row, ci) ? "this column can't be edited" : null
+          return (
+            <LookupPanel
+              conn={conn}
+              column={columnInfo.get(activeColumn)!}
+              lookup={lookup}
+              targetRows={tableList?.find((t) => t.schema.toLowerCase() === lookup.link.target.schema.toLowerCase() && t.name.toLowerCase() === lookup.link.target.name.toLowerCase())?.rowEstimate}
+              value={activeRow ? activeRow[ci] : undefined}
+              setBlocked={setBlocked}
+              onPick={(key) => {
+                if (row === null) return
+                const problem = edits.grid.commit(row, ci, displayValue(key))
+                if (problem) toast(problem)
+              }}
+              onSetUp={() => setLookupDialog(activeColumn)}
+              onClose={() => setPreferRow(true)}
+            />
+          )
+        })()}
+        {showInspector && activeRow && !(lookup && !preferRow) && (
           <RowInspector
+            onShowLookup={lookup ? () => setPreferRow(false) : undefined}
             kind={conn.kind}
             table={tab.table}
             columns={columnNames}
@@ -455,6 +501,16 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
         )}
       </div>
 
+      {lookupDialog && columnInfo.get(lookupDialog) && (
+        <LookupDialog
+          conn={conn}
+          table={tab.table}
+          column={columnInfo.get(lookupDialog)!}
+          existing={lookupDialog === activeColumn ? lookup : undefined}
+          tables={tableList ?? []}
+          onClose={() => setLookupDialog(null)}
+        />
+      )}
       {reviewing && (
         <SaveChangesDialog
           connection={conn}

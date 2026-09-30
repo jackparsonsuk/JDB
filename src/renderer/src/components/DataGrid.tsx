@@ -84,6 +84,10 @@ interface Props {
   summarizeAll?(column: string): Promise<ColumnSummary | null>
   /** While set, shows a progress bar and this message instead of "No rows". */
   loadingLabel?: string
+  /** Told the column of the clicked cell (null when none), e.g. to show its lookup values. */
+  onActiveColumnChange?(column: string | null): void
+  /** Extra items for a column header's right-click menu, such as setting up a lookup. */
+  columnMenu?(column: string): { label: string; run(): void }[]
 }
 
 interface MenuState {
@@ -108,6 +112,7 @@ function Grid(props: Props) {
   /** Rows and columns currently rendered; only changes when the viewport crosses a step. */
   const [view, setView] = useState<GridWindow>({ firstRow: 0, lastRow: 40, firstColumn: 0, lastColumn: 30 })
   const [menu, setMenu] = useState<MenuState | null>(null)
+  const [headerMenu, setHeaderMenu] = useState<{ x: number; y: number; column: string } | null>(null)
 
   // Size columns from their header and a sample of content whenever the column set changes.
   const columnKey = columns.join('\u0000')
@@ -125,6 +130,10 @@ function Grid(props: Props) {
   /** The column of the last clicked cell: highlighted, and summarised for the selected rows. */
   const [activeColumn, setActiveColumn] = useState<number | null>(null)
   useEffect(() => setActiveColumn(null), [columnKey])
+  const onActiveColumnChange = props.onActiveColumnChange
+  useEffect(() => {
+    onActiveColumnChange?.(activeColumn === null ? null : columns[activeColumn] ?? null)
+  }, [activeColumn, columns, onActiveColumnChange])
 
   /** Left edge of each column, after the row number gutter. */
   const offsets = useMemo(() => {
@@ -180,6 +189,17 @@ function Grid(props: Props) {
   useEffect(() => {
     if (!editing) setEditCell(null)
   }, [editing])
+
+  useEffect(() => {
+    if (!headerMenu) return
+    const close = (): void => setHeaderMenu(null)
+    window.addEventListener('mousedown', close)
+    window.addEventListener('blur', close)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('blur', close)
+    }
+  }, [headerMenu])
 
   useEffect(() => {
     if (!menu) return
@@ -374,6 +394,12 @@ function Grid(props: Props) {
     } else if (mod && event.key.toLowerCase() === 'a') {
       event.preventDefault()
       onSelectionChange({ rows: new Set(rows.map((_, i) => i)), active: selection.active ?? 0 })
+    } else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && selection.active !== null && activeColumn !== null) {
+      // Moves the active cell along the row, keeping it in view.
+      event.preventDefault()
+      const next = Math.min(columns.length - 1, Math.max(0, activeColumn + (event.key === 'ArrowRight' ? 1 : -1)))
+      setActiveColumn(next)
+      scrollColumnIntoView(next)
     } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       const delta = event.key === 'ArrowDown' ? 1 : -1
@@ -500,6 +526,11 @@ function Grid(props: Props) {
                     className={[props.onSort && 'sortable', ci === activeColumn && 'col-active'].filter(Boolean).join(' ') || undefined}
                     title={info ? `${name}\n${info.dataType}${info.nullable ? ' null' : ' not null'}${info.references ? `\n→ ${info.references.schema}.${info.references.name}.${info.references.column}` : ''}` : name}
                     onClick={() => props.onSort?.(name)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      setActiveColumn(ci)
+                      setHeaderMenu({ x: e.clientX, y: e.clientY, column: name })
+                    }}
                   >
                     <span className="th-label">
                       {info?.isPrimaryKey && <span className="badge pk">PK</span>}
@@ -526,6 +557,7 @@ function Grid(props: Props) {
                   rowNumber={(props.rowOffset ?? 0) + index + 1}
                   selected={selection.rows.has(index)}
                   active={selection.active === index}
+                  activeColumn={selection.active === index ? activeColumn : null}
                   columns={columns}
                   firstColumn={firstColumn}
                   lastColumn={lastColumn}
@@ -581,6 +613,22 @@ function Grid(props: Props) {
           </div>
         )
       })()}
+
+      {headerMenu && (
+        <div className="menu" style={{ left: headerMenu.x, top: headerMenu.y }} onMouseDown={(e) => e.stopPropagation()}>
+          <div className="menu-label">{headerMenu.column}</div>
+          {props.onSort && (
+            <button onClick={() => { props.onSort?.(headerMenu.column); setHeaderMenu(null) }}>
+              {props.sort?.column !== headerMenu.column ? 'Sort ascending' : props.sort.dir === 'asc' ? 'Sort descending' : 'Stop sorting'}
+            </button>
+          )}
+          {props.columnMenu?.(headerMenu.column).map((item) => (
+            <button key={item.label} onClick={() => { setHeaderMenu(null); item.run() }}>{item.label}</button>
+          ))}
+          <div className="menu-sep" />
+          <button onClick={() => { window.api.copy(headerMenu.column); toast('Copied column name'); setHeaderMenu(null) }}>Copy column name</button>
+        </div>
+      )}
 
       {menu && (
         <div className="menu" style={{ left: menu.x, top: menu.y }} onMouseDown={(e) => e.stopPropagation()}>
@@ -675,6 +723,8 @@ interface RowProps {
   rowNumber: number
   selected: boolean
   active: boolean
+  /** The clicked cell's column, on the active row only, so other rows keep their memo. */
+  activeColumn: number | null
   columns: string[]
   firstColumn: number
   lastColumn: number
@@ -696,7 +746,7 @@ const GridRow = memo(function GridRow(props: RowProps) {
   for (let ci = props.firstColumn; ci < props.lastColumn; ci++) {
     const value = row[ci]
     const info = columnInfo?.get(columns[ci])
-    const edited = mark?.cells?.has(ci) ? ' edited' : ''
+    const edited = (mark?.cells?.has(ci) ? ' edited' : '') + (props.activeColumn === ci ? ' cell-active' : '')
     const onMouseDown = (): void => handlers.current.setActiveColumn(ci)
     // Read at event time: memoised rows don't re-render when editing is switched on or off.
     const onDoubleClick = (e: ReactMouseEvent): void => {
@@ -714,7 +764,7 @@ const GridRow = memo(function GridRow(props: RowProps) {
     } else if (mark?.state === 'inserted' && !edited) {
       // Unset columns in a new row are left out of the INSERT, so the database fills them in.
       cells.push(
-        <td key={ci} className="default" onMouseDown={onMouseDown} onContextMenu={(e) => h.openMenu(e, index, ci)} onDoubleClick={onDoubleClick}>default</td>
+        <td key={ci} className={`default${edited}`} onMouseDown={onMouseDown} onContextMenu={(e) => h.openMenu(e, index, ci)} onDoubleClick={onDoubleClick}>default</td>
       )
     } else {
       cells.push(

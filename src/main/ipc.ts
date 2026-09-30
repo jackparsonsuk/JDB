@@ -1,4 +1,5 @@
 import { clipboard, ipcMain, nativeTheme } from 'electron'
+import type { LookupLink } from '@shared/lookups'
 import { nativeThemeOf } from '@shared/types'
 import type { CellValue, ColumnFilter, ConnectionConfig, DbKind, TableExportRequest, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RoutineRef, RowsRequest, SavedQueryInput, SavedSession, TableRef, ThemeSetting, ValueLookup } from '@shared/types'
 import * as db from './db'
@@ -72,6 +73,9 @@ export function registerIpc(): void {
 
   handle('db:countRelated', (id: string, requests: RelatedCountRequest[]) => countRelated(id, requests))
   handle('links:list', () => store.listLinks())
+  handle('lookups:list', () => store.listLookups())
+  handle('lookups:save', (link: LookupLink) => store.saveLookup(link))
+  handle('lookups:delete', (id: string) => store.deleteLookup(id))
   handle('links:save', (links: CrossLink[]) => store.saveLinks(links))
   handle('links:delete', (id: string) => store.deleteLink(id))
   handle('links:discover', (a: string, b: string) => discoverLinks(a, b))

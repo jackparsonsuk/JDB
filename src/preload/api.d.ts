@@ -5,6 +5,7 @@ import type {
 import type { ImportSummary } from '../shared/collection'
 import type { Appearance } from '../shared/appearance'
 import type { EnvironmentDef } from '../shared/environments'
+import type { LookupLink } from '../shared/lookups'
 
 export interface Api {
   listConnections(): Promise<ConnectionConfig[]>
@@ -46,7 +47,7 @@ export interface Api {
   cancelQuery(runId: string): Promise<void>
   /** Runs a write's row-count preview (a SELECT COUNT(*)); refused if it could write, stopped after 10 s. */
   countForWrite(connectionId: string, sql: string): Promise<WriteCount>
-  /** Reads the rows an UPDATE touches, for the before / after comparison; refused if it could write, stopped after 10 s, kept out of history. */
+  /** Reads rows quietly (an UPDATE's before / after, lookup lists): refused if it could write, stopped after 10 s, kept out of history. */
   snapshotRows(connectionId: string, sql: string, transactionId?: string): Promise<ResultSet>
   /** Runs grid edits in one transaction, rolling all back unless each matches exactly one row. Returns how many ran. */
   applyChanges(connectionId: string, statements: string[]): Promise<number>
@@ -65,6 +66,11 @@ export interface Api {
   showExported(path: string): Promise<void>
   countRelated(connectionId: string, requests: RelatedCountRequest[]): Promise<RelatedCount[]>
   listLinks(): Promise<CrossLink[]>
+  /** Lookups set up by hand: which table a column's values are keys into, and what to show for them. */
+  listLookups(): Promise<LookupLink[]>
+  /** Adds or replaces a lookup (one per column per connection); returns them all. */
+  saveLookup(link: LookupLink): Promise<LookupLink[]>
+  deleteLookup(id: string): Promise<LookupLink[]>
   saveLinks(links: CrossLink[]): Promise<CrossLink[]>
   deleteLink(id: string): Promise<CrossLink[]>
   discoverLinks(connectionA: string, connectionB: string): Promise<LinkCandidate[]>

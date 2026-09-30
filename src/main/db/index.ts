@@ -233,7 +233,7 @@ export async function countForWrite(connectionId: string, sql: string): Promise<
 }
 
 /**
- * Reads the rows an UPDATE touches, before and after it runs (see @shared/writeDiff). Like
+ * Reads rows quietly: an UPDATE's rows before and after it runs (see @shared/writeDiff), and lookup lists. Like
  * countForWrite: refused if it could write, stopped after WRITE_COUNT_TIMEOUT_MS and kept out of
  * the history. With `transactionId` it reads inside that transaction, so staged changes show.
  */

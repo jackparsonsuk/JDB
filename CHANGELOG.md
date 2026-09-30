@@ -2,6 +2,13 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 1.3.0
+- **Lookups.** Click a cell in a column like OrderStatusId and the side panel lists the values it can take with their labels ("Draft", "Final", "Insurer"…), with the current one highlighted. Search the list, and with ✎ Edit on, click a value to set the cell.
+- Foreign keys work straight away. For a column without one, right-click its header and choose **Look up values in another table…**, then pick the table, its key and the columns to show. It's remembered, and other connections with the same table use it too.
+- For a shared lookups table that holds many kinds of lookup, the list shows only the kind the column uses (the same TypeId as its values), with a switch to show them all.
+- **The selected cell stands out**, with an outline, and the ← → keys move it along the row.
+- **Find a column in the table designer**: a search box filters the columns by name, type, key or comment.
+
 ## 1.2.1
 - **No more mystery empty connections.** If a connection shows no tables, the sidebar now says which database it's connected to and lists the other databases on the server. Click one to switch the connection to it. On Azure SQL a blank Database means you land in master, which has no tables of its own, and the connection dialog now warns about that before you save.
 - **Insert a saved query into the tab you're working in.** Hover a saved query in the sidebar and click ⤵ to drop its SQL in at the cursor, instead of opening it in a new tab.

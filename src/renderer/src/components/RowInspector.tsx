@@ -16,6 +16,8 @@ interface Props {
   cross?: CrossLinkProps
   /** Opens the record explorer for this row; omitted when the table has no primary key. */
   onExplore?(): void
+  /** Shown on lookup columns whose lookup panel was closed, to open it again. */
+  onShowLookup?(): void
   onClose?(): void
 }
 
@@ -42,7 +44,7 @@ function prettyJson(value: CellValue): string | null {
   }
 }
 
-export function RowInspector({ kind, table, columns, row, columnInfo, referencedBy, connectionId, cross, onExplore, onClose }: Props) {
+export function RowInspector({ kind, table, columns, row, columnInfo, referencedBy, connectionId, cross, onExplore, onShowLookup, onClose }: Props) {
   const link = useOpenLink()
   const tableTarget = (table: TableRef, column: string, value: CellValue) =>
     link({ kind: 'table', connectionId: connectionId!, table, filters: [{ column, op: '=', value: String(value) }] })
@@ -66,6 +68,7 @@ export function RowInspector({ kind, table, columns, row, columnInfo, referenced
       <header>
         <span>Row details</span>
         <span className="grow" />
+        {onShowLookup && <button className="ghost small" onClick={onShowLookup} title="List the values this column looks up, with their labels">Lookup</button>}
         {onExplore && <button className="ghost small" onClick={onExplore} title="See everything linked to this record (double-click a row)">Explore ⤢</button>}
         {onClose && <button className="icon" onClick={onClose} title="Close (Esc)">✕</button>}
       </header>

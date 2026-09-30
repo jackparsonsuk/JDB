@@ -6,6 +6,7 @@ import type { ConnectionConfig, ConnectionInput, CrossLink, HistoryEntry, LinkEn
 import { sameDatabase, type ConnectionCollection, type ImportSummary } from '@shared/collection'
 import { parseAppearance, type Appearance } from '@shared/appearance'
 import { mergeEnvironments, parseEnvironments, safetyOf, type EnvironmentDef } from '@shared/environments'
+import type { LookupLink } from '@shared/lookups'
 
 interface StoredConnection extends ConnectionConfig {
   /** Password encrypted with the OS keychain (DPAPI on Windows), base64 encoded. */
@@ -78,6 +79,7 @@ export function saveConnection(input: ConnectionInput): ConnectionConfig {
 export function deleteConnection(id: string): void {
   writeJson('connections.json', loadStored().filter((c) => c.id !== id))
   writeJson('links.json', listLinks().filter((l) => l.from.connectionId !== id && l.to.connectionId !== id))
+  writeJson('lookups.json', listLookups().filter((l) => l.connectionId !== id))
   // Its saved queries stay, as queries for any connection.
   const queries = listQueries()
   if (queries.some((q) => q.connectionId === id)) {
@@ -186,6 +188,28 @@ export function saveLinks(links: CrossLink[]): CrossLink[] {
 export function deleteLink(id: string): CrossLink[] {
   const next = listLinks().filter((l) => l.id !== id)
   writeJson('links.json', next)
+  return next
+}
+
+/** Lookups set up by hand (declared foreign keys don't need one). */
+export function listLookups(): LookupLink[] {
+  return readJson<LookupLink[]>('lookups.json', [])
+}
+
+/** Adds or replaces a lookup; a column has at most one per connection. */
+export function saveLookup(link: LookupLink): LookupLink[] {
+  const saved = { ...link, id: link.id || randomUUID() }
+  const lower = (s: string): string => s.toLowerCase()
+  const sameColumn = (l: LookupLink): boolean => l.connectionId === saved.connectionId && lower(l.column) === lower(saved.column)
+    && lower(l.table.schema) === lower(saved.table.schema) && lower(l.table.name) === lower(saved.table.name)
+  const next = [...listLookups().filter((l) => l.id !== saved.id && !sameColumn(l)), saved]
+  writeJson('lookups.json', next)
+  return next
+}
+
+export function deleteLookup(id: string): LookupLink[] {
+  const next = listLookups().filter((l) => l.id !== id)
+  writeJson('lookups.json', next)
   return next
 }
 
