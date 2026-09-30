@@ -27,6 +27,19 @@ describe('parseSession', () => {
     })
   })
 
+  it('keeps routine tabs and drops ones with an unknown kind', () => {
+    const s = parseSession({
+      tabs: [
+        { kind: 'routine', pane: 0, connectionId: 'a', routine: { schema: 'dbo', name: 'SaveJob', kind: 'procedure' } },
+        { kind: 'routine', pane: 0, connectionId: 'a', routine: { schema: 'dbo', name: 'Odd', kind: 'package' } }
+      ],
+      active: [0, null],
+      focused: 0,
+      ratio: 0.5
+    }, conns)
+    expect(s?.tabs).toEqual([{ kind: 'routine', pane: 0, connectionId: 'a', routine: { schema: 'dbo', name: 'SaveJob', kind: 'procedure' } }])
+  })
+
   it('drops tabs for deleted connections and re-points the active index', () => {
     const s = parseSession({
       tabs: [

@@ -8,6 +8,7 @@ import { TableView } from './components/TableView'
 import { QueryView } from './components/QueryView'
 import { RecordView } from './components/RecordView'
 import { TableDesigner } from './components/TableDesigner'
+import { RoutineView } from './components/RoutineView'
 import { ConnectionDialog } from './components/ConnectionDialog'
 import { CommandPalette } from './components/CommandPalette'
 import { toast, ToastHost } from './components/Toast'
@@ -199,6 +200,7 @@ export function App() {
               {mounted && tab.kind === 'query' && <QueryView tab={tab} active={visible} focused={focused} />}
               {mounted && tab.kind === 'record' && <RecordView tab={tab} />}
               {mounted && tab.kind === 'design' && <TableDesigner tab={tab} />}
+              {mounted && tab.kind === 'routine' && <RoutineView tab={tab} />}
             </div>
           )
         })}
@@ -308,7 +310,7 @@ function PaneHead({ pane, split }: { pane: PaneId; split: boolean }) {
               }}
               title={`${conn?.name ?? ''} · ${tabTitle(tab)}${tab.pinned ? ' (pinned)' : ''}\nDrag to the other side to split · right-click for more`}
             >
-              <span className="tab-icon">{tab.kind === 'table' ? '▦' : tab.kind === 'record' ? '◉' : tab.kind === 'design' ? '⚙' : '⌨'}</span>
+              <span className="tab-icon">{tab.kind === 'table' ? '▦' : tab.kind === 'record' ? '◉' : tab.kind === 'design' ? '⚙' : tab.kind === 'routine' ? 'ƒ' : '⌨'}</span>
               <span className="tab-title">{tabTitle(tab)}</span>
               <span className="tab-conn">{conn?.name}</span>
               {tab.pinned ? (
@@ -451,6 +453,7 @@ function tabTitle(tab: Tab): string {
   if (tab.kind === 'query') return tab.title
   if (tab.kind === 'record') return `${tab.table.name} ${tab.key.map((k) => k.value).join('·')}`
   if (tab.kind === 'design') return `${tab.table.name} (design)`
+  if (tab.kind === 'routine') return tab.routine.name
   const filter = tab.initialFilters[0]
   return filter ? `${tab.table.name} (${filter.column}=${filter.value ?? ''})` : tab.table.name
 }

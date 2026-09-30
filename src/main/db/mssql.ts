@@ -3,7 +3,8 @@ import type { AccessToken } from '@azure/identity'
 import { keyKind } from '@shared/links'
 import type {
   CellValue, ColumnFilter, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
-  ColumnSummary, DesignColumn, DesignForeignKey, DesignIndex, KeyKind, SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ValueLookup
+  ColumnSummary, DesignColumn, DesignForeignKey, DesignIndex, KeyKind, SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ValueLookup,
+  RoutineDefinition, RoutineInfo, RoutineKind, RoutineParam, RoutineRef, RoutineSource
 } from '@shared/types'
 import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancelledError, MSSQL_UNCOMPARABLE, SAMPLE_SCAN_ROWS, summaryFrom, TimeoutError, toCell, type Driver, type DriverTransaction, type SchemaColumnRow } from './driver'
 import { buildWhere } from './filters'
@@ -106,6 +107,75 @@ export class MssqlDriver implements Driver {
       type: row.type.trim() === 'V' ? 'view' : 'table',
       rowEstimate: row.row_estimate == null ? undefined : Number(row.row_estimate)
     }))
+  }
+
+  async listRoutines(): Promise<RoutineInfo[]> {
+    // SSMS's diagram support procs are marked with an extended property rather than is_ms_shipped.
+    const result = await (await this.request()).query(`
+      SELECT s.name AS [schema], o.name, o.type, o.modify_date AS modified,
+             ps.name AS parent_schema, p.name AS parent_name, tr.is_disabled, tr.is_instead_of_trigger,
+             STUFF((SELECT ', ' + te.type_desc FROM sys.trigger_events te WHERE te.object_id = o.object_id FOR XML PATH('')), 1, 2, '') AS events
+      FROM sys.objects o
+      JOIN sys.schemas s ON s.schema_id = o.schema_id
+      LEFT JOIN sys.triggers tr ON tr.object_id = o.object_id
+      LEFT JOIN sys.objects p ON p.object_id = tr.parent_id
+      LEFT JOIN sys.schemas ps ON ps.schema_id = p.schema_id
+      WHERE o.type IN (${ROUTINE_TYPES}) AND o.is_ms_shipped = 0
+        AND NOT EXISTS (SELECT 1 FROM sys.extended_properties ep WHERE ep.major_id = o.object_id AND ep.name = 'microsoft_database_tools_support')
+      ORDER BY s.name, o.name`)
+    return result.recordset.map((row) => routineInfo(row))
+  }
+
+  async describeRoutine(routine: RoutineRef): Promise<RoutineDefinition> {
+    const request = await this.request()
+    request.input('name', sql.NVarChar, qualified(routine))
+    const result = await request.query(`
+      SELECT s.name AS [schema], o.name, o.type, o.create_date AS created, o.modify_date AS modified,
+             OBJECT_DEFINITION(o.object_id) AS definition,
+             ps.name AS parent_schema, p.name AS parent_name, tr.is_disabled, tr.is_instead_of_trigger,
+             STUFF((SELECT ', ' + te.type_desc FROM sys.trigger_events te WHERE te.object_id = o.object_id FOR XML PATH('')), 1, 2, '') AS events
+      FROM sys.objects o
+      JOIN sys.schemas s ON s.schema_id = o.schema_id
+      LEFT JOIN sys.triggers tr ON tr.object_id = o.object_id
+      LEFT JOIN sys.objects p ON p.object_id = tr.parent_id
+      LEFT JOIN sys.schemas ps ON ps.schema_id = p.schema_id
+      WHERE o.object_id = OBJECT_ID(@name) AND o.type IN (${ROUTINE_TYPES});
+
+      SELECT prm.parameter_id, prm.name, prm.is_output, prm.has_default_value,
+             COALESCE(TYPE_NAME(prm.user_type_id), TYPE_NAME(prm.system_type_id), 'unknown') AS type_name,
+             prm.max_length, prm.precision, prm.scale
+      FROM sys.parameters prm
+      WHERE prm.object_id = OBJECT_ID(@name)
+      ORDER BY prm.parameter_id`)
+    const [objects, params] = result.recordsets as unknown as Record<string, any>[][]
+    const row = objects[0]
+    if (!row) throw new Error(`${routine.schema}.${routine.name} no longer exists, or this login can't see it.`)
+    const info = routineInfo(row)
+    const type = String(row.type).trim()
+    // parameter_id 0 is a scalar function's return value.
+    const returnRow = params.find((p) => p.parameter_id === 0)
+    const parameters: RoutineParam[] = params.filter((p) => p.parameter_id > 0).map((p) => ({
+      name: p.name,
+      dataType: formatType(p.type_name, p.max_length, p.precision, p.scale),
+      mode: p.is_output ? 'INOUT' : 'IN',
+      ...(p.has_default_value && { hasDefault: true })
+    }))
+    return {
+      routine: info,
+      definition: row.definition ?? null,
+      parameters,
+      returns: ['IF', 'TF', 'FT'].includes(type) ? 'TABLE' : returnRow ? formatType(returnRow.type_name, returnRow.max_length, returnRow.precision, returnRow.scale) : undefined,
+      created: row.created instanceof Date ? row.created.toISOString() : undefined
+    }
+  }
+
+  async routineSources(): Promise<RoutineSource[]> {
+    const result = await (await this.request()).query(`
+      SELECT s.name AS [schema], o.name, o.type, OBJECT_DEFINITION(o.object_id) AS definition
+      FROM sys.objects o
+      JOIN sys.schemas s ON s.schema_id = o.schema_id
+      WHERE o.type IN (${ROUTINE_TYPES}) AND o.is_ms_shipped = 0`)
+    return result.recordset.map((row) => ({ schema: row.schema, name: row.name, kind: routineKind(row.type), definition: row.definition ?? null }))
   }
 
   async describeTable(table: TableRef): Promise<TableDetails> {
@@ -524,6 +594,28 @@ function groupForeignKeys(rows: Record<string, any>[]): DesignForeignKey[] {
     fk.referencedColumns.push(r.ref_column)
   }
   return [...byName.values()]
+}
+
+/** sys.objects types: procedures (SQL, CLR), functions (scalar, inline, table-valued, CLR) and DML triggers. */
+const ROUTINE_TYPES = `'P', 'PC', 'FN', 'FS', 'IF', 'TF', 'FT', 'TR'`
+
+function routineKind(type: string): RoutineKind {
+  const t = type.trim()
+  return t === 'P' || t === 'PC' ? 'procedure' : t === 'TR' ? 'trigger' : 'function'
+}
+
+function routineInfo(row: Record<string, any>): RoutineInfo {
+  const type = String(row.type).trim()
+  const kind = routineKind(type)
+  const info: RoutineInfo = { schema: row.schema, name: row.name, kind }
+  if (row.modified instanceof Date) info.modified = row.modified.toISOString()
+  if (kind === 'function') info.detail = ['IF', 'TF', 'FT'].includes(type) ? 'table' : 'scalar'
+  if (kind === 'trigger') {
+    if (row.parent_name) info.parent = { schema: row.parent_schema, name: row.parent_name }
+    info.detail = `${row.is_instead_of_trigger ? 'INSTEAD OF' : 'AFTER'}${row.events ? ` ${row.events}` : ''}`
+    if (row.is_disabled) info.disabled = true
+  }
+  return info
 }
 
 function formatType(name: string, maxLength: number, precision: number, scale: number): string {

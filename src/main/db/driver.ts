@@ -1,6 +1,6 @@
 import type {
   CellValue, ColumnFilter, ColumnInfo, QueryResult, RowsRequest, RowsResult, SchemaTable, TableDetails, TableInfo, TableRef,
-  ColumnSummary, KeyKind, TableDesign, ValueLookup
+  ColumnSummary, KeyKind, RoutineDefinition, RoutineInfo, RoutineRef, RoutineSource, TableDesign, ValueLookup
 } from '@shared/types'
 
 export interface Driver {
@@ -10,6 +10,12 @@ export interface Driver {
   describeDesign(table: TableRef): Promise<TableDesign>
   /** Forgets cached table metadata (primary keys) after the schema has changed. */
   forgetCaches(): void
+  /** Stored procedures, functions and triggers, without their source. */
+  listRoutines(): Promise<RoutineInfo[]>
+  /** One routine's source (null when this login can't see it) and parameters. */
+  describeRoutine(routine: RoutineRef): Promise<RoutineDefinition>
+  /** Every routine's source in one pass, for searching inside them. */
+  routineSources(): Promise<RoutineSource[]>
   /** Every column of every table in one pass (tables come from listTables for row estimates). */
   describeSchema(): Promise<SchemaTable[]>
   /** Distinct non-null values of a column, or null when there are more than `limit`. */

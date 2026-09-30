@@ -1,5 +1,5 @@
 import { clipboard, ipcMain, nativeTheme } from 'electron'
-import type { CellValue, ColumnFilter, ConnectionConfig, DbKind, TableExportRequest, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RowsRequest, SavedSession, TableRef, ThemeSetting, ValueLookup } from '@shared/types'
+import type { CellValue, ColumnFilter, ConnectionConfig, DbKind, TableExportRequest, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RoutineRef, RowsRequest, SavedSession, TableRef, ThemeSetting, ValueLookup } from '@shared/types'
 import * as db from './db'
 import * as store from './store'
 import { discoverLinks, verifyLink } from './links'
@@ -43,6 +43,9 @@ export function registerIpc(): void {
   handle('db:tables', (id: string) => db.listTables(id))
   handle('db:describe', (id: string, table: TableRef) => db.describeTable(id, table))
   handle('db:design', (id: string, table: TableRef) => db.describeDesign(id, table))
+  handle('db:routines', (id: string) => db.listRoutines(id))
+  handle('db:routine', (id: string, routine: RoutineRef) => db.describeRoutine(id, routine))
+  handle('db:routineSources', (id: string) => db.routineSources(id))
   handle('db:applyDesign', (id: string, statements: string[]) => db.applyDesign(id, statements))
   handle('db:rows', (id: string, request: RowsRequest) => db.fetchRows(id, request))
   handle('db:count', (id: string, table: TableRef, filters: ColumnFilter[]) => db.countRows(id, table, filters))

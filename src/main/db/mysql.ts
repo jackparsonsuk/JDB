@@ -1,7 +1,8 @@
 import mysql from 'mysql2/promise'
 import type {
   CellValue, ColumnFilter, ColumnInfo, ConnectionConfig, QueryResult, ResultSet, RowsRequest, RowsResult,
-  ColumnSummary, DesignColumn, DesignForeignKey, DesignIndex, KeyKind, SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ValueLookup
+  ColumnSummary, DesignColumn, DesignForeignKey, DesignIndex, KeyKind, SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ValueLookup,
+  RoutineDefinition, RoutineInfo, RoutineParam, RoutineRef, RoutineSource
 } from '@shared/types'
 import { assembleSchema, chunk, distinctSource, indexKey, KEY_BATCH, QueryCancelledError, SAMPLE_SCAN_ROWS, summaryFrom, TimeoutError, toCell, type Driver, type DriverTransaction, type SchemaColumnRow } from './driver'
 import { buildWhere } from './filters'
@@ -76,6 +77,117 @@ export class MysqlDriver implements Driver {
       type: row.t === 'VIEW' ? 'view' : 'table',
       rowEstimate: row.r == null ? undefined : Number(row.r)
     }))
+  }
+
+  async listRoutines(): Promise<RoutineInfo[]> {
+    const routineFilter = this.schemaFilter('r.routine_schema')
+    const triggerFilter = this.schemaFilter('t.trigger_schema')
+    const [[routines], [triggers]] = await Promise.all([
+      this.pool.query<mysql.RowDataPacket[]>(
+        `SELECT r.routine_schema AS s, r.routine_name AS n, r.routine_type AS t, r.last_altered AS modified
+         FROM information_schema.routines r WHERE ${routineFilter.sql} ORDER BY r.routine_schema, r.routine_name`,
+        routineFilter.values
+      ),
+      this.pool.query<mysql.RowDataPacket[]>(
+        `SELECT t.trigger_schema AS s, t.trigger_name AS n, t.action_timing AS timing, t.event_manipulation AS event,
+                t.event_object_schema AS ps, t.event_object_table AS pt, t.created AS modified
+         FROM information_schema.triggers t WHERE ${triggerFilter.sql} ORDER BY t.trigger_schema, t.trigger_name`,
+        triggerFilter.values
+      )
+    ])
+    return [
+      ...routines.map((row): RoutineInfo => ({
+        schema: row.s,
+        name: row.n,
+        kind: row.t === 'FUNCTION' ? 'function' : 'procedure',
+        ...(row.modified && { modified: String(row.modified) })
+      })),
+      ...triggers.map((row): RoutineInfo => ({
+        schema: row.s,
+        name: row.n,
+        kind: 'trigger',
+        detail: `${row.timing} ${row.event}`,
+        parent: { schema: row.ps, name: row.pt },
+        ...(row.modified && { modified: String(row.modified) })
+      }))
+    ].sort((a, b) => a.schema.localeCompare(b.schema) || a.name.localeCompare(b.name))
+  }
+
+  async describeRoutine(routine: RoutineRef): Promise<RoutineDefinition> {
+    const list = await this.listRoutines()
+    const info = list.find((r) => r.kind === routine.kind && r.schema === routine.schema && r.name === routine.name)
+    if (!info) throw new Error(`${routine.schema}.${routine.name} no longer exists, or this login can't see it.`)
+
+    // SHOW CREATE gives the full statement but needs the routine's definer or SHOW_ROUTINE; without
+    // those, information_schema may still have the body.
+    let definition: string | null = null
+    let bodyOnly = false
+    const what = routine.kind === 'trigger' ? 'TRIGGER' : routine.kind === 'function' ? 'FUNCTION' : 'PROCEDURE'
+    try {
+      const [rows] = await this.pool.query<mysql.RowDataPacket[]>(`SHOW CREATE ${what} ${qualified(routine)}`)
+      const row = rows[0] ?? {}
+      const text = row[routine.kind === 'trigger' ? 'SQL Original Statement' : `Create ${what === 'FUNCTION' ? 'Function' : 'Procedure'}`]
+      definition = text == null ? null : String(text)
+    } catch {
+      definition = null
+    }
+    if (definition === null) {
+      const [rows] = routine.kind === 'trigger'
+        ? await this.pool.query<mysql.RowDataPacket[]>(
+            'SELECT t.action_statement AS body FROM information_schema.triggers t WHERE t.trigger_schema = ? AND t.trigger_name = ?',
+            [routine.schema, routine.name])
+        : await this.pool.query<mysql.RowDataPacket[]>(
+            'SELECT r.routine_definition AS body FROM information_schema.routines r WHERE r.routine_schema = ? AND r.routine_name = ? AND r.routine_type = ?',
+            [routine.schema, routine.name, what])
+      const body = rows[0]?.body
+      if (body != null) {
+        definition = String(body)
+        bodyOnly = true
+      }
+    }
+
+    const parameters: RoutineParam[] = []
+    let returns: string | undefined
+    let created: string | undefined
+    if (routine.kind !== 'trigger') {
+      const [[params], [meta]] = await Promise.all([
+        this.pool.query<mysql.RowDataPacket[]>(
+          `SELECT p.ordinal_position AS pos, p.parameter_mode AS mode, p.parameter_name AS name, p.dtd_identifier AS type
+           FROM information_schema.parameters p
+           WHERE p.specific_schema = ? AND p.specific_name = ? AND p.routine_type = ?
+           ORDER BY p.ordinal_position`,
+          [routine.schema, routine.name, what]),
+        this.pool.query<mysql.RowDataPacket[]>(
+          'SELECT r.created AS created FROM information_schema.routines r WHERE r.routine_schema = ? AND r.routine_name = ? AND r.routine_type = ?',
+          [routine.schema, routine.name, what])
+      ])
+      for (const p of params) {
+        // Position 0 is a function's return value.
+        if (Number(p.pos) === 0) returns = String(p.type)
+        else parameters.push({ name: p.name, dataType: String(p.type), mode: p.mode === 'OUT' ? 'OUT' : p.mode === 'INOUT' ? 'INOUT' : 'IN' })
+      }
+      if (meta[0]?.created) created = String(meta[0].created)
+    }
+    return { routine: info, definition, ...(bodyOnly && { bodyOnly }), parameters, returns, created }
+  }
+
+  async routineSources(): Promise<RoutineSource[]> {
+    const routineFilter = this.schemaFilter('r.routine_schema')
+    const triggerFilter = this.schemaFilter('t.trigger_schema')
+    const [[routines], [triggers]] = await Promise.all([
+      this.pool.query<mysql.RowDataPacket[]>(
+        `SELECT r.routine_schema AS s, r.routine_name AS n, r.routine_type AS t, r.routine_definition AS body
+         FROM information_schema.routines r WHERE ${routineFilter.sql}`,
+        routineFilter.values),
+      this.pool.query<mysql.RowDataPacket[]>(
+        `SELECT t.trigger_schema AS s, t.trigger_name AS n, t.action_statement AS body
+         FROM information_schema.triggers t WHERE ${triggerFilter.sql}`,
+        triggerFilter.values)
+    ])
+    return [
+      ...routines.map((row): RoutineSource => ({ schema: row.s, name: row.n, kind: row.t === 'FUNCTION' ? 'function' : 'procedure', definition: row.body ?? null })),
+      ...triggers.map((row): RoutineSource => ({ schema: row.s, name: row.n, kind: 'trigger', definition: row.body ?? null }))
+    ]
   }
 
   async describeTable(table: TableRef): Promise<TableDetails> {

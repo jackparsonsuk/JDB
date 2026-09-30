@@ -1,5 +1,5 @@
 import type {
-  CellValue, ColumnFilter, ColumnSummary, ConnectionConfig, DbKind, ExportResult, TableExportRequest, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RowsRequest, RowsResult, SavedSession,
+  CellValue, ColumnFilter, ColumnSummary, ConnectionConfig, DbKind, ExportResult, TableExportRequest, ConnectionInput, CrossLink, HistoryEntry, LinkCandidate, LinkEnd, LinkOverlap, RelatedCount, RelatedCountRequest, QueryResult, RoutineDefinition, RoutineInfo, RoutineRef, RoutineSource, RowsRequest, RowsResult, SavedSession,
   SchemaTable, TableDesign, TableDetails, TableInfo, TableRef, ThemeSetting, UpdateCheck, ValueLookup
 } from '../shared/types'
 import type { ImportSummary } from '../shared/collection'
@@ -19,6 +19,12 @@ export interface Api {
   listTables(connectionId: string): Promise<TableInfo[]>
   describeTable(connectionId: string, table: TableRef): Promise<TableDetails>
   describeDesign(connectionId: string, table: TableRef): Promise<TableDesign>
+  /** Stored procedures, functions and triggers. */
+  listRoutines(connectionId: string): Promise<RoutineInfo[]>
+  /** A routine's source and parameters; definition is null when this login can't read it. */
+  describeRoutine(connectionId: string, routine: RoutineRef): Promise<RoutineDefinition>
+  /** Every routine's source, for searching inside them (cached until DDL or a reconnect). */
+  routineSources(connectionId: string): Promise<RoutineSource[]>
   /** Runs a table designer script: in one transaction on SQL Server, as one ALTER TABLE on MySQL. */
   applyDesign(connectionId: string, statements: string[]): Promise<number>
   fetchRows(connectionId: string, request: RowsRequest): Promise<RowsResult>

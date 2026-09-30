@@ -2,6 +2,10 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 0.5.8
+- Stored procedures, functions and triggers. Switch a connection in the sidebar to **Routines** to browse them, and open one to read its source with its parameters and the tables it reads and writes. "Script call" writes a ready-to-fill EXEC for it.
+- Search inside routine source: click **{ }** next to the routines filter to find every procedure or trigger that mentions a table, column or any text. Routines also show up in Ctrl+K.
+
 ## 0.5.7
 - After an update, JDB tells you what's new. You can also open the notes any time from the command palette (Ctrl+K → "What's new").
 

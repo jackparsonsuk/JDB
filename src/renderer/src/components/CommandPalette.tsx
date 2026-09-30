@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SchemaTable } from '@shared/types'
 import { useAppState } from '../state'
+import { ROUTINE_LABELS } from '@shared/routines'
 import { setTheme, THEME_ICONS, THEME_LABELS, useTheme } from '../lib/theme'
 import { toast } from './Toast'
 import { fuzzyScore } from '../lib/fuzzy'
@@ -25,7 +26,7 @@ const MAX_RESULTS = 60
 const COLUMN_QUERY_MIN = 2
 
 export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(): void; onNewConnection(): void; onLinks(connectionId: string): void }) {
-  const { connections, tables, loadTables, openTable, openQuery, open } = useAppState()
+  const { connections, tables, loadTables, routines, loadRoutines, openTable, openQuery, open } = useAppState()
   const theme = useTheme()
   const slop = useSlop()
   const [query, setQuery] = useState('')
@@ -38,12 +39,13 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
   useEffect(() => {
     let live = true
     for (const id of ready.split(',').filter(Boolean)) {
+      loadRoutines(id)
       window.api.describeSchema(id).then((schema) => live && setSchemas((s) => ({ ...s, [id]: schema })), () => undefined)
     }
     return () => {
       live = false
     }
-  }, [ready])
+  }, [ready, loadRoutines])
 
   const columnItems = useMemo<Item[]>(() => {
     const out: Item[] = []
@@ -78,6 +80,18 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
           haystack: `${t.name} ${t.schema}.${t.name} ${c.name}`,
           bias: 0,
           run: () => openTable(c.id, t)
+        })
+      }
+      for (const r of routines[c.id]?.routines ?? []) {
+        out.push({
+          key: `r:${c.id}:${r.kind}:${r.schema}.${r.name}`,
+          label: r.name,
+          detail: `${ROUTINE_LABELS[r.kind].singular} · ${r.schema} · ${c.name}`,
+          icon: 'ƒ',
+          haystack: `${r.name} ${r.schema}.${r.name} ${ROUTINE_LABELS[r.kind].singular} ${c.name}`,
+          // Just below a table of the same name.
+          bias: -0.5,
+          run: () => open({ kind: 'routine', connectionId: c.id, routine: { schema: r.schema, name: r.name, kind: r.kind } })
         })
       }
       out.push({
@@ -166,7 +180,7 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
       })
     }
     return out
-  }, [connections, tables, openTable, openQuery, loadTables, onNewConnection, onLinks, theme])
+  }, [connections, tables, routines, open, openTable, openQuery, loadTables, onNewConnection, onLinks, theme])
 
   const results = useMemo(() => {
     // The slop easter egg only shows when typed in full, so it never turns up in normal searches.
@@ -227,7 +241,7 @@ export function CommandPalette({ onClose, onNewConnection, onLinks }: { onClose(
         <input
           autoFocus
           className="palette-input"
-          placeholder="Jump to a table or column, or run a command…"
+          placeholder="Jump to a table, column or routine, or run a command…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKey}

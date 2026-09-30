@@ -52,6 +52,13 @@ function parseTab(value: unknown): SavedTab | null {
       const table = parseTableRef(value.table)
       return table ? { kind: 'design', pane, connectionId, table } : null
     }
+    case 'routine': {
+      const ref = parseTableRef(value.routine)
+      const kind = isObject(value.routine) ? value.routine.kind : undefined
+      return ref && (kind === 'procedure' || kind === 'function' || kind === 'trigger')
+        ? { kind: 'routine', pane, connectionId, routine: { ...ref, kind } }
+        : null
+    }
     default:
       return null
   }

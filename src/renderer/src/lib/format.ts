@@ -38,3 +38,25 @@ export function formatCount(n: number): string {
 export function formatDuration(ms: number): string {
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s`
 }
+
+/** A server timestamp (ISO, or MySQL's 'YYYY-MM-DD hh:mm:ss' in server time), or null if unreadable. */
+export function parseStamp(stamp: string | undefined): Date | null {
+  if (!stamp) return null
+  const date = new Date(stamp.includes('T') ? stamp : stamp.replace(' ', 'T'))
+  return isNaN(date.getTime()) ? null : date
+}
+
+/** "just now", "5 min ago", "3 days ago", then a date for anything over a year old. */
+export function formatAgo(stamp: string | undefined): string | null {
+  const date = parseStamp(stamp)
+  if (!date) return null
+  const seconds = (Date.now() - date.getTime()) / 1000
+  if (seconds < 60) return 'just now'
+  const steps: [number, string][] = [[60, 'min'], [3600, 'hour'], [86400, 'day'], [604800, 'week'], [2629800, 'month']]
+  if (seconds >= 31557600) return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+  let unit = steps[0]
+  for (const step of steps) if (seconds >= step[0]) unit = step
+  const n = Math.floor(seconds / unit[0])
+  const label = unit[1] === 'min' ? 'min' : `${unit[1]}${n === 1 ? '' : 's'}`
+  return `${n} ${label} ago`
+}

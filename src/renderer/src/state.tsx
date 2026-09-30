@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { ColumnFilter, ConnectionConfig, CrossLink, SavedSession, SavedTab, TableInfo, TableRef, TableSort } from '@shared/types'
+import type { ColumnFilter, ConnectionConfig, CrossLink, RoutineInfo, RoutineRef, SavedSession, SavedTab, TableInfo, TableRef, TableSort } from '@shared/types'
+import { sameRoutine } from '@shared/routines'
 import * as panes from '@shared/panes'
 import type { CloseScope, PaneId, Panes } from '@shared/panes'
 import { forgetAllNlEngines, forgetNlEngine } from './lib/useNl'
@@ -13,6 +14,11 @@ export type Tab = (
   | { kind: 'query'; id: string; pane: PaneId; connectionId: string; title: string; initialSql: string }
   | { kind: 'record'; id: string; pane: PaneId; connectionId: string; table: TableRef; key: ColumnFilter[] }
   | { kind: 'design'; id: string; pane: PaneId; connectionId: string; table: TableRef }
+  | {
+      kind: 'routine'; id: string; pane: PaneId; connectionId: string; routine: RoutineRef
+      /** Text to find and select in the source (from a source search); `seq` changes when asked again. Not saved. */
+      find?: { text: string; seq: number }
+    }
 ) & { pinned?: boolean }
 
 /** Something a reference points at, which can be clicked open or dragged into a pane. */
@@ -20,6 +26,7 @@ export type OpenTarget =
   | { kind: 'table'; connectionId: string; table: TableRef; filters: ColumnFilter[]; column?: string }
   | { kind: 'record'; connectionId: string; table: TableRef; key: ColumnFilter[] }
   | { kind: 'design'; connectionId: string; table: TableRef }
+  | { kind: 'routine'; connectionId: string; routine: RoutineRef; find?: string }
 
 /** What a tab has changed since it opened, kept for saving the session. */
 export interface TabMemory {
@@ -34,6 +41,12 @@ export interface TablesState {
   error?: string
 }
 
+export interface RoutinesState {
+  status: 'loading' | 'ready' | 'error'
+  routines: RoutineInfo[]
+  error?: string
+}
+
 interface AppState {
   connections: ConnectionConfig[]
   reloadConnections(): Promise<void>
@@ -43,6 +56,9 @@ interface AppState {
   tables: Record<string, TablesState>
   loadTables(connectionId: string, force?: boolean): Promise<void>
   forgetTables(connectionId: string): void
+  /** Stored procedures, functions and triggers per connection, loaded on first use. */
+  routines: Record<string, RoutinesState>
+  loadRoutines(connectionId: string, force?: boolean): Promise<void>
   tabs: Tab[]
   /** Tabs and which one each pane shows; see @shared/panes. */
   layout: Panes<Tab>
@@ -106,6 +122,7 @@ const nextTabId = (): string => `tab-${++tabCounter}`
 /** An open tab showing the same thing: an unfiltered table, or the same record. */
 function sameAs(tab: Tab, target: OpenTarget): boolean {
   if (tab.kind === 'query' || tab.kind !== target.kind || tab.connectionId !== target.connectionId) return false
+  if (tab.kind === 'routine' || target.kind === 'routine') return tab.kind === 'routine' && target.kind === 'routine' && sameRoutine(tab.routine, target.routine)
   if (tab.table.schema !== target.table.schema || tab.table.name !== target.table.name) return false
   if (tab.kind === 'table') return target.kind === 'table' && !target.filters.length && !tab.initialFilters.length
   if (tab.kind === 'design') return true
@@ -132,6 +149,8 @@ function savedContent(tab: Tab, memory: TabMemory | undefined): SavedTab {
       return { kind: 'record', pane, connectionId, table: tab.table, key: tab.key }
     case 'design':
       return { kind: 'design', pane, connectionId, table: tab.table }
+    case 'routine':
+      return { kind: 'routine', pane, connectionId, routine: tab.routine }
   }
 }
 
@@ -150,6 +169,8 @@ function savedTab(saved: SavedTab): Tab {
       return { kind: 'record', id, pane: saved.pane, connectionId: saved.connectionId, table: saved.table, key: saved.key }
     case 'design':
       return { kind: 'design', id, pane: saved.pane, connectionId: saved.connectionId, table: saved.table }
+    case 'routine':
+      return { kind: 'routine', id, pane: saved.pane, connectionId: saved.connectionId, routine: saved.routine }
   }
 }
 
@@ -199,9 +220,25 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     }
   }, [])
 
+  const [routines, setRoutines] = useState<Record<string, RoutinesState>>({})
+  const routinesRef = useRef(routines)
+  routinesRef.current = routines
+  const loadRoutines = useCallback(async (connectionId: string, force = false) => {
+    const current = routinesRef.current[connectionId]
+    if (!force && current && current.status !== 'error') return
+    setRoutines((prev) => ({ ...prev, [connectionId]: { status: 'loading', routines: current?.routines ?? [] } }))
+    try {
+      const list = await window.api.listRoutines(connectionId)
+      setRoutines((prev) => ({ ...prev, [connectionId]: { status: 'ready', routines: list } }))
+    } catch (error) {
+      setRoutines((prev) => ({ ...prev, [connectionId]: { status: 'error', routines: [], error: (error as Error).message } }))
+    }
+  }, [])
+
   const forgetTables = useCallback((connectionId: string) => {
     forgetNlEngine(connectionId)
     setTables(({ [connectionId]: _removed, ...rest }) => rest)
+    setRoutines(({ [connectionId]: _removed, ...rest }) => rest)
   }, [])
 
   const [schemaVersions, setSchemaVersions] = useState<Record<string, number>>({})
@@ -209,7 +246,8 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     setSchemaVersions((v) => ({ ...v, [connectionId]: (v[connectionId] ?? 0) + 1 }))
     forgetNlEngine(connectionId)
     loadTables(connectionId, true)
-  }, [loadTables])
+    if (routinesRef.current[connectionId]) loadRoutines(connectionId, true)
+  }, [loadTables, loadRoutines])
 
   const layoutRef = useRef(layout)
   layoutRef.current = layout
@@ -273,11 +311,14 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     const current = layoutRef.current
     const existing = current.tabs.find((t) => sameAs(t, target))
     const focusColumn = target.kind === 'table' && target.column ? { name: target.column, seq: Date.now() } : undefined
+    const find = target.kind === 'routine' && target.find ? { text: target.find, seq: Date.now() } : undefined
     if (existing) {
       // Already open: bring it forward, moving it if a particular pane was asked for.
       setLayout((s) => {
         const moved = panes.moveTab(s, existing.id, pane ?? existing.pane)
-        return focusColumn ? { ...moved, tabs: moved.tabs.map((t) => (t.id === existing.id && t.kind === 'table' ? { ...t, focusColumn } : t)) } : moved
+        if (focusColumn) return { ...moved, tabs: moved.tabs.map((t) => (t.id === existing.id && t.kind === 'table' ? { ...t, focusColumn } : t)) }
+        if (find) return { ...moved, tabs: moved.tabs.map((t) => (t.id === existing.id && t.kind === 'routine' ? { ...t, find } : t)) }
+        return moved
       })
       return
     }
@@ -285,7 +326,9 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     const id = nextTabId()
     const tab: Tab = target.kind === 'table'
       ? { kind: 'table', id, pane: into, connectionId: target.connectionId, table: target.table, initialFilters: target.filters, focusColumn }
-      : target.kind === 'design'
+      : target.kind === 'routine'
+        ? { kind: 'routine', id, pane: into, connectionId: target.connectionId, routine: target.routine, find }
+        : target.kind === 'design'
         ? { kind: 'design', id, pane: into, connectionId: target.connectionId, table: target.table }
         : { kind: 'record', id, pane: into, connectionId: target.connectionId, table: target.table, key: target.key }
     setLayout((s) => panes.addTab(s, tab))
@@ -337,6 +380,8 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     tables,
     loadTables,
     forgetTables,
+    routines,
+    loadRoutines,
     tabs: layout.tabs,
     layout,
     activeTabId: panes.focusedTabId(layout),
@@ -357,7 +402,7 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     rememberTab,
     initialRatio,
     rememberRatio
-  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, layout, setActiveTab, focusPane, moveTab, open, openTable, openQuery, openRecord, closeTab, closeTabs, pinTab, reorderTab, schemaVersions, schemaChanged, rememberTab, initialRatio, rememberRatio])
+  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, routines, loadRoutines, layout, setActiveTab, focusPane, moveTab, open, openTable, openQuery, openRecord, closeTab, closeTabs, pinTab, reorderTab, schemaVersions, schemaChanged, rememberTab, initialRatio, rememberRatio])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

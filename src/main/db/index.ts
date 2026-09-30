@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import type { ColumnFilter, ConnectionConfig, KeyKind, QueryResult, RowsRequest, SchemaTable, TableRef, ValueLookup } from '@shared/types'
+import type { ColumnFilter, ConnectionConfig, KeyKind, QueryResult, RoutineRef, RoutineSource, RowsRequest, SchemaTable, TableRef, ValueLookup } from '@shared/types'
 import { findImplicitCommit, findTransactionControl, findWriteKeyword } from '@shared/sqlGuard'
 import { addHistory, getConnection } from '../store'
 import { TimeoutError, type Driver, type DriverTransaction } from './driver'
@@ -40,6 +40,7 @@ function isConnectionError(error: unknown): boolean {
 
 export async function disconnect(connectionId: string): Promise<void> {
   schemaCache.delete(connectionId)
+  sourceCache.delete(connectionId)
   await Promise.all([...transactions].filter(([, t]) => t.connectionId === connectionId).map(([id]) => rollbackTransaction(id).catch(() => undefined)))
   const entry = drivers.get(connectionId)
   drivers.delete(connectionId)
@@ -64,12 +65,27 @@ export async function testConnection(config: ConnectionConfig, password?: string
 export const listTables = (id: string) => withDriver(id, (d) => d.listTables())
 export const describeTable = (id: string, table: TableRef) => withDriver(id, (d) => d.describeTable(table))
 export const describeDesign = (id: string, table: TableRef) => withDriver(id, (d) => d.describeDesign(table))
+export const listRoutines = (id: string) => withDriver(id, (d) => d.listRoutines())
+export const describeRoutine = (id: string, routine: RoutineRef) => withDriver(id, (d) => d.describeRoutine(routine))
+
+/** Every routine's source, for searching inside them; kept like the schema until DDL or a reconnect. */
+const sourceCache = new Map<string, Promise<RoutineSource[]>>()
+export function routineSources(id: string): Promise<RoutineSource[]> {
+  let sources = sourceCache.get(id)
+  if (!sources) {
+    sources = withDriver(id, (d) => d.routineSources())
+    sourceCache.set(id, sources)
+    sources.catch(() => sourceCache.delete(id))
+  }
+  return sources
+}
 
 const SCHEMA_CHANGE = /^(CREATE|ALTER|DROP|RENAME|TRUNCATE|EXEC|EXECUTE|SELECT INTO)$/
 
 /** Drops cached schema and key lists after DDL, so the next read sees the new columns. */
 function forgetSchema(connectionId: string): void {
   schemaCache.delete(connectionId)
+  sourceCache.delete(connectionId)
   drivers.get(connectionId)?.driver.forgetCaches()
 }
 

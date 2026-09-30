@@ -37,6 +37,49 @@ export interface TableInfo extends TableRef {
   rowEstimate?: number
 }
 
+export type RoutineKind = 'procedure' | 'function' | 'trigger'
+
+/** A stored procedure, function or trigger. Names are unique per schema, so schema + name + kind finds it. */
+export interface RoutineRef extends TableRef {
+  kind: RoutineKind
+}
+
+export interface RoutineInfo extends RoutineRef {
+  /** Functions: 'scalar' or 'table'; triggers: timing and events, e.g. 'AFTER INSERT, UPDATE'. */
+  detail?: string
+  /** The table a trigger fires on. */
+  parent?: TableRef
+  /** When the definition last changed, as the server reports it (ISO or 'YYYY-MM-DD hh:mm:ss'). */
+  modified?: string
+  /** A trigger that is switched off (SQL Server). */
+  disabled?: boolean
+}
+
+export interface RoutineParam {
+  name: string
+  dataType: string
+  mode: 'IN' | 'OUT' | 'INOUT'
+  /** SQL Server only reports whether a default exists for CLR procs, so this is best effort. */
+  hasDefault?: boolean
+}
+
+export interface RoutineDefinition {
+  routine: RoutineInfo
+  /** The full CREATE text, or null when this login can't read it (no VIEW DEFINITION / SHOW_ROUTINE). */
+  definition: string | null
+  /** True when only the body could be read (MySQL without SHOW CREATE rights), not the full CREATE. */
+  bodyOnly?: boolean
+  parameters: RoutineParam[]
+  /** A function's return type, or 'TABLE' for table-valued functions. */
+  returns?: string
+  created?: string
+}
+
+/** A routine's source for searching; definition is null where it's hidden. */
+export interface RoutineSource extends RoutineRef {
+  definition: string | null
+}
+
 export interface ForeignKeyRef extends TableRef {
   column: string
 }
@@ -250,6 +293,7 @@ export type SavedTab = (
   | { kind: 'query'; pane: 0 | 1; connectionId: string; title: string; sql: string }
   | { kind: 'record'; pane: 0 | 1; connectionId: string; table: TableRef; key: ColumnFilter[] }
   | { kind: 'design'; pane: 0 | 1; connectionId: string; table: TableRef }
+  | { kind: 'routine'; pane: 0 | 1; connectionId: string; routine: RoutineRef }
 ) & { pinned?: boolean }
 
 /** The open tabs and split, saved so the app reopens where it was left. */

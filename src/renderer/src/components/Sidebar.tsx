@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
-import type { ConnectionConfig, TableInfo } from '@shared/types'
+import { useDeferredValue, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import type { ConnectionConfig, RoutineInfo, RoutineKind, RoutineSource, TableInfo } from '@shared/types'
+import { ROUTINE_LABELS, searchSources } from '@shared/routines'
+import { useOpenLink } from '../lib/openLink'
 import { useAppState } from '../state'
 import { fuzzyScore } from '../lib/fuzzy'
 import { appVersion } from '../lib/version'
@@ -287,10 +289,18 @@ function SidebarMenu({ children, onClose }: { children: ReactNode; onClose(): vo
 }
 
 function ConnectionNode({ connection, onEdit, onLinks }: { connection: ConnectionConfig; onEdit(): void; onLinks(): void }) {
-  const { tables, loadTables, forgetTables, openTable, openQuery } = useAppState()
+  const { tables, loadTables, forgetTables, routines, loadRoutines, openTable, openQuery } = useAppState()
   const [expanded, setExpanded] = useState(false)
   const [filter, setFilter] = useState('')
+  const [mode, setMode] = useState<'tables' | 'routines'>('tables')
+  const [inSource, setInSource] = useState(false)
   const state = tables[connection.id]
+  const routineState = routines[connection.id]
+
+  // Read the routine list once the tables are in, so the switch can show its count.
+  useEffect(() => {
+    if (expanded && state?.status === 'ready') loadRoutines(connection.id)
+  }, [expanded, state?.status, connection.id, loadRoutines])
 
   const toggle = (): void => {
     if (!expanded) loadTables(connection.id)
@@ -345,13 +355,38 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
           )}
           {state?.status === 'ready' && (
             <>
-              <input
-                className="search"
-                placeholder={`Filter ${state.tables.length} tables…`}
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-              />
-              <div className="tables">
+              <div className="conn-switch" role="tablist">
+                <button role="tab" className={mode === 'tables' ? 'on' : ''} onClick={() => setMode('tables')}>
+                  Tables <span className="switch-count">{state.tables.length.toLocaleString()}</span>
+                </button>
+                <button role="tab" className={mode === 'routines' ? 'on' : ''} onClick={() => setMode('routines')} title="Stored procedures, functions and triggers">
+                  Routines <span className="switch-count">{routineState?.status === 'ready' ? routineState.routines.length.toLocaleString() : '…'}</span>
+                </button>
+              </div>
+              <div className="search-wrap">
+                <input
+                  className="search"
+                  placeholder={mode === 'tables'
+                    ? `Filter ${state.tables.length} tables…`
+                    : inSource ? 'Search inside the source…' : `Filter ${routineState?.routines.length ?? ''} routines…`}
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') setFilter('')
+                  }}
+                />
+                {mode === 'routines' && (
+                  <button
+                    className={`source-toggle ${inSource ? 'on' : ''}`}
+                    title={inSource ? 'Searching inside the source. Click to filter by name instead' : 'Search inside the source: which routines mention a table, column or any text'}
+                    onClick={() => setInSource((v) => !v)}
+                  >
+                    {'{ }'}
+                  </button>
+                )}
+              </div>
+              {mode === 'routines' && <RoutineList connectionId={connection.id} filter={filter} inSource={inSource} />}
+              <div className="tables" hidden={mode !== 'tables'}>
                 {list.map((t) => (
                   <button
                     key={`${t.schema}.${t.name}`}
@@ -375,6 +410,168 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
       )}
     </div>
   )
+}
+
+/** How many routines show per group before "Show all"; big databases can have thousands. */
+const ROUTINE_PAGE = 300
+
+type Sources = { status: 'loading' | 'ready' | 'error'; list: RoutineSource[]; error?: string }
+
+/** A connection's procedures, functions and triggers grouped by kind, or matches inside their source. */
+function RoutineList({ connectionId, filter, inSource }: { connectionId: string; filter: string; inSource: boolean }) {
+  const { routines, loadRoutines } = useAppState()
+  const link = useOpenLink()
+  const state = routines[connectionId]
+  const [closed, setClosed] = useState<Set<RoutineKind>>(() => new Set())
+  const [showAll, setShowAll] = useState<Set<RoutineKind>>(() => new Set())
+  const [sources, setSources] = useState<Sources | null>(null)
+  const needle = useDeferredValue(filter)
+
+  useEffect(() => {
+    loadRoutines(connectionId)
+  }, [connectionId, loadRoutines])
+
+  // A changed routine list (after DDL, or a reconnect) means the sources need reading again.
+  const list = state?.routines
+  useEffect(() => {
+    setSources(null)
+  }, [list])
+
+  // Sources are read when source search is first used; the main process caches them too.
+  useEffect(() => {
+    if (!inSource || sources) return
+    let live = true
+    setSources({ status: 'loading', list: [] })
+    window.api.routineSources(connectionId).then(
+      (found) => live && setSources({ status: 'ready', list: found }),
+      (e) => live && setSources({ status: 'error', list: [], error: (e as Error).message })
+    )
+    return () => {
+      live = false
+    }
+  }, [inSource, connectionId, sources])
+
+  if (!state || state.status === 'loading') return <div className="muted pad">Reading routines…</div>
+  if (state.status === 'error') {
+    return (
+      <div className="conn-error">
+        <div>{state.error}</div>
+        <div className="row-gap"><button onClick={() => loadRoutines(connectionId, true)}>Retry</button></div>
+      </div>
+    )
+  }
+  if (!state.routines.length) return <div className="muted pad">No procedures, functions or triggers here.</div>
+
+  const showSchema = new Set(state.routines.map((r) => r.schema)).size > 1
+
+  if (inSource) {
+    if (!sources || sources.status === 'loading') {
+      return <div className="muted pad">Reading the source of {state.routines.length.toLocaleString()} routines…</div>
+    }
+    if (sources.status === 'error') return <div className="conn-error">{sources.error}</div>
+    const hidden = sources.list.filter((s) => s.definition === null).length
+    const term = needle.trim()
+    const matches = term.length >= 2 ? searchSources(sources.list, term) : []
+    return (
+      <div className="tables">
+        {term.length < 2 && <div className="muted source-hint">Type a table, column or any text to find the routines that mention it.</div>}
+        {matches.map((m) => (
+          <button
+            key={`${m.source.kind}:${m.source.schema}.${m.source.name}`}
+            className="table-item source-hit"
+            {...link({ kind: 'routine', connectionId, routine: { schema: m.source.schema, name: m.source.name, kind: m.source.kind }, find: term })}
+            title={`${m.source.schema}.${m.source.name} · ${m.count} match${m.count === 1 ? '' : 'es'}, first on line ${m.line}\nShift+click opens beside · drag to a pane`}
+          >
+            <span className="source-hit-head">
+              <span className={`kind-dot kind-${m.source.kind}`} />
+              <span className="table-name">
+                {showSchema && <span className="muted">{m.source.schema}.</span>}
+                {m.source.name}
+              </span>
+              {m.count > 1 && <span className="table-rows">×{m.count}</span>}
+            </span>
+            <code className="source-snippet">
+              <span className="line-no">{m.line}</span>
+              {m.snippet.slice(0, m.start)}<mark>{m.snippet.slice(m.start, m.end)}</mark>{m.snippet.slice(m.end)}
+            </code>
+          </button>
+        ))}
+        {term.length >= 2 && !matches.length && <div className="muted pad">Not found in any routine's source</div>}
+        {hidden > 0 && (
+          <div className="muted source-hint">
+            {hidden.toLocaleString()} of {sources.list.length.toLocaleString()} can't be searched because this login can't read their source.
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const visible = filterRoutines(state.routines, needle)
+  const toggle = (set: Set<RoutineKind>, kind: RoutineKind): Set<RoutineKind> => {
+    const next = new Set(set)
+    if (next.has(kind)) next.delete(kind)
+    else next.add(kind)
+    return next
+  }
+
+  return (
+    <div className="tables">
+      {ROUTINE_KINDS.map((kind) => {
+        const group = visible.filter((r) => r.kind === kind)
+        if (!group.length) return null
+        // Filtering opens every group, so a match is never tucked away.
+        const open = !!needle.trim() || !closed.has(kind)
+        const shown = showAll.has(kind) ? group : group.slice(0, ROUTINE_PAGE)
+        return (
+          <div key={kind} className="routine-group">
+            <button className="group-head" onClick={() => setClosed((c) => toggle(c, kind))}>
+              <span className={`chevron ${open ? 'open' : ''}`}>›</span>
+              <span className={`kind-dot kind-${kind}`} />
+              <span className="group-name">{ROUTINE_LABELS[kind].plural}</span>
+              <span className="table-rows">{group.length.toLocaleString()}</span>
+            </button>
+            {open && shown.map((r) => (
+              <button
+                key={`${r.schema}.${r.name}`}
+                className={`table-item routine-item ${r.disabled ? 'disabled' : ''}`}
+                {...link({ kind: 'routine', connectionId, routine: { schema: r.schema, name: r.name, kind: r.kind } })}
+                title={[
+                  `${r.schema}.${r.name}`,
+                  r.kind === 'trigger' && r.parent ? `${r.detail ?? ''} on ${r.parent.schema}.${r.parent.name}` : r.detail === 'table' ? 'table-valued function' : '',
+                  r.disabled ? 'disabled' : ''
+                ].filter(Boolean).join(' · ')}
+              >
+                <span className="table-name">
+                  {showSchema && <span className="muted">{r.schema}.</span>}
+                  {r.name}
+                </span>
+                {r.kind === 'trigger' && r.parent && <span className="routine-aside">{r.parent.name}</span>}
+                {r.kind === 'function' && r.detail === 'table' && <span className="routine-aside">table</span>}
+                {r.disabled && <span className="routine-aside off">off</span>}
+              </button>
+            ))}
+            {open && group.length > shown.length && (
+              <button className="show-more" onClick={() => setShowAll((s) => toggle(s, kind))}>
+                Show all {group.length.toLocaleString()}
+              </button>
+            )}
+          </div>
+        )
+      })}
+      {!visible.length && <div className="muted pad">No matches by name. Try {'{ }'} to search inside the source.</div>}
+    </div>
+  )
+}
+
+const ROUTINE_KINDS: RoutineKind[] = ['procedure', 'function', 'trigger']
+
+function filterRoutines(routines: RoutineInfo[], filter: string): RoutineInfo[] {
+  if (!filter.trim()) return routines
+  return routines
+    .map((r) => ({ r, score: fuzzyScore(filter, `${r.schema}.${r.name}`) }))
+    .filter((x) => x.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.r)
 }
 
 function filterTables(tables: TableInfo[], filter: string): TableInfo[] {
