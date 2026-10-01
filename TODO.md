@@ -12,6 +12,14 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [x] **Explain empty connections.** A connection with no tables says which database it's in and offers the others; the dialog warns about a blank Database on Azure SQL. (1.2.1)
 - [x] **Lookups in the table view**, a clearer selected cell, and column search in the designer. (1.3.0)
 - [x] **Query parameters**, **errors that point at the SQL**, and **Ctrl+click names to open them**. (1.4.0)
+- [x] **More rows per page**: 1,000 a page, or a custom size up to 10,000. (1.5.0)
+- [x] **New query from the sidebar**: a ⌨ button and a right-click menu on each connection. (1.5.0)
+- [x] **Only columns after `alias.`** in autocompletion, no keywords. (1.5.0)
+- [x] **Run gutter**: a ▶ per statement, amber for writes, 🔒 on read-only, a spinner that stops the run, and a ✓ / ✕ note with rows and time. (1.5.0)
+- [x] **Ctrl+Enter runs the statement at the cursor**, Ctrl+Shift+Enter runs everything. (1.5.0)
+- [x] **Lookups in query results**, for columns read straight from a table column. (1.5.0)
+- [x] **Databases as folders** in the sidebar when a connection spans several, like DBeaver. (1.5.1)
+- [x] Fixed: the connection dialog's Folder box sat below Environment (1.5.0), and the selected row's number showed cells through it when scrolled right (1.5.1).
 
 ## Check first (built but not yet seen for real)
 
@@ -22,6 +30,9 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [ ] **Lookups on Shop's shared `lookups` table.** Check the TypeId narrowing picks the right kinds, and how a foreign key to a big table behaves (it should search, not list).
 - [ ] **Error lines on MySQL multi-statement scripts.** It isn't confirmed whether MySQL's "at line N" counts from the whole script or from the failing statement; the spot is found by text first, so only the line may be off.
 - [ ] **Azure database picker** on a connection with a blank Database (it should land in master and list ProdDB and the rest).
+- [ ] **Run gutter in use** (1.5.0): markers on the left of the line numbers, the spinner stopping a slow query, notes clearing when a statement is edited, and the ✕ note jumping to the error.
+- [ ] **Lookups in query results** (1.5.0): `SELECT *` with joins, `alias.*`, `AS` names, and a script with several SELECTs.
+- [ ] **Database folders** (1.5.1) on a MySQL connection with a blank Database, and on a SQL Server database with several schemas, including the filter and the Routines switch.
 
 ## Features
 
@@ -43,6 +54,9 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [x] **Filter from a cell.** Right-click a cell and choose "filter to this value" or "exclude it", added as a filter chip.
 - [x] **Insert a saved query into the open tab** from the sidebar, rather than only opening it in a new tab. (1.2.1)
 - [ ] **Import and export appearance settings**, so a theme and colours can be shared.
+- [ ] **More from the run gutter**: right-click a ▶ for Count rows first, Explain, Run in a new tab and Copy; Shift+click to run from there down; one result tab per statement when running several.
+- [ ] **Database folders, the rest of DBeaver's tree**: empty databases, Indexes and Events folders, and routines under each database in one tree rather than the Tables / Routines switch.
+- [ ] **Lookups for procedure results** and batches whose result sets don't pair up with their SELECTs.
 
 ## Smaller improvements
 
@@ -58,4 +72,4 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 
 - [ ] Tests only cover `src/shared`. Consider a small scripted smoke test of the installed app (the debug-port approach used during testing) for the main flows.
 - [ ] RELEASE.md: note that GitHub CLI isn't installed on this machine, and releases are checked through the public jdb-releases API instead.
-- [ ] Delete merged branches (`fixes/minor`, `feature/saved-queries`, `feature/customisation`, `feature/query-params-errors`, `feature/clickable-names`) once nothing else is needed from them.
+- [ ] Delete merged branches (`fixes/minor`, `feature/saved-queries`, `feature/customisation`, `feature/query-params-errors`, `feature/clickable-names`, `feature/1.5.0`, `fix/rownum-see-through`, `feature/database-tree`) once nothing else is needed from them.
