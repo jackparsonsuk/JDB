@@ -5,6 +5,7 @@ What changed in each JDB release, newest first. JDB shows these notes after it u
 ## 1.5.0
 - **More rows per page.** Tables can show 1,000 rows a page, or pick **Custom…** and type your own number (up to 10,000). The size you pick is remembered for the next table you open.
 - **New query from the sidebar.** Each connection has a ⌨ button that opens a query tab on it, and right-clicking a connection gives a menu with New query, links, reconnect and edit.
+- **Run buttons in the SQL editor.** A green ▶ sits beside the first line of each statement; click it to select and run just that statement.
 - **Columns first after `alias.`** Typing `o.` in the SQL editor now lists only that table's columns, without keywords like DESC mixed in.
 
 ## 1.4.0

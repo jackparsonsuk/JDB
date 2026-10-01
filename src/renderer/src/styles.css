@@ -470,6 +470,9 @@ tr:hover .fk-jump { opacity: 1; }
 .editor .cm-editor { height: 100%; font-size: var(--code-size, 13px); }
 .cm-content { font-variant-ligatures: var(--mono-ligatures, none); }
 .editor .cm-scroller { font-family: var(--mono); }
+.cm-run-gutter .cm-gutterElement { padding: 0 2px 0 6px; display: flex; align-items: center; }
+.cm-run-marker { color: var(--ok); font-size: 10px; cursor: pointer; opacity: 0.75; font-family: system-ui, sans-serif; }
+.cm-run-marker:hover { opacity: 1; transform: scale(1.2); }
 .splitter { height: 5px; cursor: row-resize; background: var(--border); flex-shrink: 0; }
 .splitter:hover { background: var(--accent); }
 .results { flex: 1; display: flex; flex-direction: column; min-height: 0; }

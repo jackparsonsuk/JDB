@@ -34,6 +34,7 @@ import { useClickableNames } from '../lib/clickableNames'
 import { findParams, type QueryParam } from '@shared/params'
 import { explainError, type ErrorHelp } from '@shared/sqlErrors'
 import { errorMarks, setErrorMark } from '../lib/errorMark'
+import { runGutter } from '../lib/runGutter'
 import { ParamDialog } from './ParamDialog'
 
 /** Where SQL being run came from in the editor, so an error can be pointed at: its text (before parameters are filled in) and offset. */
@@ -353,6 +354,11 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     runSql(statement.text, statement.from)
   }, [runSql])
 
+  // The gutter is built once, so it calls whichever runSql is current.
+  const runSqlRef = useRef(runSql)
+  runSqlRef.current = runSql
+  const gutter = useMemo(() => runGutter((sqlText, from) => runSqlRef.current(sqlText, from)), [])
+
   /** Shift+Alt+F: lays the whole editor out, as one change so Ctrl+Z puts it back. */
   const format = useCallback(() => {
     const view = viewRef.current
@@ -495,7 +501,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
               value={text}
               height="100%"
               theme={scheme}
-              extensions={[...language, ...editorPrefs, errorMarks, names, runKeymap]}
+              extensions={[...language, ...editorPrefs, errorMarks, names, gutter, runKeymap]}
               onChange={setText}
               onCreateEditor={(view) => {
                 viewRef.current = view

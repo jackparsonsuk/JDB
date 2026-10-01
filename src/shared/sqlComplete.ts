@@ -74,6 +74,31 @@ export function statementAt(sql: string, pos: number): { text: string; offset: n
   return { text: sql.slice(start, end), offset: start }
 }
 
+/**
+ * Every statement in the script, split like `statementAt`, from its first character of SQL to its
+ * last, leaving out surrounding comments and blank space. Segments with no SQL are skipped.
+ */
+export function statementRanges(sql: string): { from: number; to: number }[] {
+  const masked = maskLiterals(sql)
+  // Comments blanked but strings kept, so a statement ending in a literal keeps it.
+  const code = sql.replace(/--[^\n]*|\/\*[\s\S]*?\*\/|'(?:[^']|'')*'?/g, (m) => (m[0] === "'" ? m : m.replace(/[^\n]/g, ' ')))
+  const boundary = /;|^\s*GO\s*$/gim
+  const out: { from: number; to: number }[] = []
+  const add = (start: number, end: number): void => {
+    const segment = code.slice(start, end)
+    const lead = segment.length - segment.trimStart().length
+    const body = segment.trim()
+    if (body) out.push({ from: start + lead, to: start + lead + body.length })
+  }
+  let start = 0
+  for (let m = boundary.exec(masked); m; m = boundary.exec(masked)) {
+    add(start, m.index)
+    start = m.index + m[0].length
+  }
+  add(start, sql.length)
+  return out
+}
+
 /** Tables mentioned in a statement, in order, including comma-separated FROM lists. */
 export function mentionedTables(sql: string): TableMention[] {
   const text = maskLiterals(sql)
