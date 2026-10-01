@@ -354,11 +354,15 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     else runSql(text, 0)
   }, [runSql, text])
 
-  /** Ctrl+Shift+Enter: selects and runs the statement the cursor is in. */
+  /** Ctrl+Enter: runs the selection, or selects and runs the statement the cursor is in. */
   const runStatement = useCallback(() => {
     const view = viewRef.current
-    const statement = view && statementUnderCursor(view)
-    if (!view || !statement) return
+    if (!view) return
+    const range = view.state.selection.main
+    const selected = range.empty ? '' : view.state.sliceDoc(range.from, range.to)
+    if (selected.trim()) return runSql(selected, range.from)
+    const statement = statementUnderCursor(view)
+    if (!statement) return
     view.dispatch({ selection: { anchor: statement.from, head: statement.to } })
     runSql(statement.text, statement.from)
   }, [runSql])
@@ -398,15 +402,15 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
 
   const runKeymap = useMemo(
     () => Prec.highest(keymap.of([
-      { key: 'Mod-Shift-Enter', run: () => { runStatement(); return true } },
-      { key: 'Mod-Enter', run: () => { run(); return true } },
+      { key: 'Mod-Enter', run: () => { runStatement(); return true } },
+      { key: 'Mod-Shift-Enter', run: () => { runSql(text, 0); return true } },
       { key: 'Shift-Alt-f', run: () => { format(); return true } },
       { key: 'F5', run: () => { run(); return true } },
       { key: 'Mod-s', run: () => { save(); return true } },
       // Tab accepts the highlighted completion like Enter; with no list open it indents as before.
       { key: 'Tab', run: acceptCompletion }
     ])),
-    [run, runStatement, format, save]
+    [run, runStatement, runSql, text, format, save]
   )
 
   const startResize = (event: React.MouseEvent): void => {
@@ -437,7 +441,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
         {running ? (
           <button className="danger" onClick={cancel} title="Stop the query on the server (Esc)">■ Cancel</button>
         ) : (
-          <button className="primary" onClick={run}>▶ Run</button>
+          <button className="primary" onClick={run} title="Run the selection, or everything (F5)">▶ Run</button>
         )}
         {!conn.readOnly && !txn.tx && (
           <button
@@ -454,7 +458,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
             ? 'Esc cancels the running query'
             : !txn.tx && !conn.readOnly && safety(conn) === 'protected'
               ? `Ctrl+Enter runs · writes on ${environment(conn.env).name.toUpperCase()} are staged until you commit`
-              : 'Ctrl+Enter runs the selection, or everything · Ctrl+Shift+Enter the statement at the cursor · Ctrl+click a table to open it'}
+              : 'Ctrl+Enter runs the selection, or the statement at the cursor · Ctrl+Shift+Enter runs everything · Ctrl+click a table to open it'}
         </span>
         <div className="toolbar-right">
           <button
