@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CellValue, ColumnFilter, RelatedCount, RowsResult, TableDetails, TableRef } from '@shared/types'
+import { defaultWatchInterval, watchIntervals, watchText, type WatchEvent } from '@shared/rowWatch'
 import { incomingLinks, outgoingLinks } from '@shared/links'
 import { pickDateColumn, pickDisplayColumn } from '@shared/display'
 import { useAppState, useTableList, type Tab } from '../state'
 import { displayValue, formatCount } from '../lib/format'
 import { useOpenLink } from '../lib/openLink'
+import { useRowWatch, type RowWatch } from '../lib/useRowWatch'
 import { RowInspector } from './RowInspector'
 import { LoadingBar } from './DataGrid'
+import { toast } from './Toast'
 
 const PREVIEW_ROWS = 5
 /** Related counts are requested a few at a time so results appear as they finish. */
@@ -60,10 +63,11 @@ interface Relation {
 }
 
 export function RecordView({ tab }: { tab: Extract<Tab, { kind: 'record' }> }) {
-  const { connection, links } = useAppState()
+  const { connection, links, safety } = useAppState()
   useTableList(tab.connectionId)
   const link = useOpenLink()
   const conn = connection(tab.connectionId)
+  const level = conn ? safety(conn) : 'protected'
   const [details, setDetails] = useState<TableDetails | null>(null)
   const [record, setRecord] = useState<RowsResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -90,6 +94,18 @@ export function RecordView({ tab }: { tab: Extract<Tab, { kind: 'record' }> }) {
 
   const row = record?.rows[0]
   const columns = record?.columns ?? []
+
+  // Until one is picked, the default follows the connection, whose environment may still be loading.
+  const [picked, setEvery] = useState<number | null>(null)
+  const every = picked ?? defaultWatchInterval(level)
+  const initial = useMemo(() => (record && row ? { columns: record.columns, row } : null), [record, row])
+  const watch = useRowWatch(tab.connectionId, tab.table, tab.key, initial, every)
+  // Asked to watch from elsewhere (the row inspector's Watch button).
+  useEffect(() => {
+    if (tab.watch) watch.start()
+  }, [tab.watch?.seq])
+  // The inspector shows the row as last read while watching; a gone row keeps its last values.
+  const shown = watch.latest ?? initial
   const valueOf = (column: string): CellValue => (row ? row[columns.indexOf(column)] ?? null : null)
 
   // Parents: records this one points at, locally (foreign keys) and in other databases (links).
@@ -212,13 +228,16 @@ export function RecordView({ tab }: { tab: Extract<Tab, { kind: 'record' }> }) {
           </h2>
         </div>
         <span className="grow" />
+        <WatchControls watch={watch} interval={every} intervals={watchIntervals(level)} onInterval={setEvery} />
         <button className="ghost" title="Shift+click or drag to open beside" {...link({ kind: 'table', connectionId: tab.connectionId, table: tab.table, filters: tab.key })}>Open in table</button>
       </div>
 
       <div className="record-body">
-        <RowInspector kind={conn.kind} table={tab.table} columns={columns} row={row} columnInfo={new Map(details.columns.map((c) => [c.name, c]))} />
+        <RowInspector kind={conn.kind} table={tab.table} columns={shown?.columns ?? columns} row={shown?.row ?? row} columnInfo={new Map(details.columns.map((c) => [c.name, c]))} />
 
         <div className="record-main">
+          {(watch.watching || watch.events.length > 0) && <WatchTimeline watch={watch} interval={every} />}
+
           <section>
             <div className="section-title">Belongs to ({parents.length})</div>
             {!parents.length && <div className="muted small pad">This record doesn't point at any others.</div>}
@@ -271,6 +290,72 @@ export function RecordView({ tab }: { tab: Extract<Tab, { kind: 'record' }> }) {
         </div>
       </div>
     </div>
+  )
+}
+
+function WatchControls({ watch, interval, intervals, onInterval }: { watch: RowWatch; interval: number; intervals: number[]; onInterval(seconds: number): void }) {
+  return (
+    <div className="watch-controls">
+      <select value={interval} onChange={(e) => onInterval(Number(e.target.value))} title="How often the row is read again while watching">
+        {intervals.map((s) => <option key={s} value={s}>every {s < 60 ? `${s}s` : `${s / 60}m`}</option>)}
+      </select>
+      {watch.watching
+        ? <button className="watching" onClick={watch.stop} title="Stop reading the row">◉ Watching</button>
+        : <button className="ghost" onClick={watch.start} title="Read this row again every few seconds and list what changes, e.g. while you try something in another app">◎ Watch</button>}
+    </div>
+  )
+}
+
+const timeOf = (at: number): string => new Date(at).toLocaleTimeString(undefined, { hour12: false })
+
+function WatchTimeline({ watch, interval }: { watch: RowWatch; interval: number }) {
+  const { events } = watch
+  const copy = (): void => {
+    navigator.clipboard.writeText(watchText(events, timeOf, displayValue))
+    toast('Copied the changes')
+  }
+  return (
+    <section className="watch">
+      <div className="section-title watch-title">
+        <span>Changes ({events.length})</span>
+        <span className="grow" />
+        {events.length > 0 && <button className="link small" onClick={copy}>copy</button>}
+        {events.length > 0 && <button className="link small" onClick={watch.clear}>clear</button>}
+      </div>
+      <div className={`watch-status small ${watch.error ? 'error' : 'muted'}`}>
+        {watch.error
+          ? <>Couldn't read the row{watch.watching ? ', trying again' : ', so watching stopped'}: {watch.error}</>
+          : watch.watching
+            ? <>Reading the row every {interval}s{watch.checkedAt && <> · last read {timeOf(watch.checkedAt)}</>}. Changes made between two reads show as one.</>
+            : <>Not watching. Press Watch to carry on.</>}
+      </div>
+      {watch.gone && <div className="watch-gone small">The row isn't there any more: it was deleted, or its key changed. The details show its last values.</div>}
+      {!events.length && watch.watching && <div className="muted small pad">No changes yet.</div>}
+      <ol className="watch-events">
+        {events.map((e, i) => <WatchEventRow key={`${e.at}-${i}`} event={e} />)}
+      </ol>
+    </section>
+  )
+}
+
+function WatchEventRow({ event }: { event: WatchEvent }) {
+  const value = (v: CellValue) => <span className={v === null ? 'null' : undefined}>{displayValue(v)}</span>
+  return (
+    <li className={`watch-event ${event.kind}`}>
+      <span className="watch-time">{timeOf(event.at)}</span>
+      <div className="watch-detail">
+        {event.kind === 'gone' && <strong>Row gone</strong>}
+        {event.kind === 'back' && <strong>Row back{event.cells.length ? ', now with' : ', unchanged'}</strong>}
+        {event.kind !== 'gone' && event.cells.map((c) => (
+          <div key={c.column} className="watch-cell">
+            <span className="watch-column">{c.column}</span>
+            <span className="before">{value(c.before)}</span>
+            <span className="muted">→</span>
+            <span className="after">{value(c.after)}</span>
+          </div>
+        ))}
+      </div>
+    </li>
   )
 }
 

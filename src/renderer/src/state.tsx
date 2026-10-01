@@ -25,7 +25,11 @@ export type Tab = (
       /** SQL to insert at the cursor (a saved query from the sidebar); `seq` changes when asked again. Not saved. */
       insert?: { sql: string; seq: number }
     }
-  | { kind: 'record'; id: string; pane: PaneId; connectionId: string; table: TableRef; key: ColumnFilter[] }
+  | {
+      kind: 'record'; id: string; pane: PaneId; connectionId: string; table: TableRef; key: ColumnFilter[]
+      /** Start watching the row for changes; `seq` changes when asked again. Not saved. */
+      watch?: { seq: number }
+    }
   | { kind: 'design'; id: string; pane: PaneId; connectionId: string; table: TableRef }
   | {
       kind: 'routine'; id: string; pane: PaneId; connectionId: string; routine: RoutineRef
@@ -37,7 +41,7 @@ export type Tab = (
 /** Something a reference points at, which can be clicked open or dragged into a pane. */
 export type OpenTarget =
   | { kind: 'table'; connectionId: string; table: TableRef; filters: ColumnFilter[]; column?: string }
-  | { kind: 'record'; connectionId: string; table: TableRef; key: ColumnFilter[] }
+  | { kind: 'record'; connectionId: string; table: TableRef; key: ColumnFilter[]; watch?: boolean }
   | { kind: 'design'; connectionId: string; table: TableRef }
   | { kind: 'routine'; connectionId: string; routine: RoutineRef; find?: string }
 
@@ -111,8 +115,8 @@ interface AppState {
   /** Query tabs with changes not yet saved to their saved query. */
   unsavedTabs: ReadonlySet<string>
   setTabUnsaved(tabId: string, unsaved: boolean): void
-  /** Opens the record explorer for one row, identified by its primary key values. */
-  openRecord(connectionId: string, table: TableRef, key: ColumnFilter[], pane?: PaneId): void
+  /** Opens the record explorer for one row, identified by its primary key values; `watch` starts watching it for changes. */
+  openRecord(connectionId: string, table: TableRef, key: ColumnFilter[], pane?: PaneId, watch?: boolean): void
   closeTab(id: string): void
   /** Closes the unpinned tabs in `id`'s pane that `scope` picks, asking first about any with unsaved work. */
   closeTabs(id: string, scope: CloseScope): void
@@ -352,12 +356,14 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     const existing = current.tabs.find((t) => sameAs(t, target))
     const focusColumn = target.kind === 'table' && target.column ? { name: target.column, seq: Date.now() } : undefined
     const find = target.kind === 'routine' && target.find ? { text: target.find, seq: Date.now() } : undefined
+    const watch = target.kind === 'record' && target.watch ? { seq: Date.now() } : undefined
     if (existing) {
       // Already open: bring it forward, moving it if a particular pane was asked for.
       setLayout((s) => {
         const moved = panes.moveTab(s, existing.id, pane ?? existing.pane)
         if (focusColumn) return { ...moved, tabs: moved.tabs.map((t) => (t.id === existing.id && t.kind === 'table' ? { ...t, focusColumn } : t)) }
         if (find) return { ...moved, tabs: moved.tabs.map((t) => (t.id === existing.id && t.kind === 'routine' ? { ...t, find } : t)) }
+        if (watch) return { ...moved, tabs: moved.tabs.map((t) => (t.id === existing.id && t.kind === 'record' ? { ...t, watch } : t)) }
         return moved
       })
       return
@@ -370,15 +376,15 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
         ? { kind: 'routine', id, pane: into, connectionId: target.connectionId, routine: target.routine, find }
         : target.kind === 'design'
         ? { kind: 'design', id, pane: into, connectionId: target.connectionId, table: target.table }
-        : { kind: 'record', id, pane: into, connectionId: target.connectionId, table: target.table, key: target.key }
+        : { kind: 'record', id, pane: into, connectionId: target.connectionId, table: target.table, key: target.key, watch }
     setLayout((s) => panes.addTab(s, tab))
   }, [])
 
   const openTable = useCallback((connectionId: string, table: TableRef, filters: ColumnFilter[] = [], pane?: PaneId) =>
     open({ kind: 'table', connectionId, table, filters }, pane), [open])
 
-  const openRecord = useCallback((connectionId: string, table: TableRef, key: ColumnFilter[], pane?: PaneId) =>
-    open({ kind: 'record', connectionId, table, key }, pane), [open])
+  const openRecord = useCallback((connectionId: string, table: TableRef, key: ColumnFilter[], pane?: PaneId, watch?: boolean) =>
+    open({ kind: 'record', connectionId, table, key, watch }, pane), [open])
 
   const openQuery = useCallback((connectionId: string, sql = '', schema?: string) => {
     const title = `Query ${++queryCounter.current}${schema ? ` · ${schema}` : ''}`

@@ -23,6 +23,8 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 
 ## Check first (built but not yet seen for real)
 
+- [ ] **Watching a row.** Watch a row on local MySQL while changing it from the app under test; check changes, a delete and a re-insert show, and that a dropped connection stops the watch after three failed reads. Next steps if it proves useful: also watch the record's child rows (inserts, updates, deletes in related tables), and a MySQL binlog mode that catches every change rather than polling.
+
 - [ ] **Row-count confirm dialog on a writable test connection.** It only appears on writable, non-local, non-protected connections, so it hasn't been opened against a real server yet. Try an UPDATE with a WHERE, one without, a joined DELETE and an INSERT ... SELECT.
 - [ ] **Proc formatter on real SQL Server procs.** The layout guesses T-SQL structure without semicolons. Open some long procs and note any odd layout or a "shown as written" fallback.
 - [ ] **Custom environments through a shared file.** Export a connection on a custom environment, import it on another machine, and check the environment arrives and a protected one comes in read-only.

@@ -3,6 +3,7 @@
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
 ## 1.8.0
+- **Watch a row for changes.** In a table, select a row and press **Watch ◎** in the row details (or **◎ Watch** at the top of the record explorer). OverlookDB reads the row again every few seconds and lists what changed, newest first, as before → after, and says when the row is deleted or comes back. Handy while you try something in the app you're testing. Pick how often it reads (from every second on local connections, every 5 seconds or more on shared ones), and **copy** the list for a bug report. Changes made between two reads show as one. Watching stops when you close the tab.
 - **Hover a table to see its columns.** In the SQL editor and stored procedure source, rest the pointer on a table name or an alias (`o` in `o.Status`) and a card lists the table's columns with their types, keys (PK, FK) and row count, with the column you're on highlighted. Hovering a procedure or function says what it is. Ctrl+click still opens it.
 
 ## 1.7.0
