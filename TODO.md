@@ -20,8 +20,14 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [x] **Lookups in query results**, for columns read straight from a table column. (1.5.0)
 - [x] **Databases as folders** in the sidebar when a connection spans several, like DBeaver. (1.5.1)
 - [x] Fixed: the connection dialog's Folder box sat below Environment (1.5.0), and the selected row's number showed cells through it when scrolled right (1.5.1).
+- [x] **Watch a row for changes** in the record explorer, read again by key every few seconds. (1.8.0)
+- [x] **Watch a record's related rows too**: rows added, removed and changed in its related tables, up to 20 tables of up to 200 rows each. (1.8.0)
+- [ ] **Binlog mode for watching on local MySQL**, if polling turns out to miss too much: catches every change in order, not just what differs between reads.
 
 ## Check first (built but not yet seen for real)
+
+- [ ] **Find value on real schemas**: a GUID, an email and an int id on local MySQL and on Azure SQL; how long a search takes, what lands in "not searched", and that big unindexed tables are skipped.
+
 
 - [ ] **Row-count confirm dialog on a writable test connection.** It only appears on writable, non-local, non-protected connections, so it hasn't been opened against a real server yet. Try an UPDATE with a WHERE, one without, a joined DELETE and an INSERT ... SELECT.
 - [ ] **Proc formatter on real SQL Server procs.** The layout guesses T-SQL structure without semicolons. Open some long procs and note any odd layout or a "shown as written" fallback.
@@ -40,10 +46,11 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 ## Features
 
 - [x] **Clickable names in routine source.** Ctrl+click a table or proc name in the code to open it, in routine source and the SQL editor. (1.4.0)
-- [ ] **Hover a table to see its columns**, in routine source and the SQL editor, reusing `nameAt` in `src/shared/routines.ts`.
+- [x] **Hover a table to see its columns**, in routine source and the SQL editor, from `nameAt` (`lib/clickableNames.ts`). (1.8.0)
 - [x] **Labels in the grid for lookup columns**, beside the key (which is unchanged), in tables and query results; `lib/lookupLabels.ts`. (1.7.0)
 - [ ] **Share lookups in connection files**, like links and saved queries.
-- [ ] **Search every table for a value.** Paste a GUID or email and see which tables and columns hold it, reading only indexed or likely columns, bounded and time-limited.
+- [x] **Find a value everywhere.** Paste a GUID, email or id and see which tables and columns hold it, reading only indexed or likely columns, bounded and time-limited. (1.8.0)
+- [ ] **Find value across linked databases**: also search the connections a table links to, for a value that crosses databases.
 - [ ] **Dry run on prod.** Run a write in a transaction, show the Changes view, then roll back automatically.
 - [ ] **Undo last change.** After an UPDATE or grid save, offer a script that puts the rows back, from the Changes view's before values.
 - [ ] **Diff between connections.** Compare a table's columns and keys between two connections, one row by key, or a query's results on both. Link discovery already does much of the sampling.

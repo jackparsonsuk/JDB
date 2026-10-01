@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Extension } from '@codemirror/state'
-import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view'
-import type { DbKind } from '@shared/types'
+import { Decoration, EditorView, hoverTooltip, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view'
+import type { DbKind, RoutineRef, TableDetails, TableInfo, TableRef } from '@shared/types'
+import { ROUTINE_LABELS } from '@shared/routines'
+import { describeCached } from './lookups'
+import { formatCount } from './format'
 import { otherPane, type PaneId } from '@shared/panes'
 import { nameAt, type NameAt, type NameTarget } from '@shared/routines'
 import { useAppState } from '../state'
@@ -14,7 +17,14 @@ import { useAppState } from '../state'
 export interface NameLinks {
   resolve(doc: string, pos: number): NameAt | null
   open(target: NameTarget, beside: boolean): void
+  /** A table's columns and keys, for the hover card; read once per table and cached. */
+  describe(table: TableRef): Promise<TableDetails>
+  /** The table list's entry, for its type and row estimate. */
+  info(table: TableRef): TableInfo | undefined
 }
+
+/** Columns listed on a hover card before "and N more"; wide tables have hundreds. */
+const HOVER_COLUMNS = 40
 
 const link = Decoration.mark({ class: 'cm-name-link' })
 
@@ -87,8 +97,27 @@ export function clickableNames(handlers: { current: NameLinks }): Extension {
       }
     }
   })
+  // Hovering a table, alias or alias.column shows the table's columns; a routine says what it is.
+  const hover = hoverTooltip(async (view, pos) => {
+    const hit = handlers.current.resolve(view.state.doc.toString(), pos)
+    if (!hit) return null
+    const target = hit.target
+    if (target.kind === 'routine') {
+      return { pos: hit.from, end: hit.to, above: true, create: () => ({ dom: routineCard(target.routine) }) }
+    }
+    let details: TableDetails
+    try {
+      details = await handlers.current.describe(target.table)
+    } catch {
+      return null
+    }
+    const dom = tableCard(target.table, handlers.current.info(target.table), details, target.column)
+    return { pos: hit.from, end: hit.to, above: true, create: () => ({ dom }) }
+  }, { hoverTime: 350 })
+
   return [
     plugin,
+    hover,
     EditorView.baseTheme({
       '.cm-name-link': { textDecoration: 'underline', textDecorationColor: 'var(--accent)', color: 'var(--accent)' },
       '.cm-names-armed': { cursor: 'pointer' }
@@ -108,6 +137,8 @@ export function useClickableNames(connectionId: string, pane: PaneId, kind: DbKi
   const handlers = useRef<NameLinks>(null!)
   handlers.current = {
     resolve: (doc, pos) => (kind ? nameAt(doc, kind, pos, tables[connectionId]?.tables ?? [], routines[connectionId]?.routines ?? [], defaults) : null),
+    describe: (table) => describeCached(connectionId, table),
+    info: (table) => tables[connectionId]?.tables.find((t) => t.schema.toLowerCase() === table.schema.toLowerCase() && t.name.toLowerCase() === table.name.toLowerCase()),
     open: (target, beside) => open(
       target.kind === 'table'
         ? { kind: 'table', connectionId, table: target.table, filters: [], ...(target.column && { column: target.column }) }
@@ -116,4 +147,48 @@ export function useClickableNames(connectionId: string, pane: PaneId, kind: DbKi
     )
   }
   return useMemo(() => clickableNames(handlers), [])
+}
+
+const el = (tag: string, className: string, text?: string): HTMLElement => {
+  const node = document.createElement(tag)
+  node.className = className
+  if (text !== undefined) node.textContent = text
+  return node
+}
+
+/** The hover card for a table: its columns with types and keys, the hovered column marked. */
+function tableCard(table: TableRef, info: TableInfo | undefined, details: TableDetails, column?: string): HTMLElement {
+  const card = el('div', 'name-card')
+  const head = el('div', 'name-card-head')
+  head.append(el('span', 'name-card-icon', info?.type === 'view' ? '◫' : '▦'), el('span', 'name-card-schema', `${table.schema}.`), el('strong', '', table.name))
+  const facts = [info?.type === 'view' ? 'view' : 'table', `${details.columns.length} column${details.columns.length === 1 ? '' : 's'}`]
+  if (info?.rowEstimate !== undefined) facts.push(`~${formatCount(info.rowEstimate)} rows`)
+  head.append(el('span', 'name-card-facts', facts.join(' · ')))
+  card.append(head)
+
+  const list = el('div', 'name-card-columns')
+  const wanted = column?.toLowerCase()
+  // The hovered column always shows, even past the cut-off.
+  const shown = details.columns.filter((c, i) => i < HOVER_COLUMNS || c.name.toLowerCase() === wanted)
+  for (const c of shown) {
+    const row = el('div', `name-card-col${c.name.toLowerCase() === wanted ? ' on' : ''}`)
+    const name = el('span', 'name-card-name', c.name)
+    if (c.isPrimaryKey) name.prepend(el('span', 'name-card-badge pk', 'PK'))
+    else if (c.references) name.prepend(el('span', 'name-card-badge fk', 'FK'))
+    row.append(name, el('span', 'name-card-type', `${c.dataType}${c.nullable ? '' : ' not null'}`))
+    if (c.references) row.title = `→ ${c.references.schema}.${c.references.name}.${c.references.column}`
+    list.append(row)
+  }
+  card.append(list)
+  const more = details.columns.length - shown.length
+  card.append(el('div', 'name-card-foot', `${more > 0 ? `and ${more} more · ` : ''}Ctrl+click to open`))
+  return card
+}
+
+function routineCard(routine: RoutineRef): HTMLElement {
+  const card = el('div', 'name-card')
+  const head = el('div', 'name-card-head')
+  head.append(el('span', 'name-card-schema', `${routine.schema}.`), el('strong', '', routine.name), el('span', 'name-card-facts', ROUTINE_LABELS[routine.kind].singular))
+  card.append(head, el('div', 'name-card-foot', 'Ctrl+click to open its source'))
+  return card
 }

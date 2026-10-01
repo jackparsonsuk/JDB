@@ -18,6 +18,8 @@ interface Props {
   cross?: CrossLinkProps
   /** Opens the record explorer for this row; omitted when the table has no primary key. */
   onExplore?(): void
+  /** Opens the record explorer watching this row for changes; omitted when the table has no primary key. */
+  onWatch?(): void
   /** Shown on lookup columns whose lookup panel was closed, to open it again. */
   onShowLookup?(): void
   onClose?(): void
@@ -46,7 +48,7 @@ function prettyJson(value: CellValue): string | null {
   }
 }
 
-export function RowInspector({ kind, table, columns, row, columnInfo, referencedBy, connectionId, cross, onExplore, onShowLookup, onClose }: Props) {
+export function RowInspector({ kind, table, columns, row, columnInfo, referencedBy, connectionId, cross, onExplore, onWatch, onShowLookup, onClose }: Props) {
   // Dates and numbers as Settings shows them in the grid; a NULL still says so here, even when the grid leaves it blank.
   const { dateFormat, hideFractions, localTime, nullText, thousands } = useAppearance()
   const inspectorFormat: CellFormat = { dateFormat, hideFractions, localTime, nullText: nullText === 'blank' ? undefined : nullText, thousands }
@@ -74,6 +76,7 @@ export function RowInspector({ kind, table, columns, row, columnInfo, referenced
         <span>Row details</span>
         <span className="grow" />
         {onShowLookup && <button className="ghost small" onClick={onShowLookup} title="List the values this column looks up, with their labels">Lookup</button>}
+        {onWatch && <button className="ghost small" onClick={onWatch} title="Open this row in the explorer and list what changes in it, read again every few seconds">Watch ◎</button>}
         {onExplore && <button className="ghost small" onClick={onExplore} title="See everything linked to this record (double-click a row)">Explore ⤢</button>}
         {onClose && <button className="icon" onClick={onClose} title="Close (Esc)">✕</button>}
       </header>

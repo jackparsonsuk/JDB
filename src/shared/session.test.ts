@@ -40,6 +40,14 @@ describe('parseSession', () => {
     expect(s?.tabs).toEqual([{ kind: 'routine', pane: 0, connectionId: 'a', routine: { schema: 'dbo', name: 'SaveJob', kind: 'procedure' } }])
   })
 
+  it('keeps search tabs with their value', () => {
+    const s = parseSession({ tabs: [{ kind: 'search', pane: 0, connectionId: 'a', value: 'x@example.com' }, { kind: 'search', pane: 1, connectionId: 'b' }], active: [0, 1], focused: 0 }, conns)
+    expect(s?.tabs).toEqual([
+      { kind: 'search', pane: 0, connectionId: 'a', value: 'x@example.com' },
+      { kind: 'search', pane: 1, connectionId: 'b', value: '' }
+    ])
+  })
+
   it('drops tabs for deleted connections and re-points the active index', () => {
     const s = parseSession({
       tabs: [

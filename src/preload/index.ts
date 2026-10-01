@@ -44,6 +44,7 @@ const api: Api = {
   exportTable: (id, kind, request) => call('export:table', id, kind, request),
   showExported: (path) => call('export:show', path),
   countRelated: (id, requests) => call('db:countRelated', id, requests),
+  planValueSearch: (id, value) => call('db:planValueSearch', id, value),
   listLinks: () => call('links:list'),
   listLookups: () => call('lookups:list'),
   saveLookup: (link) => call('lookups:save', link),

@@ -63,6 +63,8 @@ function parseTab(value: unknown): SavedTab | null {
         ? { kind: 'routine', pane, connectionId, routine: { ...ref, kind } }
         : null
     }
+    case 'search':
+      return { kind: 'search', pane, connectionId, value: typeof value.value === 'string' ? value.value : '' }
     default:
       return null
   }

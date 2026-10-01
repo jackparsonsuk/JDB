@@ -57,6 +57,7 @@ function setDragImage(event: DragEvent, label: string): void {
 export function targetLabel(target: OpenTarget): string {
   if (target.kind === 'design') return `${target.table.name} design`
   if (target.kind === 'routine') return target.routine.name
+  if (target.kind === 'search') return `Find ${target.value}`
   const where = target.kind === 'table' ? target.filters : target.key
   const values = where.map((f) => f.value).filter((v) => v !== undefined).join(' · ')
   return values ? `${target.table.name} ${values}` : target.table.name

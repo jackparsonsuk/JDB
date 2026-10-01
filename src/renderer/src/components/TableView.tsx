@@ -190,10 +190,10 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
     return [l.from.column, { title: `Open in ${target?.name}: ${l.to.table.name} where ${l.to.column} = this value`, env: target?.env ?? 'local' }]
   })), [outgoing, connection])
 
-  const explore = (index: number): void => {
+  const explore = (index: number, watch?: boolean): void => {
     const r = visibleRows[index]
     const key = details && result && r ? recordKey(details, result.columns, r) : null
-    if (key) openRecord(tab.connectionId, tab.table, key, tab.pane)
+    if (key) openRecord(tab.connectionId, tab.table, key, tab.pane, watch)
   }
   const canExplore = !!details?.columns.some((c) => c.isPrimaryKey)
 
@@ -493,6 +493,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
 
       <div className="view-body">
         <DataGrid
+          onFindValue={(value) => open({ kind: 'search', connectionId: tab.connectionId, value })}
           loadingLabel={loading ? loadingLabel() : undefined}
           columns={columnNames}
           rows={edits.rows}
@@ -554,6 +555,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
             connectionId={tab.connectionId}
             cross={{ outgoing, incoming, connection }}
             onExplore={canExplore && selection.active !== null ? () => explore(selection.active!) : undefined}
+            onWatch={canExplore && selection.active !== null ? () => explore(selection.active!, true) : undefined}
             onClose={() => setSelection(emptySelection)}
           />
         )}

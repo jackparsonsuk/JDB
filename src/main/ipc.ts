@@ -5,7 +5,7 @@ import type { CellValue, ColumnFilter, ConnectionConfig, DbKind, TableExportRequ
 import * as db from './db'
 import * as store from './store'
 import { discoverLinks, verifyLink } from './links'
-import { countRelated } from './explore'
+import { countRelated, planValueSearch } from './explore'
 import { signOutEntra } from './db/entra'
 import { exportRows, exportTable, showExported } from './export'
 import { exportConnections, importConnections } from './collections'
@@ -74,6 +74,7 @@ export function registerIpc(): void {
   handle('export:show', (path: string) => showExported(path))
 
   handle('db:countRelated', (id: string, requests: RelatedCountRequest[]) => countRelated(id, requests))
+  handle('db:planValueSearch', (id: string, value: string) => planValueSearch(id, value))
   handle('links:list', () => store.listLinks())
   handle('lookups:list', () => store.listLookups())
   handle('lookups:save', (link: LookupLink) => store.saveLookup(link))

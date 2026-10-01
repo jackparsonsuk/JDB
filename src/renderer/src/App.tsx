@@ -9,6 +9,7 @@ import { QueryView } from './components/QueryView'
 import { RecordView } from './components/RecordView'
 import { TableDesigner } from './components/TableDesigner'
 import { RoutineView } from './components/RoutineView'
+import { SearchView } from './components/SearchView'
 import { ConnectionDialog } from './components/ConnectionDialog'
 import { CommandPalette } from './components/CommandPalette'
 import { toast, ToastHost } from './components/Toast'
@@ -213,6 +214,7 @@ export function App() {
               {mounted && tab.kind === 'record' && <RecordView tab={tab} />}
               {mounted && tab.kind === 'design' && <TableDesigner tab={tab} />}
               {mounted && tab.kind === 'routine' && <RoutineView tab={tab} />}
+              {mounted && tab.kind === 'search' && <SearchView tab={tab} />}
             </div>
           )
         })}
@@ -327,7 +329,7 @@ function PaneHead({ pane, split }: { pane: PaneId; split: boolean }) {
               }}
               title={`${conn?.name ?? ''} · ${tabTitle(tab)}${tab.pinned ? ' (pinned)' : ''}\nDrag to the other side to split · right-click for more`}
             >
-              <span className="tab-icon">{tab.kind === 'table' ? '▦' : tab.kind === 'record' ? '◉' : tab.kind === 'design' ? '⚙' : tab.kind === 'routine' ? 'ƒ' : '⌨'}</span>
+              <span className="tab-icon">{tab.kind === 'table' ? '▦' : tab.kind === 'record' ? '◉' : tab.kind === 'design' ? '⚙' : tab.kind === 'routine' ? 'ƒ' : tab.kind === 'search' ? '⌕' : '⌨'}</span>
               <span className="tab-title">{tabTitle(tab)}</span>
               {unsavedTabs.has(tab.id) && <span className="tab-unsaved" title="Unsaved changes to this saved query (Ctrl+S saves)" />}
               <span className="tab-conn">{conn?.name}</span>
@@ -472,6 +474,7 @@ function tabTitle(tab: Tab): string {
   if (tab.kind === 'record') return `${tab.table.name} ${tab.key.map((k) => k.value).join('·')}`
   if (tab.kind === 'design') return `${tab.table.name} (design)`
   if (tab.kind === 'routine') return tab.routine.name
+  if (tab.kind === 'search') return tab.value ? `Find ${tab.value.length > 14 ? `${tab.value.slice(0, 13)}…` : tab.value}` : 'Find value'
   const filter = tab.initialFilters[0]
   return filter ? `${tab.table.name} (${filter.column}=${filter.value ?? ''})` : tab.table.name
 }

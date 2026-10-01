@@ -6,6 +6,7 @@ import type { ImportSummary } from '../shared/collection'
 import type { Appearance } from '../shared/appearance'
 import type { EnvironmentDef } from '../shared/environments'
 import type { LookupLink } from '../shared/lookups'
+import type { SearchPlan } from '../shared/valueSearch'
 
 export interface Api {
   listConnections(): Promise<ConnectionConfig[]>
@@ -66,6 +67,8 @@ export interface Api {
   /** Opens Explorer with the exported file selected. */
   showExported(path: string): Promise<void>
   countRelated(connectionId: string, requests: RelatedCountRequest[]): Promise<RelatedCount[]>
+  /** Which columns could hold a value (from its shape and the indexes); null for an empty value. Run it with countRelated. */
+  planValueSearch(connectionId: string, value: string): Promise<SearchPlan | null>
   listLinks(): Promise<CrossLink[]>
   /** Lookups set up by hand: which table a column's values are keys into, and what to show for them. */
   listLookups(): Promise<LookupLink[]>

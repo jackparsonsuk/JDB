@@ -75,6 +75,8 @@ interface Props {
   crossLinks?: Map<string, { title: string; env: string }>
   crossLinkTarget?(column: string, value: CellValue): OpenTarget | undefined
   onFilter?(column: string, op: FilterOp, value?: string): void
+  /** Looks for a cell's value in every table of the connection (Find value). */
+  onFindValue?(value: string): void
   copyTarget?: { kind: DbKind; table?: TableRef }
   /** Double-clicking a row, e.g. to open the record explorer. */
   onRowDoubleClick?(index: number): void
@@ -705,6 +707,11 @@ function Grid(props: Props) {
           <button onClick={() => { window.api.copy(menuValue === null ? '' : String(menuValue)); toast('Copied value'); setMenu(null) }}>
             Copy value
           </button>
+          {props.onFindValue && menuValue !== null && String(menuValue).trim() !== '' && (
+            <button onClick={() => { props.onFindValue?.(String(menuValue)); setMenu(null) }} title="Look for this value in every table of the connection">
+              Find this value everywhere
+            </button>
+          )}
           <div className="menu-sep" />
           <div className="menu-label">Copy {menuRows.length} row{menuRows.length === 1 ? '' : 's'} as</div>
           {COPY_FORMATS.map(({ format, label }) => (

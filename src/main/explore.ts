@@ -1,4 +1,5 @@
 import type { RelatedCount, RelatedCountRequest } from '@shared/types'
+import { searchPlan, type SearchPlan } from '@shared/valueSearch'
 import * as db from './db'
 import { indexKey, TimeoutError } from './db/driver'
 
@@ -51,4 +52,15 @@ async function countOne(
     if (error instanceof TimeoutError) return { status: 'timeout' }
     return { status: 'error', message: (error as Error).message }
   }
+}
+
+/**
+ * Which columns a search for `value` would look in, from the cached schema and its indexes. Only
+ * plans: the renderer runs the lookups through countRelated, a few at a time, so it can stop.
+ */
+export async function planValueSearch(connectionId: string, value: string): Promise<SearchPlan | null> {
+  const schema = await db.cachedSchema(connectionId)
+  const tables = schema.filter((t) => t.type === 'table').map((t) => ({ schema: t.schema, name: t.name }))
+  const indexed = await db.indexedColumns(connectionId, tables)
+  return searchPlan(value, schema, (t, c) => indexed.has(indexKey(t.schema, t.name, c)))
 }
