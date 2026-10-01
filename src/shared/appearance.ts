@@ -12,7 +12,7 @@ export interface Appearance {
   accent?: string
   /** Colours for the built-in environments' dots, tabs and banners (custom ones carry their own). */
   env?: Partial<Record<BuiltinEnv, string>>
-  /** A font family name for the interface; none uses Segoe UI. */
+  /** A font family name for the interface; none uses the operating system's own. */
   uiFont?: string
   /** Scales the whole interface, grid included. */
   uiScale?: UiScale
@@ -149,7 +149,7 @@ export function appearanceVars(a: Appearance, dark: boolean): Record<string, str
     vars['--selected'] = `color-mix(in srgb, ${a.accent} ${dark ? 22 : 14}%, transparent)`
   }
   for (const [tag, color] of Object.entries(a.env ?? {})) vars[`--env-${tag}`] = color
-  if (a.uiFont) vars['--sans'] = `${quoteFont(a.uiFont)}, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif`
+  if (a.uiFont) vars['--sans'] = `${quoteFont(a.uiFont)}, system-ui, -apple-system, sans-serif`
   if (a.codeFont) vars['--mono'] = `${quoteFont(a.codeFont)}, 'Cascadia Mono', Consolas, monospace`
   const size = a.codeSize ?? CODE_SIZES.default
   vars['--code-size'] = `${size}px`

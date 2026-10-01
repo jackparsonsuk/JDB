@@ -174,8 +174,8 @@ function ThemeThumb({ theme, accent }: { theme: ThemeSetting; accent?: string })
 
 function FontSection({ a }: { a: Appearance }) {
   // Measured once: whether each listed font is installed on this PC.
-  // The defaults are the first entry already ("Segoe UI (default)"), so they aren't listed again.
-  const uiFonts = useMemo(() => UI_FONTS.filter((f) => !f.startsWith('Segoe UI') && isInstalled(f)), [])
+  // The interface default is the system font (listed first), so every named one is a choice of its own.
+  const uiFonts = useMemo(() => UI_FONTS.filter((f) => isInstalled(f)), [])
   const codeFonts = useMemo(() => CODE_FONTS.filter((f) => f.name !== 'Cascadia Mono' && isInstalled(f.name)), [])
   const codeFont = CODE_FONTS.find((f) => f.name === (a.codeFont ?? 'Cascadia Mono'))
   return (
@@ -190,7 +190,7 @@ function FontSection({ a }: { a: Appearance }) {
         </div>
       </Group>
       <Group title="Interface font" onReset={a.uiFont ? () => updateAppearance({ uiFont: undefined }) : undefined}>
-        <FontPicker value={a.uiFont} fallback="Segoe UI (default)" options={uiFonts} onChange={(uiFont) => updateAppearance({ uiFont })} />
+        <FontPicker value={a.uiFont} fallback="System default" options={uiFonts} onChange={(uiFont) => updateAppearance({ uiFont })} />
       </Group>
       <Group title="Code font" note="The SQL editor, routine source and the grid." onReset={a.codeFont || a.codeSize || a.ligatures ? () => resetAppearance(['codeFont', 'codeSize', 'ligatures']) : undefined}>
         <FontPicker value={a.codeFont} fallback="Cascadia Mono (default)" options={codeFonts.map((f) => f.name)} onChange={(codeFont) => updateAppearance({ codeFont })} />

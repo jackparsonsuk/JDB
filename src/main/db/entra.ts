@@ -49,7 +49,7 @@ function pickAccount(accounts: AccountInfo[], tenantId: string | undefined): Acc
 }
 
 const PAGE = (title: string, body: string): string =>
-  `<!doctype html><title>${APP_NAME}</title><body style="font:15px 'Segoe UI',sans-serif;padding:40px"><h2>${title}</h2><p>${body}</p></body>`
+  `<!doctype html><title>${APP_NAME}</title><body style="font:15px system-ui,-apple-system,'Segoe UI',sans-serif;padding:40px"><h2>${title}</h2><p>${body}</p></body>`
 
 export async function getEntraToken(scope: string, tenantId: string | undefined): Promise<AccessToken> {
   const pca = client(tenantId)

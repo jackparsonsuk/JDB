@@ -3,6 +3,7 @@
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
 ## 1.7.0
+- The interface now uses your operating system's own font by default (Segoe UI on Windows). Settings → Fonts & size calls it **System default**, and Segoe UI Variable is now one of the fonts you can pick.
 - **Striped rows.** Alternate rows in tables and query results are lightly shaded, so a wide row is easier to follow across. Turn it off in Settings → Grid & values → Rows.
 - **Check for updates in Settings.** Settings → About & updates shows the version you're running, checks for an update on the spot, and offers **Restart to update** once one has downloaded.
 - **Labels beside lookup keys.** A column like OrderStatusId now shows its label ("Draft") beside each key, in tables and in query results, while the key itself stays exactly as it was: copying, filtering and editing still use it. Lookup columns widen to fit both. Only the keys on screen are looked up, once each. Turn it off in Settings → Grid & values.

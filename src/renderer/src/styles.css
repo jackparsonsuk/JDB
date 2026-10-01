@@ -18,7 +18,8 @@
   --env-test: #d29922;
   --env-prod: #f85149;
   --mono: 'Cascadia Mono', 'Cascadia Code', Consolas, monospace;
-  --sans: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  /* The operating system's own interface font: Segoe UI on Windows, San Francisco on macOS, the desktop font on Linux. */
+  --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
   color-scheme: dark;
 }
 
