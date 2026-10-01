@@ -6,6 +6,9 @@ What changed in each JDB release, newest first. JDB shows these notes after it u
 - **More rows per page.** Tables can show 1,000 rows a page, or pick **Custom…** and type your own number (up to 10,000). The size you pick is remembered for the next table you open.
 - **New query from the sidebar.** Each connection has a ⌨ button that opens a query tab on it, and right-clicking a connection gives a menu with New query, links, reconnect and edit.
 - **Run buttons in the SQL editor.** A green ▶ sits beside the first line of each statement; click it to select and run just that statement.
+- The ▶ is amber for a statement that changes data (UPDATE, DELETE, INSERT…), and a 🔒 on a read-only connection, so you can see a write before you run it.
+- After a statement runs, a note at the end of it says how it went: ✓ with the row count and time, or ✕ with the error (click it to go to where it failed). Edit the statement and the note goes.
+- While a statement runs its ▶ becomes a spinner; click it to stop the query.
 - **Columns first after `alias.`** Typing `o.` in the SQL editor now lists only that table's columns, without keywords like DESC mixed in.
 
 ## 1.4.0

@@ -34,7 +34,7 @@ import { useClickableNames } from '../lib/clickableNames'
 import { findParams, type QueryParam } from '@shared/params'
 import { explainError, type ErrorHelp } from '@shared/sqlErrors'
 import { errorMarks, setErrorMark } from '../lib/errorMark'
-import { runGutter } from '../lib/runGutter'
+import { runGutter, runGutterConfig, setRunStatus, type RunStatus } from '../lib/runGutter'
 import { ParamDialog } from './ParamDialog'
 
 /** Where SQL being run came from in the editor, so an error can be pointed at: its text (before parameters are filled in) and offset. */
@@ -190,12 +190,12 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   }, [conn?.kind, conn?.id, tableList, model, savedQueries])
 
   /** Points the editor at a failed run's error, when the editor still holds the SQL that ran. */
-  const showError = useCallback((message: string, statement: string, origin: Origin | undefined, serverLine?: number) => {
+  const showError = useCallback((message: string, statement: string, origin: Origin | undefined, serverLine?: number): number | undefined => {
     const help = explainError(message, origin?.source ?? statement, model, serverLine)
     const view = viewRef.current
     if (!view || !origin || !help.line || view.state.sliceDoc(origin.from, origin.from + origin.source.length) !== origin.source) {
       setRunError({ message, help })
-      return
+      return undefined
     }
     const firstLine = view.state.doc.lineAt(origin.from).number
     const mark = {
@@ -204,6 +204,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     }
     view.dispatch({ effects: setErrorMark.of(mark) })
     setRunError({ message, help, mark, doc: view.state.doc.toString() })
+    return mark.from ?? view.state.doc.line(Math.min(mark.line, view.state.doc.lines)).from
   }, [model])
 
   /**
@@ -226,7 +227,12 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
       return
     }
 
-    const { id } = startRun()
+    const { id, signal } = startRun()
+    // The gutter notes how a run from the editor went, at the statement it ran.
+    const note = (status: RunStatus): void => {
+      if (origin) viewRef.current?.dispatch({ effects: setRunStatus.of({ source: origin.source, from: origin.from, status }) })
+    }
+    note({ kind: 'running' })
     let transactionId = txn.idRef.current
     setChanges(null)
     try {
@@ -235,6 +241,8 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
       const before = keyword === 'UPDATE' && !conn.readOnly ? await readBefore(conn, model, statement, transactionId ?? undefined) : null
       const r = await window.api.runQuery(tab.connectionId, statement, id, transactionId ?? undefined)
       const found = before && (isBefore(before) ? await readAfter(conn, before, transactionId ?? undefined) : before)
+      const last = r.resultSets[r.resultSets.length - 1]
+      note({ kind: 'done', rows: last?.rows.length, affected: r.rowsAffected.reduce((a, b) => a + b, 0), durationMs: r.durationMs })
       setResult(r)
       setChanges(found)
       setShowChanges(!!found && r.resultSets.length === 0)
@@ -249,7 +257,8 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
         txn.record({ sql: statement, write: !!keyword, rowsAffected: 0, durationMs: 0, error: message })
         if (!(await txn.stillOpen())) message += '\n\nThe server rolled back the transaction, so none of its changes were kept.'
       }
-      showError(message, statement, origin, (e as { sqlLine?: number }).sqlLine)
+      const at = showError(message, statement, origin, (e as { sqlLine?: number }).sqlLine)
+      note(signal.aborted ? { kind: 'cancelled' } : { kind: 'error', message, at })
       setResult(null)
     } finally {
       runRef.current = null
@@ -357,7 +366,8 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   // The gutter is built once, so it calls whichever runSql is current.
   const runSqlRef = useRef(runSql)
   runSqlRef.current = runSql
-  const gutter = useMemo(() => runGutter((sqlText, from) => runSqlRef.current(sqlText, from)), [])
+  const gutter = useMemo(() => runGutter((sqlText, from) => runSqlRef.current(sqlText, from), cancel), [cancel])
+  const gutterConfig = useMemo(() => runGutterConfig.of({ readOnly: !!conn?.readOnly }), [conn?.readOnly])
 
   /** Shift+Alt+F: lays the whole editor out, as one change so Ctrl+Z puts it back. */
   const format = useCallback(() => {
@@ -501,7 +511,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
               value={text}
               height="100%"
               theme={scheme}
-              extensions={[...language, ...editorPrefs, errorMarks, names, gutter, runKeymap]}
+              extensions={[...language, ...editorPrefs, errorMarks, names, gutter, gutterConfig, runKeymap]}
               onChange={setText}
               onCreateEditor={(view) => {
                 viewRef.current = view
