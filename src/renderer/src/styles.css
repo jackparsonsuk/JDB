@@ -434,6 +434,11 @@ button.ghost.on.prod-edit { background: color-mix(in srgb, var(--env-prod) 16%, 
 .save-dialog { width: 760px; }
 .save-dialog h2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sql-preview { margin: 10px 0 0; padding: 10px 12px; max-height: 45vh; overflow: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font: 12px var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sql-preview .cm-editor { background: transparent; font-size: 12px; }
+.sql-preview .cm-editor.cm-focused { outline: none; }
+.sql-preview .cm-scroller { font-family: var(--mono); line-height: 1.5; }
+.sql-preview .cm-content { padding: 0; }
+.sql-preview .cm-line { padding: 0; overflow-wrap: anywhere; }
 button.primary.prod { background: var(--env-prod); border-color: var(--env-prod); }
 
 .fk-cell { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
