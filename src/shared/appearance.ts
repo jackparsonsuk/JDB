@@ -38,6 +38,8 @@ export interface Appearance {
   nullText?: NullText
   /** Thousands separators in numbers, except columns that look like IDs. */
   thousands?: boolean
+  /** Leave out the label shown beside a lookup key ("Draft" beside an OrderStatusId). */
+  hideLookupLabels?: boolean
 
   // The SQL editor.
   /** What Ctrl+Enter runs; none runs the selection or the statement at the cursor. */
@@ -121,7 +123,7 @@ export function parseAppearance(raw: unknown): Appearance {
   if (DATE_FORMATS.includes(r.dateFormat as DateFormat)) out.dateFormat = r.dateFormat as DateFormat
   if (NULL_TEXTS.includes(r.nullText as NullText)) out.nullText = r.nullText as NullText
   if (r.ctrlEnter === 'all') out.ctrlEnter = 'all'
-  for (const key of ['hideFractions', 'localTime', 'thousands', 'lowerKeywords', 'hideRunGutter', 'hideRunNotes', 'completeOnRequest', 'freshStart'] as const) {
+  for (const key of ['hideFractions', 'localTime', 'thousands', 'lowerKeywords', 'hideRunGutter', 'hideRunNotes', 'completeOnRequest', 'freshStart', 'hideLookupLabels'] as const) {
     if (r[key] === true) out[key] = true
   }
   if (QUERY_TIMEOUTS.includes(r.queryTimeout as number)) out.queryTimeout = r.queryTimeout as number

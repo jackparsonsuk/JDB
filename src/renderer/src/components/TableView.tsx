@@ -14,7 +14,9 @@ import { SaveChangesDialog } from './SaveChangesDialog'
 import { ColumnFinder } from './ColumnFinder'
 import { isNumericType } from '@shared/edits'
 import { displayValue, MAX_PAGE_SIZE } from '@shared/rows'
-import { useColumnLookup } from '../lib/lookups'
+import { useColumnLookup, useColumnLookups } from '../lib/lookups'
+import { useLookupLabels } from '../lib/lookupLabels'
+import { useAppearance } from '../lib/appearance'
 import { LookupPanel } from './LookupPanel'
 import { LookupDialog } from './LookupDialog'
 import { UpdateChangesView } from './UpdateChangesView'
@@ -229,6 +231,17 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
 
   const columnNames = useMemo(() => result?.columns ?? details?.columns.map((c) => c.name) ?? [], [result, details])
   const edits = useTableEdits(conn?.kind ?? 'mssql', tab.table, columnNames, details, visibleRows)
+  // Labels beside lookup keys (Settings can turn them off), for the rows on this page.
+  const { hideLookupLabels } = useAppearance()
+  const lookupSources = useMemo(
+    () => columnNames.flatMap((column) => {
+      const info = columnInfo.get(column)
+      return info ? [{ column, table: tab.table, info }] : []
+    }),
+    [columnNames, columnInfo, tab.table]
+  )
+  const columnLookups = useColumnLookups(tab.connectionId, lookupSources, hasTable)
+  const cellLabels = useLookupLabels(conn, columnLookups, columnNames, edits.rows, !hideLookupLabels)
   useCloseWarning(tab.id, edits.count ? `${edits.count} unsaved change${edits.count === 1 ? '' : 's'} to ${tab.table.name} will be lost.` : null)
   const isView = tables[tab.connectionId]?.tables.find((t) => t.schema === tab.table.schema && t.name === tab.table.name)?.type === 'view'
   /** Why the grid can't be edited, or null when it can. */
@@ -503,6 +516,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
           focusColumn={focusColumn}
           onActiveColumnChange={setActiveColumn}
           columnMenu={columnMenu}
+          cellLabels={cellLabels}
         />
         {showInspector && lookup && !preferRow && activeColumn && columnInfo.get(activeColumn) && (() => {
           const ci = columnNames.indexOf(activeColumn)

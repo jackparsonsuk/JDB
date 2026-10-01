@@ -23,7 +23,7 @@ const SECTIONS: { id: Section; label: string; icon: string }[] = [
 /** Every stored setting, for Reset everything. */
 const ALL_KEYS: (keyof Appearance)[] = [
   'accent', 'env', 'uiFont', 'uiScale', 'codeFont', 'codeSize', 'ligatures', 'density', 'wordWrap', 'tabSize',
-  'dateFormat', 'hideFractions', 'localTime', 'nullText', 'thousands',
+  'dateFormat', 'hideFractions', 'localTime', 'nullText', 'thousands', 'hideLookupLabels',
   'ctrlEnter', 'lowerKeywords', 'hideRunGutter', 'hideRunNotes', 'completeOnRequest',
   'queryTimeout', 'maxRows', 'freshStart', 'defaultConnection'
 ]
@@ -294,6 +294,9 @@ function GridSection({ a }: { a: Appearance }) {
           </div>
         </div>
         <Toggle on={!!a.thousands} onChange={(on) => updateAppearance({ thousands: on || undefined })} label="Thousands separators" note="(1,227,695; not in columns ending Id, No, Code, Year…)" />
+      </Group>
+      <Group title="Lookups" onReset={a.hideLookupLabels ? () => updateAppearance({ hideLookupLabels: undefined }) : undefined}>
+        <Toggle on={!a.hideLookupLabels} onChange={(on) => updateAppearance({ hideLookupLabels: on ? undefined : true })} label="Show labels beside lookup keys" note="(e.g. Draft beside an OrderStatusId; the key itself is unchanged)" />
       </Group>
       <p className="settings-note about">{APP_NAME} keeps these settings on this PC only; they aren't included when you share connections.</p>
     </>

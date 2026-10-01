@@ -2,6 +2,9 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 1.7.0
+- **Labels beside lookup keys.** A column like OrderStatusId now shows its label ("Draft") beside each key, in tables and in query results, while the key itself stays exactly as it was: copying, filtering and editing still use it. Lookup columns widen to fit both. Only the keys on screen are looked up, once each. Turn it off in Settings → Grid & values.
+
 ## 1.6.0
 - **New query for a database or schema.** Each database / schema folder in the sidebar has a ⌨ button that opens a query tab for it ("Query 3 · Support"). After FROM, JOIN, UPDATE or INTO, its tables are suggested first and written in full (`Support.TaskQueue`), so the query runs where you expect.
 - **Gruvbox theme.** A warm, retro dark theme in Settings → Theme & colours (or Ctrl+K, "Theme: Gruvbox"), with Gruvbox colours in the SQL editor and routine source too.

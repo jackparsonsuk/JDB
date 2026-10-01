@@ -5,7 +5,7 @@ import { indentUnit } from '@codemirror/language'
 import { useAppearance } from '../lib/appearance'
 import { MSSQL, MySQL } from '@codemirror/lang-sql'
 import { acceptCompletion, autocompletion } from '@codemirror/autocomplete'
-import type { HistoryEntry, QueryResult } from '@shared/types'
+import type { CellValue, HistoryEntry, QueryResult, TableRef } from '@shared/types'
 import { findWriteKeyword } from '@shared/sqlGuard'
 import { useAppState, useCloseWarning, type Tab } from '../state'
 import { formatCount, formatDuration } from '../lib/format'
@@ -39,6 +39,8 @@ import { ParamDialog } from './ParamDialog'
 import { LookupPanel } from './LookupPanel'
 import { LookupDialog } from './LookupDialog'
 import { sqlPerResult, useResultLookups } from '../lib/resultLookups'
+import { useColumnLookups } from '../lib/lookups'
+import { useLookupLabels } from '../lib/lookupLabels'
 import type { ColumnSource } from '@shared/sqlComplete'
 
 /** Where SQL being run came from in the editor, so an error can be pointed at: its text (before parameters are filled in) and offset. */
@@ -58,6 +60,7 @@ interface RunError {
 
 const emptySelection: Selection = { rows: new Set(), active: null }
 const NO_COLUMNS: string[] = []
+const NO_ROWS: CellValue[][] = []
 
 /** `active`: the tab is showing in its pane; `focused`: and that pane has the keyboard. */
 export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 'query' }>; active: boolean; focused: boolean }) {
@@ -65,7 +68,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   const conn = connection(tab.connectionId)
   const editorTheme = useEditorTheme()
   const [text, setText] = useState(tab.initialSql)
-  const { wordWrap, tabSize, ctrlEnter, lowerKeywords, hideRunGutter, hideRunNotes, completeOnRequest, queryTimeout } = useAppearance()
+  const { wordWrap, tabSize, ctrlEnter, lowerKeywords, hideRunGutter, hideRunNotes, completeOnRequest, queryTimeout, hideLookupLabels } = useAppearance()
   /** Word wrap (on unless switched off) and tab size from Settings; unset tab size keeps CodeMirror's default. */
   const editorPrefs = useMemo<Extension[]>(() => [
     ...(wordWrap !== false ? [EditorView.lineWrapping] : []),
@@ -455,6 +458,22 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
 
   const set = result?.resultSets[resultIndex]
   const results = useResultLookups(tab.connectionId, model, resultSql?.[resultIndex], set?.columns ?? NO_COLUMNS, activeColumn, tableList)
+  // Labels beside lookup keys, for result columns read straight from a table column.
+  const lookupSources = useMemo(() => {
+    const seen = new Set<string>()
+    return (set?.columns ?? NO_COLUMNS).flatMap((column, i) => {
+      const source = results.sources[i]
+      if (!source || seen.has(column)) return []
+      seen.add(column)
+      return [{ column, table: { schema: source.table.info.schema, name: source.table.info.name }, info: source.column }]
+    })
+  }, [set, results.sources])
+  const resultHasTable = useCallback(
+    (t: TableRef) => !!tableList?.some((x) => x.schema.toLowerCase() === t.schema.toLowerCase() && x.name.toLowerCase() === t.name.toLowerCase()),
+    [tableList]
+  )
+  const columnLookups = useColumnLookups(tab.connectionId, lookupSources, resultHasTable)
+  const cellLabels = useLookupLabels(conn, columnLookups, set?.columns ?? NO_COLUMNS, set?.rows ?? NO_ROWS, !hideLookupLabels)
   const columnMenu = useCallback((column: string) => {
     const source = set ? results.sources[set.columns.indexOf(column)] : undefined
     return source ? [{ label: 'Look up values in another table…', run: () => setLookupDialog(source) }] : []
@@ -631,6 +650,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
                     copyTarget={{ kind: conn.kind }}
                     onActiveColumnChange={setActiveColumn}
                     columnMenu={columnMenu}
+                    cellLabels={cellLabels}
                   />
                   {showLookup && activeColumn !== null && (
                     <LookupPanel

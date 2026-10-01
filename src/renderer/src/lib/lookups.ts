@@ -86,6 +86,46 @@ export function useColumnLookup(connectionId: string, table: TableRef, column: C
   return result
 }
 
+/** A grid column whose values may be lookup keys: the table column it shows. */
+export interface LookupSource {
+  /** The grid column's name. */
+  column: string
+  table: TableRef
+  info: ColumnInfo
+}
+
+/**
+ * Lookups for several grid columns at once (for labels beside their keys), by grid column name.
+ * Columns without one are left out; the map fills in as target tables are described.
+ */
+export function useColumnLookups(connectionId: string, sources: LookupSource[], hasTable: (t: TableRef) => boolean): Map<string, ColumnLookup> {
+  const all = useLookupLinks()
+  const found = sources.flatMap((s) => {
+    const manual = findLookup(all, connectionId, s.table, s.info.name, hasTable)
+    const target = manual?.target ?? (s.info.references && { schema: s.info.references.schema, name: s.info.references.name })
+    return target ? [{ ...s, manual, target }] : []
+  })
+  const key = JSON.stringify(found.map((f) => [f.column, f.table, f.info.name, f.target, f.manual ?? null]))
+  const [result, setResult] = useState<Map<string, ColumnLookup>>(() => new Map())
+
+  useEffect(() => {
+    let live = true
+    setResult(new Map())
+    Promise.all(found.map((f) => describeCached(connectionId, f.target).then(
+      (d): [string, ColumnLookup] | null => {
+        const link = f.manual ?? lookupFromReference(connectionId, f.table, f.info, d.columns)
+        return link ? [f.column, { link, manual: !!f.manual, types: new Map(d.columns.map((c) => [c.name.toLowerCase(), c.dataType])), targetColumns: d.columns }] : null
+      },
+      () => null
+    ))).then((entries) => {
+      if (live) setResult(new Map(entries.filter((e): e is [string, ColumnLookup] => !!e)))
+    })
+    return () => { live = false }
+    // `key` stands in for `found`, which is a new array each render.
+  }, [connectionId, key])
+  return result
+}
+
 export type LookupList =
   | { status: 'loading' }
   | { status: 'error'; error: string }

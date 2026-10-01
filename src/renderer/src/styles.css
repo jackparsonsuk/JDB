@@ -468,7 +468,9 @@ button.ghost.on.prod-edit { background: color-mix(in srgb, var(--env-prod) 16%, 
 button.primary.prod { background: var(--env-prod); border-color: var(--env-prod); }
 
 .fk-cell { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
-.fk-value { overflow: hidden; text-overflow: ellipsis; }
+.fk-value { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+/* A lookup key's label, beside the key (which stays as it is). */
+.cell-label { flex-shrink: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; border-radius: 8px; font: 11px var(--sans); line-height: 16px; color: var(--text); background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); }
 .fk-jump { background: none; border: none; padding: 0 3px; color: var(--accent); opacity: 0.5; font-size: 12px; }
 tr:hover .fk-jump { opacity: 1; }
 .fk-jump:hover { background: var(--accent-soft); }
