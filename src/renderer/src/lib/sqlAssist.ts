@@ -3,7 +3,7 @@ import { LanguageSupport, syntaxTree } from '@codemirror/language'
 import { keywordCompletionSource, schemaCompletionSource, type SQLDialect, type SQLNamespace } from '@codemirror/lang-sql'
 import type { Model } from '@shared/nl/model'
 import type { TableInfo } from '@shared/types'
-import { columnOptions, defaultSchema, joinOptions, mentionedTables, resolveMentions, statementAt } from '@shared/sqlComplete'
+import { columnOptions, defaultSchema, joinOptions, mentionedTables, resolveMentions, schemaTableOptions, statementAt } from '@shared/sqlComplete'
 
 /**
  * The namespace lang-sql completes from: schema → table → columns. Before the full schema has loaded,
@@ -50,7 +50,12 @@ export function notAfterDot(source: CompletionSource): CompletionSource {
  * Completes what lang-sql's schema completion can't: bare column names from the tables the statement
  * uses (before any "alias." is typed), and whole join clauses that follow foreign keys after JOIN.
  */
-export function sqlAssist(model: Model): CompletionSource {
+export function sqlAssist(model: Model, schema?: string): CompletionSource {
+  // A tab started from a schema folder offers that schema's tables first, written in full. Not
+  // needed for the default schema, whose tables lang-sql already offers unqualified.
+  const fromSchema: Completion[] = schema && schema.toLowerCase() !== defaultSchema(model)?.toLowerCase()
+    ? schemaTableOptions(model, schema).map((o) => ({ label: o.label, apply: o.apply, detail: o.detail, type: 'class', boost: 20 }))
+    : []
   return (context) => {
     const node = syntaxTree(context.state).resolveInner(context.pos, -1)
     if (/String|Comment/.test(node.name)) return null
@@ -66,12 +71,12 @@ export function sqlAssist(model: Model): CompletionSource {
     if (/\bJOIN\s+$/i.test(before)) {
       const others = mentions.filter((m) => m.from + offset !== word.from)
       const options = joinOptions(model, resolveMentions(others, model))
-      return options.length
-        ? { from: word.from, options: options.map((o) => ({ label: o.label, detail: o.detail, type: 'class', boost: o.inferred ? 4 : 5 })) }
-        : null
+        .map((o): Completion => ({ label: o.label, detail: o.detail, type: 'class', boost: o.inferred ? 4 : 5 }))
+        .concat(fromSchema.map((o) => ({ ...o, boost: 3 })))
+      return options.length ? { from: word.from, options } : null
     }
-    // After FROM and friends a table name is wanted, which lang-sql already offers.
-    if (/\b(FROM|UPDATE|INTO|APPLY)\s+$/i.test(before)) return null
+    // After FROM and friends a table name is wanted, which lang-sql already offers (plus this tab's schema's).
+    if (/\b(FROM|UPDATE|INTO|APPLY)\s+$/i.test(before)) return fromSchema.length ? { from: word.from, options: fromSchema, validFor: /^[\w$#@]*$/ } : null
     if (!word.text && !context.explicit) return null
 
     const resolved = resolveMentions(mentions, model)

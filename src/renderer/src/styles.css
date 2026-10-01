@@ -878,6 +878,9 @@ html.slop ::selection { background: #ff4ecd; color: #fff; }
 .schema-head:hover:not(:disabled) { background: var(--bg-hover); }
 .schema-head .group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .schema-icon { color: var(--accent); font-size: 12px; }
+.schema-query { padding: 0 4px; border-radius: 4px; color: var(--text-dim); font-size: 12px; opacity: 0.6; }
+.schema-head:hover .schema-query { opacity: 1; }
+.schema-query:hover { color: var(--text); background: var(--bg-3); }
 .schema-body { padding-left: 12px; margin-left: 9px; border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
 /* Long routine names shrink with an ellipsis rather than pushing the sidebar sideways. */
 .routine-item { padding-left: 29px; min-width: 0; max-width: 100%; }

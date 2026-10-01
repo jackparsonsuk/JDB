@@ -377,6 +377,7 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
   // Grouped by database (MySQL) or schema (SQL Server) once there's more than one, like DBeaver's tree.
   const showSchema = new Set((state?.tables ?? []).map((t) => t.schema)).size > 1
   const schemaLabel = connection.kind === 'mysql' ? 'database' : 'schema'
+  const queryIn = (schema: string): void => openQuery(connection.id, '', schema)
 
   const tableItem = (t: TableInfo, withSchema: boolean): ReactNode => (
     <button
@@ -517,7 +518,7 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
                   connectionId={connection.id}
                   filter={filter}
                   inSource={inSource}
-                  schemas={{ open: openSchemas, onToggle: toggleSchema, label: schemaLabel }}
+                  schemas={{ open: openSchemas, onToggle: toggleSchema, label: schemaLabel, onQuery: queryIn }}
                 />
               )}
               <div className="tables" hidden={mode !== 'tables'}>
@@ -528,7 +529,7 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
                   </div>
                 )}
                 {showSchema ? (
-                  <SchemaGroups items={list} open={openSchemas} filtering={!!filter.trim()} onToggle={toggleSchema} label={schemaLabel}>
+                  <SchemaGroups items={list} open={openSchemas} filtering={!!filter.trim()} onToggle={toggleSchema} label={schemaLabel} onQuery={queryIn}>
                     {(group, schema) => (['table', 'view'] as const).map((type) => {
                       const items = group.filter((t) => t.type === type)
                       if (!items.length) return null
@@ -792,10 +793,12 @@ interface SchemaFolders {
   onToggle(schema: string): void
   /** "database" or "schema", for tooltips. */
   label: string
+  /** Starts a query tab for that database / schema. */
+  onQuery?(schema: string): void
 }
 
 /** Items in a collapsible folder per database / schema, alphabetically. A filter opens every folder with a match. */
-function SchemaGroups<T extends { schema: string }>({ items, open, filtering, onToggle, label, children }: SchemaFolders & {
+function SchemaGroups<T extends { schema: string }>({ items, open, filtering, onToggle, label, onQuery, children }: SchemaFolders & {
   items: T[]
   filtering: boolean
   children(group: T[], schema: string): ReactNode
@@ -819,6 +822,19 @@ function SchemaGroups<T extends { schema: string }>({ items, open, filtering, on
               <span className="schema-icon">⛁</span>
               <span className="group-name">{schema}</span>
               <span className="table-rows">{group.length.toLocaleString()}</span>
+              {onQuery && (
+                <span
+                  role="button"
+                  className="schema-query"
+                  title={`New query for ${schema}: its tables come first in suggestions, written with the ${label}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onQuery(schema)
+                  }}
+                >
+                  ⌨
+                </span>
+              )}
             </button>
             {isOpen && <div className="schema-body">{children(group, schema)}</div>}
           </div>

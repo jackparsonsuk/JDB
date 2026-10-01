@@ -17,6 +17,11 @@ export type Tab = (
       kind: 'query'; id: string; pane: PaneId; connectionId: string; title: string; initialSql: string
       /** The saved query this tab holds, if it was opened from one or saved as one. */
       savedId?: string
+      /**
+       * The database (MySQL) or schema (SQL Server) the tab was started in from its sidebar folder.
+       * Autocompletion offers its tables first, written in full; it doesn't change where unqualified names resolve.
+       */
+      schema?: string
       /** SQL to insert at the cursor (a saved query from the sidebar); `seq` changes when asked again. Not saved. */
       insert?: { sql: string; seq: number }
     }
@@ -78,7 +83,8 @@ interface AppState {
   /** Opens a reference in a pane (the focused one by default), re-using a matching open tab. */
   open(target: OpenTarget, pane?: PaneId): void
   openTable(connectionId: string, table: TableRef, filters?: ColumnFilter[], pane?: PaneId): void
-  openQuery(connectionId: string, sql?: string): void
+  /** `schema`: started from a database / schema folder in the sidebar, so its tables are offered first. */
+  openQuery(connectionId: string, sql?: string, schema?: string): void
   /** The user's own environments; the built-ins come from @shared/environments. */
   environments: EnvironmentDef[]
   saveEnvironments(environments: EnvironmentDef[]): Promise<void>
@@ -174,7 +180,7 @@ function savedContent(tab: Tab, memory: TabMemory | undefined): SavedTab {
   const { pane, connectionId } = tab
   switch (tab.kind) {
     case 'query':
-      return { kind: 'query', pane, connectionId, title: tab.title, sql: memory?.sql ?? tab.initialSql, ...(tab.savedId && { savedId: tab.savedId }) }
+      return { kind: 'query', pane, connectionId, title: tab.title, sql: memory?.sql ?? tab.initialSql, ...(tab.savedId && { savedId: tab.savedId }), ...(tab.schema && { schema: tab.schema }) }
     case 'table': {
       const sort = memory && 'sort' in memory ? memory.sort ?? undefined : tab.initialSort
       return { kind: 'table', pane, connectionId, table: tab.table, filters: memory?.filters ?? tab.initialFilters, ...(sort && { sort }) }
@@ -196,7 +202,7 @@ function savedTab(saved: SavedTab): Tab {
   const id = nextTabId()
   switch (saved.kind) {
     case 'query':
-      return { kind: 'query', id, pane: saved.pane, connectionId: saved.connectionId, title: saved.title, initialSql: saved.sql, ...(saved.savedId && { savedId: saved.savedId }) }
+      return { kind: 'query', id, pane: saved.pane, connectionId: saved.connectionId, title: saved.title, initialSql: saved.sql, ...(saved.savedId && { savedId: saved.savedId }), ...(saved.schema && { schema: saved.schema }) }
     case 'table':
       return { kind: 'table', id, pane: saved.pane, connectionId: saved.connectionId, table: saved.table, initialFilters: saved.filters, initialSort: saved.sort }
     case 'record':
@@ -286,7 +292,7 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
   const layoutRef = useRef(layout)
   layoutRef.current = layout
   // Carry on numbering after restored queries rather than repeating their titles.
-  const queryCounter = useRef(Math.max(0, ...layout.tabs.map((t) => (t.kind === 'query' && Number(/^Query (\d+)$/.exec(t.title)?.[1])) || 0)))
+  const queryCounter = useRef(Math.max(0, ...layout.tabs.map((t) => (t.kind === 'query' && Number(/^Query (\d+)(?: · .+)?$/.exec(t.title)?.[1])) || 0)))
 
   const memory = useRef(new Map<string, TabMemory>())
   const initialRatio = session?.ratio ?? 0.5
@@ -374,9 +380,9 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
   const openRecord = useCallback((connectionId: string, table: TableRef, key: ColumnFilter[], pane?: PaneId) =>
     open({ kind: 'record', connectionId, table, key }, pane), [open])
 
-  const openQuery = useCallback((connectionId: string, sql = '') => {
-    const title = `Query ${++queryCounter.current}`
-    setLayout((s) => panes.addTab(s, { kind: 'query', id: nextTabId(), pane: s.focused, connectionId, title, initialSql: sql }))
+  const openQuery = useCallback((connectionId: string, sql = '', schema?: string) => {
+    const title = `Query ${++queryCounter.current}${schema ? ` · ${schema}` : ''}`
+    setLayout((s) => panes.addTab(s, { kind: 'query', id: nextTabId(), pane: s.focused, connectionId, title, initialSql: sql, ...(schema && { schema }) }))
   }, [])
 
   const [environments, setEnvironments] = useState<EnvironmentDef[]>([])

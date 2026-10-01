@@ -262,6 +262,22 @@ function tableName(model: Model, table: ModelTable): string {
 }
 
 /**
+ * Tables in `schema`, for a query tab started from that database / schema's sidebar folder. The
+ * label is the bare name so it matches what's typed; the schema always goes in on accept, since
+ * an unqualified name would resolve to the connection's default instead.
+ */
+export function schemaTableOptions(model: Model, schema: string): SqlOption[] {
+  const wanted = schema.toLowerCase()
+  return model.tables
+    .filter((t) => !t.remote && t.info.schema.toLowerCase() === wanted)
+    .map((t) => ({
+      label: t.info.name,
+      apply: `${ident(model.kind, t.info.schema)}.${ident(model.kind, t.info.name)}`,
+      detail: `${t.info.schema} · ${t.info.type === 'view' ? 'view' : 'table'}`
+    }))
+}
+
+/**
  * Columns of the tables the statement uses, so a bare column name completes before any "alias." is typed.
  * A column name that more than one of those tables has is inserted qualified, so it isn't ambiguous.
  */

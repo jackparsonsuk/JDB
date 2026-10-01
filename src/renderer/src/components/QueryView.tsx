@@ -197,10 +197,10 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     const extensions: Extension[] = [sqlLanguage(dialect, schema, defaultSchema, !lowerKeywords)]
     // Settings: suggestions only on Ctrl+Space.
     if (completeOnRequest) extensions.push(autocompletion({ activateOnTyping: false }))
-    if (model) extensions.push(dialect.language.data.of({ autocomplete: sqlAssist(model) }))
+    if (model) extensions.push(dialect.language.data.of({ autocomplete: sqlAssist(model, tab.schema) }))
     if (conn) extensions.push(dialect.language.data.of({ autocomplete: notAfterDot(snippetCompletions(savedQueries, conn.id)) }))
     return extensions
-  }, [conn?.kind, conn?.id, tableList, model, savedQueries, lowerKeywords, completeOnRequest])
+  }, [conn?.kind, conn?.id, tableList, model, savedQueries, lowerKeywords, completeOnRequest, tab.schema])
 
   /** Points the editor at a failed run's error, when the editor still holds the SQL that ran. */
   const showError = useCallback((message: string, statement: string, origin: Origin | undefined, serverLine?: number): number | undefined => {

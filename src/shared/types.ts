@@ -325,7 +325,8 @@ export interface TableSort {
 /** A tab as saved between runs: what it shows, not its results. */
 export type SavedTab = (
   | { kind: 'table'; pane: 0 | 1; connectionId: string; table: TableRef; filters: ColumnFilter[]; sort?: TableSort }
-  | { kind: 'query'; pane: 0 | 1; connectionId: string; title: string; sql: string; savedId?: string }
+  /** `schema`: the database (MySQL) or schema (SQL Server) the query tab was started in, from its sidebar folder. */
+  | { kind: 'query'; pane: 0 | 1; connectionId: string; title: string; sql: string; savedId?: string; schema?: string }
   | { kind: 'record'; pane: 0 | 1; connectionId: string; table: TableRef; key: ColumnFilter[] }
   | { kind: 'design'; pane: 0 | 1; connectionId: string; table: TableRef }
   | { kind: 'routine'; pane: 0 | 1; connectionId: string; routine: RoutineRef }

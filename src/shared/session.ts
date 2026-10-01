@@ -36,7 +36,8 @@ function parseTab(value: unknown): SavedTab | null {
     case 'query':
       return {
         kind: 'query', pane, connectionId, title: typeof value.title === 'string' ? value.title : 'Query', sql: typeof value.sql === 'string' ? value.sql : '',
-        ...(typeof value.savedId === 'string' && { savedId: value.savedId })
+        ...(typeof value.savedId === 'string' && { savedId: value.savedId }),
+        ...(typeof value.schema === 'string' && value.schema && { schema: value.schema })
       }
     case 'table': {
       const table = parseTableRef(value.table)
