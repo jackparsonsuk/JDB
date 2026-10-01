@@ -3,6 +3,7 @@
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
 ## 1.7.0
+- **Check for updates in Settings.** Settings → About & updates shows the version you're running, checks for an update on the spot, and offers **Restart to update** once one has downloaded.
 - **Labels beside lookup keys.** A column like OrderStatusId now shows its label ("Draft") beside each key, in tables and in query results, while the key itself stays exactly as it was: copying, filtering and editing still use it. Lookup columns widen to fit both. Only the keys on screen are looked up, once each. Turn it off in Settings → Grid & values.
 
 ## 1.6.0

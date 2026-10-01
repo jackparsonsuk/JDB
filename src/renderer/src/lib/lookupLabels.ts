@@ -8,6 +8,8 @@ const BATCH = 200
 
 /** Labels already read, by connection and lookup, then by key (lowercased); null when the key has no row. Kept for the session. */
 const cache = new Map<string, Map<string, string | null>>()
+/** Keys being read now, by the same key as `cache`, so a grid that re-renders mid-read doesn't ask for them again. */
+const reading = new Map<string, Set<string>>()
 
 export const labelKey = (value: CellValue): string => String(value).toLowerCase()
 
@@ -27,32 +29,40 @@ export function useLookupLabels(conn: ConnectionConfig | undefined, lookups: Map
     const work = [...lookups].flatMap(([column, lookup]) => {
       const ci = columns.indexOf(column)
       if (ci < 0 || !lookup.link.labels.length) return []
-      const known = cache.get(linkKey(conn, lookup)) ?? new Map<string, string | null>()
-      cache.set(linkKey(conn, lookup), known)
+      const id = linkKey(conn, lookup)
+      const known = cache.get(id) ?? new Map<string, string | null>()
+      cache.set(id, known)
+      const busy = reading.get(id) ?? new Set<string>()
+      reading.set(id, busy)
       const wanted = new Map<string, CellValue>()
       for (const row of rows) {
         const value = row[ci]
         if (value === null || value === undefined || value === '') continue
         const key = labelKey(value)
-        if (!known.has(key) && !wanted.has(key)) wanted.set(key, value)
+        if (!known.has(key) && !busy.has(key) && !wanted.has(key)) wanted.set(key, value)
         if (wanted.size >= LOOKUP_LIMIT) break
       }
-      return wanted.size ? [{ lookup, known, keys: [...wanted.values()] }] : []
+      return wanted.size ? [{ lookup, known, busy, keys: [...wanted.values()] }] : []
     })
     if (!work.length) return
     ;(async () => {
-      for (const { lookup, known, keys } of work) {
+      for (const { lookup, known, busy, keys } of work) {
         for (let i = 0; i < keys.length && live; i += BATCH) {
           const batch = keys.slice(i, i + BATCH)
+          for (const k of batch) busy.add(labelKey(k))
           try {
             const result = await window.api.snapshotRows(conn.id, lookupListSql(conn.kind, lookup.link, lookup.types, { keys: batch, unordered: true }))
             for (const k of batch) known.set(labelKey(k), null)
             for (const item of lookupItems(result.rows)) if (item.label) known.set(labelKey(item.key), item.label)
           } catch {
             // No labels for this column rather than an error in the grid; the side panel still works.
+            for (const k of batch) known.set(labelKey(k), null)
             break
+          } finally {
+            for (const k of batch) busy.delete(labelKey(k))
           }
-          if (live) setVersion((v) => v + 1)
+          // Even if the grid moved on: a later render may be waiting for these keys.
+          setVersion((v) => v + 1)
         }
       }
     })()

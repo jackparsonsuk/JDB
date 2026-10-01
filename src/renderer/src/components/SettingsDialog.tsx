@@ -3,13 +3,16 @@ import type { ThemeSetting } from '@shared/types'
 import { ACCENT_PRESETS, CODE_SIZES, DATE_FORMATS, DENSITIES, NULL_TEXTS, QUERY_TIMEOUTS, ROW_CAPS, UI_SCALES, type Appearance, type DateFormat, type Density, type NullText } from '@shared/appearance'
 import { formatCell } from '@shared/cellFormat'
 import { useAppState } from '../state'
+import { appVersion } from '../lib/version'
+import { useUpdate } from '../lib/useUpdate'
+import type { UpdateCheck } from '@shared/types'
 import { APP_NAME } from '@shared/brand'
 import { resetAppearance, updateAppearance, useAppearance } from '../lib/appearance'
 import { setTheme, THEME_LABELS, THEMES, useTheme } from '../lib/theme'
 import { CODE_FONTS, isInstalled, UI_FONTS } from '../lib/fonts'
 import { EnvironmentSettings } from './EnvironmentSettings'
 
-type Section = 'theme' | 'env' | 'fonts' | 'grid' | 'editor' | 'queries'
+type Section = 'theme' | 'env' | 'fonts' | 'grid' | 'editor' | 'queries' | 'about'
 
 const SECTIONS: { id: Section; label: string; icon: string }[] = [
   { id: 'theme', label: 'Theme & colours', icon: '◐' },
@@ -17,7 +20,8 @@ const SECTIONS: { id: Section; label: string; icon: string }[] = [
   { id: 'fonts', label: 'Fonts & size', icon: 'Aa' },
   { id: 'grid', label: 'Grid & values', icon: '▦' },
   { id: 'editor', label: 'SQL editor', icon: '⌨' },
-  { id: 'queries', label: 'Queries & startup', icon: '⏱' }
+  { id: 'queries', label: 'Queries & startup', icon: '⏱' },
+  { id: 'about', label: 'About & updates', icon: 'ⓘ' }
 ]
 
 /** Every stored setting, for Reset everything. */
@@ -74,6 +78,7 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
           {section === 'grid' && <GridSection a={a} />}
           {section === 'editor' && <EditorSection a={a} />}
           {section === 'queries' && <QueriesSection a={a} />}
+          {section === 'about' && <AboutSection />}
           <div className="settings-actions">
             <button className="ghost" onClick={() => { setTheme('system'); resetAppearance(ALL_KEYS) }}>
               Reset everything
@@ -394,6 +399,40 @@ function QueriesSection({ a }: { a: Appearance }) {
             <option value="">The first connection</option>
             {connections.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+        </div>
+      </Group>
+    </>
+  )
+}
+
+/** The version running, and checking for an update here rather than waiting for the next automatic check. */
+function AboutSection() {
+  const update = useUpdate()
+  const [check, setCheck] = useState<UpdateCheck | 'checking' | null>(null)
+  const run = (): void => {
+    setCheck('checking')
+    window.api.checkForUpdates().then(setCheck, (e) => setCheck({ state: 'error', error: (e as Error).message }))
+  }
+  const ready = update.version ?? (check && check !== 'checking' && check.state === 'ready' ? check.version : null)
+  return (
+    <>
+      <Group title={APP_NAME} note="Installed copies check for updates when they start and every 4 hours, download them in the background, and install them when you close the app.">
+        <div className="settings-row">
+          <span className="settings-label">Version</span>
+          <code className="settings-version">{appVersion}</code>
+        </div>
+        <div className="settings-row">
+          <button onClick={run} disabled={check === 'checking'}>{check === 'checking' ? 'Checking…' : 'Check for updates'}</button>
+          {ready && <button className="primary" onClick={update.install}>Restart to update to {ready}</button>}
+          <span className="muted update-status">
+            {check === 'checking' ? ''
+              : !check ? ''
+                : check.state === 'dev' ? 'Updates only apply to the installed app, not a dev build.'
+                  : check.state === 'current' ? `You're on the latest version (${check.version}).`
+                    : check.state === 'downloading' ? `Downloading ${check.version}; it'll be ready to install shortly.`
+                      : check.state === 'ready' ? `${check.version} is downloaded and ready.`
+                        : `Couldn't check: ${check.error}`}
+          </span>
         </div>
       </Group>
     </>

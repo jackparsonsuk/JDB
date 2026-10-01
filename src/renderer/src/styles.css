@@ -1112,6 +1112,8 @@ button.linkish:hover:not(:disabled) { background: none; text-decoration: underli
 .settings-row { flex-wrap: wrap; }
 .settings-row select { padding: 3px 8px; }
 .settings-sample { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 12px; }
+.settings-version { font: 12px var(--mono); }
+.update-status { font-size: 12px; }
 .settings-sample code { font: 12px var(--mono); padding: 3px 8px; border-radius: 5px; background: var(--bg); border: 1px solid var(--border); }
 .settings-value { min-width: 40px; font: 12px var(--mono); color: var(--text-dim); }
 .settings input[type="range"] { flex: 1; max-width: 280px; accent-color: var(--accent); padding: 0; border: none; background: none; }
