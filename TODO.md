@@ -20,10 +20,11 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [x] **Lookups in query results**, for columns read straight from a table column. (1.5.0)
 - [x] **Databases as folders** in the sidebar when a connection spans several, like DBeaver. (1.5.1)
 - [x] Fixed: the connection dialog's Folder box sat below Environment (1.5.0), and the selected row's number showed cells through it when scrolled right (1.5.1).
+- [x] **Watch a row for changes** in the record explorer, read again by key every few seconds. (1.8.0)
+- [ ] **Watch a record's child rows too**: inserts, updates and deletes in related tables, capped per watch. Then, if polling misses too much, a MySQL binlog mode for local that catches every change.
 
 ## Check first (built but not yet seen for real)
 
-- [ ] **Watching a row.** Watch a row on local MySQL while changing it from the app under test; check changes, a delete and a re-insert show, and that a dropped connection stops the watch after three failed reads. Next steps if it proves useful: also watch the record's child rows (inserts, updates, deletes in related tables), and a MySQL binlog mode that catches every change rather than polling.
 
 - [ ] **Row-count confirm dialog on a writable test connection.** It only appears on writable, non-local, non-protected connections, so it hasn't been opened against a real server yet. Try an UPDATE with a WHERE, one without, a joined DELETE and an INSERT ... SELECT.
 - [ ] **Proc formatter on real SQL Server procs.** The layout guesses T-SQL structure without semicolons. Open some long procs and note any odd layout or a "shown as written" fallback.
