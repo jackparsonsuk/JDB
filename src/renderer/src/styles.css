@@ -18,7 +18,8 @@
   --env-test: #d29922;
   --env-prod: #f85149;
   --mono: 'Cascadia Mono', 'Cascadia Code', Consolas, monospace;
-  --sans: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  /* The operating system's own interface font: Segoe UI on Windows, San Francisco on macOS, the desktop font on Linux. */
+  --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
   color-scheme: dark;
 }
 
@@ -405,6 +406,8 @@ body.resizing-cols { cursor: col-resize; user-select: none; }
 .resize { position: absolute; top: 0; right: -3px; width: 6px; height: 100%; cursor: col-resize; z-index: 2; }
 .grid td.rownum, .grid th.rownum { color: var(--text-dim); text-align: right; background: var(--bg-2); font-size: 11px; position: sticky; left: 0; }
 .grid th.rownum { z-index: 3; }
+/* Alternate rows, by row number so the stripes don't shift as the grid scrolls; on the row, so hover, selection and edits paint over them. */
+.grid tbody tr.stripe { background: var(--stripe, color-mix(in srgb, var(--text) 4%, transparent)); }
 .grid tbody tr:hover td { background: var(--bg-hover); }
 .grid tbody tr.selected td { background: var(--selected); }
 /* The row number stays put while cells scroll under it, so its selected tint goes over a solid colour. */
@@ -468,7 +471,9 @@ button.ghost.on.prod-edit { background: color-mix(in srgb, var(--env-prod) 16%, 
 button.primary.prod { background: var(--env-prod); border-color: var(--env-prod); }
 
 .fk-cell { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
-.fk-value { overflow: hidden; text-overflow: ellipsis; }
+.fk-value { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+/* A lookup key's label, beside the key (which stays as it is). */
+.cell-label { flex-shrink: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; border-radius: 8px; font: 11px var(--sans); line-height: 16px; color: var(--text); background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); }
 .fk-jump { background: none; border: none; padding: 0 3px; color: var(--accent); opacity: 0.5; font-size: 12px; }
 tr:hover .fk-jump { opacity: 1; }
 .fk-jump:hover { background: var(--accent-soft); }
@@ -1110,6 +1115,8 @@ button.linkish:hover:not(:disabled) { background: none; text-decoration: underli
 .settings-row { flex-wrap: wrap; }
 .settings-row select { padding: 3px 8px; }
 .settings-sample { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 12px; }
+.settings-version { font: 12px var(--mono); }
+.update-status { font-size: 12px; }
 .settings-sample code { font: 12px var(--mono); padding: 3px 8px; border-radius: 5px; background: var(--bg); border: 1px solid var(--border); }
 .settings-value { min-width: 40px; font: 12px var(--mono); color: var(--text-dim); }
 .settings input[type="range"] { flex: 1; max-width: 280px; accent-color: var(--accent); padding: 0; border: none; background: none; }

@@ -12,7 +12,7 @@ export interface Appearance {
   accent?: string
   /** Colours for the built-in environments' dots, tabs and banners (custom ones carry their own). */
   env?: Partial<Record<BuiltinEnv, string>>
-  /** A font family name for the interface; none uses Segoe UI. */
+  /** A font family name for the interface; none uses the operating system's own. */
   uiFont?: string
   /** Scales the whole interface, grid included. */
   uiScale?: UiScale
@@ -38,6 +38,10 @@ export interface Appearance {
   nullText?: NullText
   /** Thousands separators in numbers, except columns that look like IDs. */
   thousands?: boolean
+  /** Plain rows rather than alternate ones shaded. */
+  noStripes?: boolean
+  /** Leave out the label shown beside a lookup key ("Draft" beside an OrderStatusId). */
+  hideLookupLabels?: boolean
 
   // The SQL editor.
   /** What Ctrl+Enter runs; none runs the selection or the statement at the cursor. */
@@ -121,7 +125,7 @@ export function parseAppearance(raw: unknown): Appearance {
   if (DATE_FORMATS.includes(r.dateFormat as DateFormat)) out.dateFormat = r.dateFormat as DateFormat
   if (NULL_TEXTS.includes(r.nullText as NullText)) out.nullText = r.nullText as NullText
   if (r.ctrlEnter === 'all') out.ctrlEnter = 'all'
-  for (const key of ['hideFractions', 'localTime', 'thousands', 'lowerKeywords', 'hideRunGutter', 'hideRunNotes', 'completeOnRequest', 'freshStart'] as const) {
+  for (const key of ['hideFractions', 'localTime', 'thousands', 'lowerKeywords', 'hideRunGutter', 'hideRunNotes', 'completeOnRequest', 'freshStart', 'hideLookupLabels', 'noStripes'] as const) {
     if (r[key] === true) out[key] = true
   }
   if (QUERY_TIMEOUTS.includes(r.queryTimeout as number)) out.queryTimeout = r.queryTimeout as number
@@ -145,13 +149,14 @@ export function appearanceVars(a: Appearance, dark: boolean): Record<string, str
     vars['--selected'] = `color-mix(in srgb, ${a.accent} ${dark ? 22 : 14}%, transparent)`
   }
   for (const [tag, color] of Object.entries(a.env ?? {})) vars[`--env-${tag}`] = color
-  if (a.uiFont) vars['--sans'] = `${quoteFont(a.uiFont)}, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif`
+  if (a.uiFont) vars['--sans'] = `${quoteFont(a.uiFont)}, system-ui, -apple-system, sans-serif`
   if (a.codeFont) vars['--mono'] = `${quoteFont(a.codeFont)}, 'Cascadia Mono', Consolas, monospace`
   const size = a.codeSize ?? CODE_SIZES.default
   vars['--code-size'] = `${size}px`
   vars['--grid-size'] = `${size - 1}px`
   vars['--mono-ligatures'] = a.ligatures ? 'normal' : 'none'
   vars['--row-height'] = `${ROW_HEIGHTS[a.density ?? 'comfortable']}px`
+  if (a.noStripes) vars['--stripe'] = 'transparent'
   return vars
 }
 

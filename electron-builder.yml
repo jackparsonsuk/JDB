@@ -15,11 +15,25 @@ nsis:
   guid: 4d324775-1d91-5185-8204-0843849efc55
   oneClick: false
   allowToChangeInstallationDirectory: true
-# Installers go to a public releases-only repo (the source repo is private). Installed apps check its
-# releases for updates (electron-updater), and `npm run release` publishes there.
+  # What people see is OverlookDB (the installer file, wizard, shortcuts, Apps & features); the exe,
+  # install folder and userData keep the JDB name, so upgrades and saved passwords carry on. Upgrades
+  # rename an old "JDB" shortcut rather than adding a second one.
+  artifactName: OverlookDB-Setup-${version}.${ext}
+  shortcutName: OverlookDB
+  uninstallDisplayName: OverlookDB ${version}
+  include: build/installer.nsh
+# Releases go to the source repo, which is public. Installed apps check the FIRST entry's releases for
+# updates (it's written into their app-update.yml). Apps installed before 1.7.0 still check
+# jdb-releases, so 1.7.0 is the hand-over: it's published there too, and installing it moves an app
+# over to JDB. Keep the second entry until most people have taken 1.7.0, then drop it (see RELEASE.md).
+# Each is uploaded as a draft; scripts/release.mjs creates them first and publishes them once every
+# file is there, JDB first, so an app that moves over always finds a published release.
 publish:
-  provider: github
-  owner: jackparsonsUK
-  repo: jdb-releases
-  # Uploaded as a draft; scripts/release.mjs creates it first and publishes it once every file is there.
-  releaseType: draft
+  - provider: github
+    owner: jackparsonsUK
+    repo: JDB
+    releaseType: draft
+  - provider: github
+    owner: jackparsonsUK
+    repo: jdb-releases
+    releaseType: draft

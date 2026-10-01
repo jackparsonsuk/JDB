@@ -32,6 +32,7 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [ ] **Azure database picker** on a connection with a blank Database (it should land in master and list ProdDB and the rest).
 - [ ] **Run gutter in use** (1.5.0): markers on the left of the line numbers, the spinner stopping a slow query, notes clearing when a statement is edited, and the ✕ note jumping to the error.
 - [ ] **Lookups in query results** (1.5.0): `SELECT *` with joins, `alias.*`, `AS` names, and a script with several SELECTs.
+- [ ] **Lookup labels** (1.7.0): GUID and int keys on both dialects, a shared lookups table with TypeId narrowing, a page of 10,000 rows, an edited cell picking up its new label, and a lookup whose label columns are empty.
 - [ ] **Settings** (1.6.0): each date format on both dialects, local time across a BST change, the time limit on a slow query (the message, and the gutter note), the row cap on a big SELECT *, and Ctrl+Enter swapped back.
 - [ ] **Grid save changes** (1.6.0): edits, a delete and an add in one save, a table with a trigger, and over 200 edited rows (only the first are compared).
 - [ ] **Database folders** (1.5.1) on a MySQL connection with a blank Database, and on a SQL Server database with several schemas, including the filter and the Routines switch.
@@ -40,7 +41,7 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 
 - [x] **Clickable names in routine source.** Ctrl+click a table or proc name in the code to open it, in routine source and the SQL editor. (1.4.0)
 - [ ] **Hover a table to see its columns**, in routine source and the SQL editor, reusing `nameAt` in `src/shared/routines.ts`.
-- [ ] **Labels in the grid for lookup columns.** Show the label ("Draft") beside the key in the cell itself, from the same lookups as the side panel.
+- [x] **Labels in the grid for lookup columns**, beside the key (which is unchanged), in tables and query results; `lib/lookupLabels.ts`. (1.7.0)
 - [ ] **Share lookups in connection files**, like links and saved queries.
 - [ ] **Search every table for a value.** Paste a GUID or email and see which tables and columns hold it, reading only indexed or likely columns, bounded and time-limited.
 - [ ] **Dry run on prod.** Run a write in a transaction, show the Changes view, then roll back automatically.
@@ -74,6 +75,8 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 
 ## Housekeeping
 
+- [ ] Once most people are on 1.7.0 or later, drop the `jdb-releases` entry from `publish` in `electron-builder.yml` and the token's access to it. Keep the jdb-releases repo and its 1.7.0 release up for anyone still on an older version (RELEASE.md, Moving off jdb-releases).
+
 - [ ] Tests only cover `src/shared`. Consider a small scripted smoke test of the installed app (the debug-port approach used during testing) for the main flows.
-- [ ] RELEASE.md: note that GitHub CLI isn't installed on this machine, and releases are checked through the public jdb-releases API instead.
+- [ ] RELEASE.md: note that GitHub CLI isn't installed on this machine, and releases are checked through the public releases API instead.
 - [ ] Delete merged branches (`fixes/minor`, `feature/saved-queries`, `feature/customisation`, `feature/query-params-errors`, `feature/clickable-names`, `feature/1.5.0`, `fix/rownum-see-through`, `feature/database-tree`, `feature/grid-edit-changes`) once nothing else is needed from them.

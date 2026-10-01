@@ -8,6 +8,7 @@ import type { OpenTarget } from '../state'
 import { toast } from './Toast'
 import { useAppearance, useRowHeight } from '../lib/appearance'
 import { formatCell, type CellFormat } from '@shared/cellFormat'
+import { labelKey } from '../lib/lookupLabels'
 
 /** Row height for the chosen density (Settings); set by DataGrid on each render, read live by its handlers. */
 let ROW_HEIGHT = 26
@@ -88,6 +89,8 @@ interface Props {
   /** Told the column of the clicked cell (null when none), e.g. to show its lookup values. */
   onActiveColumnChange?(column: string | null): void
   /** Extra items for a column header's right-click menu, such as setting up a lookup. */
+  /** Labels for lookup keys, by column then key (lowercased): shown beside the key, which stays as it is. */
+  cellLabels?: Map<string, Map<string, string>>
   columnMenu?(column: string): { label: string; run(): void }[]
 }
 
@@ -130,6 +133,28 @@ function Grid(props: Props) {
     }))
     // Content changes within the same columns shouldn't reset widths the user dragged.
   }, [columnKey])
+
+  // A lookup column widens once, when its labels first arrive, so key and label both fit; not after it's been dragged.
+  const sized = useRef(new Set<number>())
+  useEffect(() => {
+    sized.current = new Set()
+  }, [columnKey])
+  const cellLabels = props.cellLabels
+  useEffect(() => {
+    if (!cellLabels?.size) return
+    setWidths((prev) => prev.map((w, ci) => {
+      const labels = cellLabels.get(columns[ci])
+      if (!labels || sized.current.has(ci)) return w
+      sized.current.add(ci)
+      let longest = 0
+      for (let r = 0; r < Math.min(rows.length, 60); r++) {
+        const value = rows[r][ci]
+        const label = value === null ? undefined : labels.get(labelKey(value))
+        if (label) longest = Math.max(longest, label.length)
+      }
+      return longest ? Math.min(520, w + Math.min(longest, 30) * 6.5 + 22) : w
+    }))
+  }, [cellLabels, columnKey])
 
   /** The column of the last clicked cell: highlighted, and summarised for the selected rows. */
   const [activeColumn, setActiveColumn] = useState<number | null>(null)
@@ -420,6 +445,8 @@ function Grid(props: Props) {
     event.stopPropagation()
     const startX = event.clientX
     const startWidth = widths[ci]
+    // A width the user chose isn't changed again when labels arrive.
+    sized.current.add(ci)
     const move = (e: MouseEvent): void => {
       setWidths((prev) => prev.map((w, i) => (i === ci ? Math.max(50, startWidth + e.clientX - startX) : w)))
     }
@@ -573,6 +600,7 @@ function Grid(props: Props) {
                   editingColumn={editCell?.row === index ? editCell.column : null}
                   handlers={handlers}
                   format={cellFormat}
+                  labels={props.cellLabels}
                 />
               )
             })}
@@ -742,6 +770,7 @@ interface RowProps {
   editingColumn: number | null
   handlers: { current: RowHandlers }
   format: CellFormat
+  labels?: Map<string, Map<string, string>>
 }
 
 /** One grid row. Memoised, so moving the scroll window only renders the rows that come into view. */
@@ -775,14 +804,14 @@ const GridRow = memo(function GridRow(props: RowProps) {
     } else {
       cells.push(
         <td key={ci} className={cellClass(value) + edited} onMouseDown={onMouseDown} onContextMenu={(e) => h.openMenu(e, index, ci)} onDoubleClick={onDoubleClick}>
-          <CellContent value={value} column={columns[ci]} format={props.format} info={info} crossInfo={value !== null ? props.crossLinks?.get(columns[ci]) : undefined} handlers={h} />
+          <CellContent value={value} column={columns[ci]} format={props.format} label={value !== null ? props.labels?.get(columns[ci])?.get(labelKey(value)) : undefined} info={info} crossInfo={value !== null ? props.crossLinks?.get(columns[ci]) : undefined} handlers={h} />
         </td>
       )
     }
   }
   return (
     <tr
-      className={`${props.selected ? 'selected' : ''} ${props.active ? 'active' : ''} ${mark ? `row-${mark.state}` : ''}`}
+      className={`${index % 2 ? 'stripe' : ''} ${props.selected ? 'selected' : ''} ${props.active ? 'active' : ''} ${mark ? `row-${mark.state}` : ''}`}
       onMouseDown={(e) => e.button === 0 && h.selectRow(index, e)}
       onDoubleClick={() => handlers.current.onRowDoubleClick?.(index)}
     >
@@ -794,10 +823,12 @@ const GridRow = memo(function GridRow(props: RowProps) {
   )
 })
 
-function CellContent({ value, column, format, info, crossInfo, handlers }: {
+function CellContent({ value, column, format, label, info, crossInfo, handlers }: {
   value: CellValue
   column: string
   format: CellFormat
+  /** The lookup's label for this key, shown after it. */
+  label?: string
   info?: ColumnInfo
   crossInfo?: { title: string; env: string }
   handlers: RowHandlers
@@ -806,10 +837,20 @@ function CellContent({ value, column, format, info, crossInfo, handlers }: {
   const fk = info?.references && value !== null && handlers.referenceTarget ? handlers.referenceTarget(info, value) : null
   const crossTarget = crossInfo ? handlers.crossLinkTarget?.(column, value) : undefined
   const cross = crossInfo && crossTarget ? { ...crossInfo, target: crossTarget } : null
-  if (!fk && !cross) return <>{text}</>
+  const tag = label && <span className="cell-label" title={label}>{label}</span>
+  if (!fk && !cross && !tag) return <>{text}</>
+  if (!fk && !cross) {
+    return (
+      <span className="fk-cell">
+        <span className="fk-value">{text}</span>
+        {tag}
+      </span>
+    )
+  }
   return (
     <span className="fk-cell">
       <span className="fk-value">{text}</span>
+      {tag}
       <span className="fk-buttons">
         {fk && (
           <button
