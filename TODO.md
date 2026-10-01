@@ -75,6 +75,8 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 
 ## Housekeeping
 
+- [ ] Once most people are on 1.7.0 or later, drop the `jdb-releases` entry from `publish` in `electron-builder.yml` and the token's access to it. Keep the jdb-releases repo and its 1.7.0 release up for anyone still on an older version (RELEASE.md, Moving off jdb-releases).
+
 - [ ] Tests only cover `src/shared`. Consider a small scripted smoke test of the installed app (the debug-port approach used during testing) for the main flows.
-- [ ] RELEASE.md: note that GitHub CLI isn't installed on this machine, and releases are checked through the public jdb-releases API instead.
+- [ ] RELEASE.md: note that GitHub CLI isn't installed on this machine, and releases are checked through the public releases API instead.
 - [ ] Delete merged branches (`fixes/minor`, `feature/saved-queries`, `feature/customisation`, `feature/query-params-errors`, `feature/clickable-names`, `feature/1.5.0`, `fix/rownum-see-through`, `feature/database-tree`, `feature/grid-edit-changes`) once nothing else is needed from them.

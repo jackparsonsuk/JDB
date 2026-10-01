@@ -1,6 +1,6 @@
 # Releasing JDB
 
-Installed copies of JDB update themselves from the public [jdb-releases](https://github.com/jackparsonsUK/jdb-releases) repo. The source is the open-source `jdb` repo; jdb-releases holds only the installers. A release goes out to everyone who has JDB installed, so only release something that has been tested.
+Installed copies update themselves from the releases of the open-source [JDB](https://github.com/jackparsonsUK/JDB) repo. Up to 1.6.0 they used the separate [jdb-releases](https://github.com/jackparsonsUK/jdb-releases) repo instead; 1.7.0 is published to both and moves apps over (see **Moving off jdb-releases** below). A release goes out to everyone who has the app installed, so only release something that has been tested.
 
 ## Doing a release
 
@@ -19,7 +19,7 @@ Installed copies of JDB update themselves from the public [jdb-releases](https:/
 
    To release from your own machine instead (for example if Actions is down), run `npm run release`. It needs `GH_TOKEN` set locally.
 
-6. Check that the run succeeded (locally it prints `Published vX.Y.Z: <link>`), and that the release on GitHub has all three files:
+6. Check that the run succeeded (locally it prints `Published vX.Y.Z in <repo>: <link>` for each repo), and that the release has all three files in each repo it went to:
    - `OverlookDB-Setup-X.Y.Z.exe` (`JDB-Setup-X.Y.Z.exe` up to 1.6.0)
    - `OverlookDB-Setup-X.Y.Z.exe.blockmap`
    - `latest.yml`
@@ -34,8 +34,8 @@ The whole run takes a few minutes, most of it building the installer and uploadi
 
 ## One-time setup
 
-- For Actions: the `jdb` repo needs a secret called `RELEASES_TOKEN` (Settings → Secrets and variables → Actions) holding the token below. When the token is renewed, update the secret too.
-- For local releases: `GH_TOKEN` must be set as a user environment variable. Use a GitHub **fine-grained token** that can only access `jdb-releases`, with **Contents: Read and write**. Tokens expire, so a release failing with 401 or 403 usually means it needs renewing.
+- For Actions: the `JDB` repo needs a secret called `RELEASES_TOKEN` (Settings → Secrets and variables → Actions) holding the token below. When the token is renewed, update the secret too.
+- For local releases: `GH_TOKEN` must be set as a user environment variable. Use a GitHub **fine-grained token** with **Contents: Read and write** on every repo in `publish`: `JDB`, and `jdb-releases` while it's still listed. Tokens expire, so a release failing with 401 or 403 usually means it needs renewing, or that it doesn't cover one of the repos.
 - `jdb-releases` must have at least one commit (it has a README), or GitHub can't create tags there.
 
 ## How installed apps update
@@ -58,6 +58,15 @@ The whole run takes a few minutes, most of it building the installer and uploadi
 
 The installer isn't code-signed, so Windows SmartScreen warns on a first manual install (**More info → Run anyway**). Updates aren't affected. If signing is added later, do it with a certificate that stays the same for every release: electron-updater checks that each update is signed by the same publisher as the installed app.
 
+## Moving off jdb-releases
+
+Installed apps check the repo in their `resources/app-update.yml`, which comes from the **first** entry of `publish` in `electron-builder.yml` and is only rewritten when they install an update. Apps installed before 1.7.0 point at jdb-releases; 1.7.0 points at JDB.
+
+- **1.7.0 is the hand-over.** `publish` lists JDB first and jdb-releases second, so `npm run release` uploads the same files to both. Apps on 1.6.0 or older find it on jdb-releases and, by installing it, switch to JDB for every update after.
+- **The order matters.** `release.mjs publish` checks both drafts are complete, then publishes JDB first. If jdb-releases were published first and JDB then failed, apps that had just moved over would find no published release.
+- **Later releases** can go to JDB only. Leave jdb-releases' 1.7.0 up, so anyone still on an older version moves over whenever they next update. Once most people have taken 1.7.0, drop the second `publish` entry (and the token's access to jdb-releases). Don't delete jdb-releases while anyone might still be on 1.6.0 or older: they'd be stranded on that version.
+- The first update from JDB downloads the full installer once; the blockmap name changed in 1.7.0 too (see above).
+
 ## Cleaning up
 
-A broken or unwanted release can be deleted on the jdb-releases page. Delete its tag as well if you want to reuse that version number. Otherwise just release a higher version, and installed apps take the newest published release. Drafts are never seen by users.
+A broken or unwanted release can be deleted on its release page (in each repo it went to). Delete its tag as well if you want to reuse that version number. Otherwise just release a higher version, and installed apps take the newest published release. Drafts are never seen by users.

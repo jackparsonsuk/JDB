@@ -6,7 +6,7 @@ A streamlined desktop database viewer for SQL Server / Azure SQL and MySQL, buil
 
 ## Install
 
-Download `OverlookDB-Setup-x.y.z.exe` from the [latest release](https://github.com/jackparsonsUK/jdb-releases/releases/latest) and run it. Windows may warn about an unknown publisher because the installer isn't code-signed; choose **More info → Run anyway**.
+Download `OverlookDB-Setup-x.y.z.exe` from the [latest release](https://github.com/jackparsonsUK/JDB/releases/latest) and run it. Windows may warn about an unknown publisher because the installer isn't code-signed; choose **More info → Run anyway**.
 
 Once installed, OverlookDB checks for new releases in the background. A new version downloads by itself and installs the next time you close it, or straight away from **Restart to update** in the sidebar.
 
@@ -48,7 +48,7 @@ Electron + React + TypeScript (electron-vite). Drivers run in the main process (
 
 ## Releasing
 
-Bump `version` in `package.json`, commit, and run `npm run release`. It publishes the installer to the public [jdb-releases](https://github.com/jackparsonsUK/jdb-releases) repo, which installed copies check for updates. See [RELEASE.md](RELEASE.md) for the setup, checks and known pitfalls.
+Bump `version` in `package.json`, commit, and run `npm run release`. It publishes the installer to this repo's releases, which installed copies check for updates (1.7.0 also went to the old [jdb-releases](https://github.com/jackparsonsUK/jdb-releases) repo, to move existing installs over). See [RELEASE.md](RELEASE.md) for the setup, checks and known pitfalls.
 
 ## Licence
 

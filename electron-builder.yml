@@ -22,11 +22,18 @@ nsis:
   shortcutName: OverlookDB
   uninstallDisplayName: OverlookDB ${version}
   include: build/installer.nsh
-# Installers go to a releases-only repo, separate from the source. Installed apps check its
-# releases for updates (electron-updater), and `npm run release` publishes there.
+# Releases go to the source repo, which is public. Installed apps check the FIRST entry's releases for
+# updates (it's written into their app-update.yml). Apps installed before 1.7.0 still check
+# jdb-releases, so 1.7.0 is the hand-over: it's published there too, and installing it moves an app
+# over to JDB. Keep the second entry until most people have taken 1.7.0, then drop it (see RELEASE.md).
+# Each is uploaded as a draft; scripts/release.mjs creates them first and publishes them once every
+# file is there, JDB first, so an app that moves over always finds a published release.
 publish:
-  provider: github
-  owner: jackparsonsUK
-  repo: jdb-releases
-  # Uploaded as a draft; scripts/release.mjs creates it first and publishes it once every file is there.
-  releaseType: draft
+  - provider: github
+    owner: jackparsonsUK
+    repo: JDB
+    releaseType: draft
+  - provider: github
+    owner: jackparsonsUK
+    repo: jdb-releases
+    releaseType: draft
