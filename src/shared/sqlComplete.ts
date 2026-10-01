@@ -1,4 +1,4 @@
-import type { DbKind } from './types'
+import type { ColumnInfo, DbKind } from './types'
 import type { Model, ModelTable } from './nl/model'
 import { quoteIdent } from './rows'
 import { splitIdentifier } from './nl/words'
@@ -136,6 +136,94 @@ export function mentionedTables(sql: string): TableMention[] {
     }
   }
   return out
+}
+
+/** The table column a query result column was read from. */
+export interface ColumnSource {
+  table: ModelTable
+  column: ColumnInfo
+}
+
+/** The top-level SELECT list of a statement, split at its commas; null when it isn't a SELECT. */
+function selectItems(sql: string): string[] | null {
+  const masked = maskLiterals(sql)
+  const words = /\(|\)|,|\b(SELECT|FROM)\b/gi
+  let depth = 0
+  let start = -1
+  const items: string[] = []
+  for (let m = words.exec(masked); m; m = words.exec(masked)) {
+    if (m[0] === '(') depth++
+    else if (m[0] === ')') depth--
+    else if (depth !== 0) continue
+    else if (start < 0) {
+      if (m[1]?.toUpperCase() === 'SELECT') start = m.index + m[0].length
+    } else if (m[0] === ',') {
+      items.push(sql.slice(start, m.index))
+      start = m.index + 1
+    } else if (m[1]?.toUpperCase() === 'FROM') {
+      items.push(sql.slice(start, m.index))
+      return items
+    }
+  }
+  return start < 0 ? null : [...items, sql.slice(start)]
+}
+
+/**
+ * Where each column of a query's result came from, by position: the table and column for plain
+ * references (`o.Status`, `Status AS s`, `*`, `o.*`), undefined for expressions or anything unclear.
+ * Reads the statement's first top-level SELECT and the tables it mentions.
+ */
+export function resultColumnSources(sql: string, columns: string[], model: Model): (ColumnSource | undefined)[] {
+  const tables = resolveMentions(mentionedTables(sql), model).filter((m) => !m.table.remote)
+  const byQualifier = (q: string): ResolvedMention | undefined => {
+    const name = unquote(q).toLowerCase()
+    return tables.find((m) => m.alias?.toLowerCase() === name) ?? tables.find((m) => !m.alias && m.table.info.name.toLowerCase() === name)
+  }
+  const columnOf = (m: ResolvedMention, name: string): ColumnSource | undefined => {
+    const c = m.table.info.columns.find((x) => x.name.toLowerCase() === name.toLowerCase())
+    return c && { table: m.table, column: c }
+  }
+  const bare = (name: string): ColumnSource | undefined => {
+    for (const m of tables) {
+      const found = columnOf(m, name)
+      if (found) return found
+    }
+    return undefined
+  }
+
+  // What the SELECT list says each output column is, in order.
+  const entries: { name?: string; source?: ColumnSource }[] = []
+  const qualified = new RegExp(`^(?:${IDENT}\\s*\\.\\s*)*(${IDENT})\\s*\\.\\s*(${IDENT}|\\*)(?:\\s+(?:AS\\s+)?(${IDENT}))?$`, 'i')
+  const plain = new RegExp(`^(${IDENT})(?:\\s+(?:AS\\s+)?(${IDENT}))?$`, 'i')
+  const named = new RegExp(`\\bAS\\s+(${IDENT})$`, 'i')
+  const items = selectItems(sql)
+  for (const raw of items ?? []) {
+    // DISTINCT / ALL / TOP n lead the first item.
+    const item = raw.trim().replace(/^(?:(?:DISTINCT|ALL)\s+)?(?:TOP\s*(?:\(\s*\d+\s*\)|\d+)(?:\s+PERCENT)?(?:\s+WITH\s+TIES)?\s+)?/i, '').trim()
+    let m: RegExpMatchArray | null
+    if (item === '*') {
+      for (const t of tables) for (const c of t.table.info.columns) entries.push({ name: c.name, source: { table: t.table, column: c } })
+    } else if ((m = item.match(qualified))) {
+      const t = byQualifier(m[1])
+      if (m[2] === '*') {
+        if (!t) return columns.map(() => undefined)
+        for (const c of t.table.info.columns) entries.push({ name: c.name, source: { table: t.table, column: c } })
+      } else {
+        entries.push({ name: unquote(m[3] ?? m[2]), source: t && columnOf(t, unquote(m[2])) })
+      }
+    } else if ((m = item.match(plain)) && !NOT_ALIAS.has(m[1].toLowerCase())) {
+      entries.push({ name: unquote(m[2] ?? m[1]), source: bare(unquote(m[1])) })
+    } else {
+      const as = item.match(named)
+      entries.push({ name: as ? unquote(as[1]) : undefined })
+    }
+  }
+
+  // Positions line up when the list was fully understood; the names must agree too.
+  if (items && entries.length === columns.length) {
+    return columns.map((c, i) => (entries[i].name?.toLowerCase() === c.toLowerCase() ? entries[i].source : undefined))
+  }
+  return columns.map(() => undefined)
 }
 
 /** Matches mentions to tables in the model, case-insensitively; unknown names (CTEs, typos) are dropped. */

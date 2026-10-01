@@ -9,6 +9,7 @@ What changed in each JDB release, newest first. JDB shows these notes after it u
 - The ▶ is amber for a statement that changes data (UPDATE, DELETE, INSERT…), and a 🔒 on a read-only connection, so you can see a write before you run it.
 - After a statement runs, a note at the end of it says how it went: ✓ with the row count and time, or ✕ with the error (click it to go to where it failed). Edit the statement and the note goes.
 - While a statement runs its ▶ becomes a spinner; click it to stop the query.
+- **Lookups in query results.** Click a cell in a query's results and, when the column comes straight from a table column with a lookup (a foreign key, or one you set up), the side panel shows its values and labels, just like in a table tab. It follows `o.Status`, `Status AS s`, `*` and `o.*`; calculated columns don't have one. Right-click a column header to set one up.
 - **Shortcuts swapped:** **Ctrl+Enter** now runs the selection, or the statement the cursor is in, and **Ctrl+Shift+Enter** runs everything. F5 and the Run button still run the selection, or everything.
 - **Columns first after `alias.`** Typing `o.` in the SQL editor now lists only that table's columns, without keywords like DESC mixed in.
 

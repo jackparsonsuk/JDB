@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ColumnInfo, DbKind, SchemaTable } from './types'
 import { buildModel } from './nl/model'
-import { aliasFor, columnOptions, joinOptions, mentionedTables, resolveMentions, statementAt, statementRanges } from './sqlComplete'
+import { aliasFor, columnOptions, joinOptions, mentionedTables, resolveMentions, resultColumnSources, statementAt, statementRanges } from './sqlComplete'
 
 function col(name: string, dataType: string, extra: Partial<ColumnInfo> = {}): ColumnInfo {
   return { name, dataType, nullable: true, isPrimaryKey: false, isIdentity: false, ...extra }
@@ -112,5 +112,34 @@ describe('statementRanges', () => {
   it('leaves out surrounding comments but keeps a closing literal', () => {
     expect(texts("-- totals\nSELECT 'a' -- note\n/* done */")).toEqual(["SELECT 'a'"])
     expect(texts('-- only a comment;\n')).toEqual([])
+  })
+})
+
+describe('resultColumnSources', () => {
+  const sources = (sql: string, columns: string[]) =>
+    resultColumnSources(sql, columns, model()).map((s) => s && `${s.table.info.name}.${s.column.name}`)
+
+  it('follows aliases, AS names and bare columns', () => {
+    expect(sources(
+      'SELECT o.Id, o.CustomerId AS Who, Name, COUNT(*) AS n FROM Orders o JOIN Customers c ON c.Id = o.CustomerId',
+      ['Id', 'Who', 'Name', 'n']
+    )).toEqual(['Orders.Id', 'Orders.CustomerId', 'Orders.Name', undefined])
+  })
+
+  it('expands * and alias.* in order, after DISTINCT and TOP', () => {
+    expect(sources('SELECT TOP 10 * FROM Orders WHERE Name LIKE \'%a, b%\'', ['Id', 'CustomerId', 'Name']))
+      .toEqual(['Orders.Id', 'Orders.CustomerId', 'Orders.Name'])
+    expect(sources('SELECT DISTINCT c.*, o.Id FROM Customers c JOIN Orders o ON o.CustomerId = c.Id', ['Id', 'Name', 'Id']))
+      .toEqual(['Customers.Id', 'Customers.Name', 'Orders.Id'])
+  })
+
+  it('gives nothing when the columns do not line up with the SELECT list', () => {
+    expect(sources('SELECT * FROM Orders', ['Id'])).toEqual([undefined])
+    expect(sources('UPDATE Orders SET Name = 1', ['x'])).toEqual([undefined])
+  })
+
+  it('ignores SELECTs in subqueries and CTEs', () => {
+    expect(sources('WITH x AS (SELECT Id FROM Customers) SELECT o.CustomerId FROM Orders o WHERE o.Id IN (SELECT Id FROM x)', ['CustomerId']))
+      .toEqual(['Orders.CustomerId'])
   })
 })

@@ -36,6 +36,10 @@ import { explainError, type ErrorHelp } from '@shared/sqlErrors'
 import { errorMarks, setErrorMark } from '../lib/errorMark'
 import { runGutter, runGutterConfig, setRunStatus, type RunStatus } from '../lib/runGutter'
 import { ParamDialog } from './ParamDialog'
+import { LookupPanel } from './LookupPanel'
+import { LookupDialog } from './LookupDialog'
+import { sqlPerResult, useResultLookups } from '../lib/resultLookups'
+import type { ColumnSource } from '@shared/sqlComplete'
 
 /** Where SQL being run came from in the editor, so an error can be pointed at: its text (before parameters are filled in) and offset. */
 interface Origin {
@@ -53,6 +57,7 @@ interface RunError {
 }
 
 const emptySelection: Selection = { rows: new Set(), active: null }
+const NO_COLUMNS: string[] = []
 
 /** `active`: the tab is showing in its pane; `focused`: and that pane has the keyboard. */
 export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 'query' }>; active: boolean; focused: boolean }) {
@@ -84,6 +89,12 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     else rememberTab(tab.id, { sql: text })
   }, [tab.id, text, rememberTab])
   const [result, setResult] = useState<QueryResult | null>(null)
+  /** The SELECT behind each result set, where it can be told, for finding lookups on its columns. */
+  const [resultSql, setResultSql] = useState<(string | null)[] | null>(null)
+  const [activeColumn, setActiveColumn] = useState<string | null>(null)
+  /** The user closed the lookup panel, so row details show even on lookup columns. */
+  const [preferRow, setPreferRow] = useState(false)
+  const [lookupDialog, setLookupDialog] = useState<ColumnSource | null>(null)
   const [runError, setRunError] = useState<RunError | null>(null)
   const setError = useCallback((message: string | null) => setRunError(message === null ? null : { message }), [])
   const [running, setRunning] = useState(false)
@@ -244,6 +255,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
       const last = r.resultSets[r.resultSets.length - 1]
       note({ kind: 'done', rows: last?.rows.length, affected: r.rowsAffected.reduce((a, b) => a + b, 0), durationMs: r.durationMs })
       setResult(r)
+      setResultSql(sqlPerResult(statement, r.resultSets.length))
       setChanges(found)
       setShowChanges(!!found && r.resultSets.length === 0)
       setResultIndex(Math.max(0, r.resultSets.length - 1))
@@ -332,6 +344,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
       const { result: merged, runs } = await runFederated(plan, (step) =>
         setStepLabel(`Step ${step.index} of ${plan.steps.length} · ${step.connectionName}: ${step.description}`), current)
       setResult(merged)
+      setResultSql(null)
       setStepRuns(runs)
       setResultIndex(0)
       setSelection(emptySelection)
@@ -431,9 +444,16 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     // Only on tab activation; toggling the ask bar shouldn't steal focus.
   }, [active])
 
-  if (!conn) return null
   const set = result?.resultSets[resultIndex]
+  const results = useResultLookups(tab.connectionId, model, resultSql?.[resultIndex], set?.columns ?? NO_COLUMNS, activeColumn, tableList)
+  const columnMenu = useCallback((column: string) => {
+    const source = set ? results.sources[set.columns.indexOf(column)] : undefined
+    return source ? [{ label: 'Look up values in another table…', run: () => setLookupDialog(source) }] : []
+  }, [set, results.sources])
+
+  if (!conn) return null
   const activeRow = set && selection.active !== null ? set.rows[selection.active] : undefined
+  const showLookup = !!activeRow && !!results.lookup && !!results.source && !preferRow
 
   return (
     <div className="view">
@@ -593,9 +613,31 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
                     selection={selection}
                     onSelectionChange={setSelection}
                     copyTarget={{ kind: conn.kind }}
+                    onActiveColumnChange={setActiveColumn}
+                    columnMenu={columnMenu}
                   />
-                  {activeRow && (
-                    <RowInspector kind={conn.kind} columns={set.columns} row={activeRow} onClose={() => setSelection(emptySelection)} />
+                  {showLookup && activeColumn !== null && (
+                    <LookupPanel
+                      conn={conn}
+                      column={results.source!.column}
+                      lookup={results.lookup!}
+                      targetRows={results.targetRows}
+                      value={activeRow ? activeRow[set.columns.indexOf(activeColumn)] : undefined}
+                      setBlocked="query results can't be edited"
+                      onPick={() => undefined}
+                      onSetUp={() => setLookupDialog(results.source!)}
+                      onShowRow={() => setPreferRow(true)}
+                      onClose={() => setPreferRow(true)}
+                    />
+                  )}
+                  {activeRow && !showLookup && (
+                    <RowInspector
+                      kind={conn.kind}
+                      columns={set.columns}
+                      row={activeRow}
+                      onShowLookup={results.lookup && results.source ? () => setPreferRow(false) : undefined}
+                      onClose={() => setSelection(emptySelection)}
+                    />
                   )}
                 </div>
               ) : (
@@ -643,6 +685,16 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
           onFormat={format}
           onSave={save}
           onClose={closeMenu}
+        />
+      )}
+      {lookupDialog && (
+        <LookupDialog
+          conn={conn}
+          table={{ schema: lookupDialog.table.info.schema, name: lookupDialog.table.info.name }}
+          column={lookupDialog.column}
+          existing={lookupDialog === results.source ? results.lookup : undefined}
+          tables={tableList ?? []}
+          onClose={() => setLookupDialog(null)}
         />
       )}
       {paramRun && (
