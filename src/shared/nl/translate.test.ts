@@ -3,7 +3,7 @@ import type { ColumnInfo, DbKind, SchemaTable } from '../types'
 import { buildModel, valueSources } from './model'
 import { translate, type ValueCache } from './translate'
 
-// Thursday 25 September 2026
+// Friday 25 September 2026
 const NOW = new Date(2026, 8, 25, 14, 30)
 
 function col(name: string, dataType: string, extra: Partial<ColumnInfo> = {}): ColumnInfo {
@@ -163,6 +163,28 @@ describe('translate', () => {
 
   it('escapes quotes in values', () => {
     expect(sql("users where email contains o'brien")).toContain("LIKE '%o''brien%'")
+  })
+
+  it('reads weekdays and now in date ranges', () => {
+    const out = run('I want to see the id of all invoices created between last friday and now')
+    expect(out.notes.filter((n) => n.startsWith("Didn't understand"))).toEqual([])
+    expect(out.sql).toContain("i.[CreatedOn] >= '20260918'")
+    expect(out.sql).toContain("i.[CreatedOn] < '20260926'")
+    expect(sql('invoices since monday', 'mysql')).toContain("i.`InvoiceDate` >= '2026-09-21'")
+    expect(sql('jobs friday')).toContain("j.[CreatedDate] >= '20260925'")
+  })
+
+  it('picks the columns named before the table, or plural after it', () => {
+    expect(sql('the id and total net of invoices')).toMatch(/^SELECT TOP 1000 i\.\[Id\], i\.\[TotalNet\]\nFROM/)
+    expect(sql('id, name and email of users')).toMatch(/^SELECT TOP 1000 u\.\[Id\], u\.\[UserName\], u\.\[Email\]\nFROM/)
+    expect(sql('invoice ids created this week', 'mysql')).toMatch(/^SELECT i\.`Id`\nFROM/)
+    expect(sql('user emails')).toMatch(/^SELECT TOP 1000 u\.\[Email\]\nFROM/)
+    // A column word after the table that isn't a plural stays a question, not a column list.
+    const out = run('invoices total net')
+    expect(out.sql).toContain('SELECT TOP 1000 i.*')
+    expect(out.notes).toContain('Didn\'t understand "total"')
+    // Counting ignores it.
+    expect(sql('how many invoice ids')).toContain('COUNT(*)')
   })
 
   it('flags words it did not understand', () => {

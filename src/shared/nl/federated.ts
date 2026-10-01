@@ -132,7 +132,9 @@ export function buildFederated(q: Query, model: Model, notes: string[]): { plan:
     groupBy = undefined
   }
 
-  const main = buildSql({ ...q, conditions, shown: q.shown.filter((t) => !isRemote(t)), order, groupBy }, model.kind)
+  // Linked columns are merged into the main rows by key, which a picked column list could leave out.
+  if (q.select?.length && !q.count) notes.push("Picking columns isn't supported with linked databases yet, so every column is shown.")
+  const main = buildSql({ ...q, select: undefined, conditions, shown: q.shown.filter((t) => !isRemote(t)), order, groupBy }, model.kind)
   addStep({
     connectionId: local.id,
     connectionName: local.name,

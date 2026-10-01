@@ -1,5 +1,5 @@
 import type { DbKind } from '../types'
-import { formatRangeLabel, isoDate, parseDate, type DateRange } from './dates'
+import { formatRangeLabel, isoDate, parseDate, weekdayIndex, type DateRange } from './dates'
 import { valueSources, type ChildLink, type Model, type ModelColumn, type ModelTable, type ValueSource } from './model'
 import { buildPlan, type Plan } from './plan'
 import { buildFederated, usesRemote, type FederatedPlan } from './federated'
@@ -59,6 +59,8 @@ export interface Query {
   conditions: Condition[]
   /** Extra columns from joined tables, e.g. a lookup's label. */
   shown: Target[]
+  /** Columns asked for by name ("the id and name of customers"); every column when empty or missing. */
+  select?: Target[]
   count: boolean
   groupBy?: Target
   limit?: number
@@ -230,7 +232,8 @@ export function translate(input: string, model: Model, values: ValueCache, now =
   const table = found.table
   mark(found.indexes, 'table', `${table.info.schema}.${table.info.name}`)
   const wanted = valueSources(table).filter((s) => !values.has(s.key))
-  const q: Query = { table, conditions: [], shown: [], count: false, includeDeleted: false }
+  const q: Query = { table, conditions: [], shown: [], select: [], count: false, includeDeleted: false }
+  const tableStart = Math.min(...found.indexes)
   const describe = (t: Target): string => (t.via ? `${t.via.info.name} → ${t.column.info.name}` : t.column.info.name)
   const noteAlternatives = (m: ColumnMatch, word: string): void => {
     if (m.alternatives.length && !m.exact) notes.push(`"${word}" → ${m.column.info.name} (also: ${m.alternatives.map((a) => a.info.name).join(', ')})`)
@@ -298,7 +301,8 @@ export function translate(input: string, model: Model, values: ValueCache, now =
     }
     if (!allowBare) return null
     const t = tokens[i]
-    const relative = RELATIVE_STARTERS.has(w) || t.type === 'date' || tokens[i + 2]?.lower === 'ago'
+    // Bare weekdays only by their full names, so "sat" or "sun" in a value isn't read as a day.
+    const relative = RELATIVE_STARTERS.has(w) || t.type === 'date' || tokens[i + 2]?.lower === 'ago' || weekdayIndex(w, false) !== null
     const d = relative ? parseDate(tokens, i, now) : null
     return d ? { range: d.range, length: d.length } : null
   }
@@ -511,6 +515,14 @@ export function translate(input: string, model: Model, values: ValueCache, now =
         i += consumed
         continue
       }
+      // A column named but not compared is one to show: "the id and name of customers", "order ids".
+      if (picksColumn(column, i)) {
+        if (!q.select!.some((s) => s.column === column.column)) q.select!.push({ column: column.column })
+        mark(range(i, column.length), 'column', `show ${column.column.info.name}`)
+        noteAlternatives(column, t.text)
+        i += column.length
+        continue
+      }
     }
 
     // bare date: "after 12/12/2025", "this week"
@@ -562,6 +574,19 @@ export function translate(input: string, model: Model, values: ValueCache, now =
   return { sql: buildSql(q, model.kind).sql, table, spans: spans(), notes: dedupe(notes), wanted, plan: buildPlan(q) }
 
   // ---- closures that need the parse state ----
+
+  /**
+   * Whether a column match not used in a condition names a column to show: it comes before the
+   * table ("the id of all orders") or is a plural straight after it ("order ids"). Anywhere else a
+   * leftover column word is more likely a filter the engine didn't follow, so it's reported instead.
+   */
+  function picksColumn(m: ColumnMatch, i: number): boolean {
+    if (!m.exact && m.alternatives.length) return false
+    if (i < tableStart) return true
+    const last = tokens[i + m.length - 1]
+    const plural = last.lower.endsWith('s') && stem(last.lower) !== last.lower
+    return plural && found!.indexes.includes(i - 1)
+  }
 
   function matchTarget(i: number): { target: Target; length: number } | null {
     const parent = matchParent(table, tokens, i)
@@ -888,6 +913,8 @@ export function buildSql(q: Query, kind: DbKind, options: BuildOptions = {}): { 
     select = `COUNT(*) AS ${quote('Count')}`
     orderBy = ''
     limit = undefined
+  } else if (q.select?.length) {
+    select = [...q.select.map(col), ...shownCols].join(', ')
   } else {
     select = [`${main}.*`, ...shownCols].join(', ')
   }

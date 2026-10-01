@@ -14,7 +14,8 @@ export function splitIdentifier(identifier: string): string[] {
  */
 export function stem(word: string): string {
   const w = word.toLowerCase()
-  if (w.length <= 3) return w
+  // "ids" is the one short plural worth reading: "order ids".
+  if (w.length <= 3) return w === 'ids' ? 'id' : w
   if (w.endsWith('ies')) return `${w.slice(0, -3)}y`
   if (w.endsWith('sses')) return w.slice(0, -2)
   if (/(xes|ches|shes)$/.test(w)) return w.slice(0, -2)
