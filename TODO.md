@@ -5,7 +5,7 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 ## From using it
 
 - [x] **Show what an update changed.** After an UPDATE (from a query or grid edits), show the rows it touched with before and after values, so it's clear it worked. It's especially hard to tell on MySQL today, which only reports "rows affected". (1.2.0)
-- [ ] **Show what grid edits changed.** The query-tab Changes view (`lib/updateChanges.ts`, `UpdateChangesView`) doesn't cover saving edits from a table grid yet; `applyChanges` already knows each row's key and old and new values.
+- [x] **Show what grid edits changed.** After a grid save, a panel above the grid shows the edited rows before → after, read back by key, with deleted and added counts. (1.6.0)
 - [x] **Query tabs open as plain SQL.** A new query tab should start with the SQL editor focused and the Ask bar closed; Ask stays one click away (✦ Ask). (1.2.0)
 - [x] **Right-click menu in the SQL editor.** Run selection, run all, run the statement under the cursor, format, copy, save as a query. (1.2.0)
 - [x] **Word wrap on by default in the SQL editor.** A long pasted WHERE clause (dozens of `AND` conditions) currently runs off to the right. Turn wrapping on unless the user switches it off in Settings → Grid & editor. (1.2.0)
@@ -32,6 +32,7 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [ ] **Azure database picker** on a connection with a blank Database (it should land in master and list ProdDB and the rest).
 - [ ] **Run gutter in use** (1.5.0): markers on the left of the line numbers, the spinner stopping a slow query, notes clearing when a statement is edited, and the ✕ note jumping to the error.
 - [ ] **Lookups in query results** (1.5.0): `SELECT *` with joins, `alias.*`, `AS` names, and a script with several SELECTs.
+- [ ] **Grid save changes** (1.6.0): edits, a delete and an add in one save, a table with a trigger, and over 200 edited rows (only the first are compared).
 - [ ] **Database folders** (1.5.1) on a MySQL connection with a blank Database, and on a SQL Server database with several schemas, including the filter and the Routines switch.
 
 ## Features

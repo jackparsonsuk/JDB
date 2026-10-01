@@ -9,7 +9,7 @@ import { recordKey } from './RecordView'
 import { toast } from './Toast'
 import { confirm } from './Confirm'
 import { runExport } from '../lib/exporting'
-import { useTableEdits } from '../lib/useTableEdits'
+import { useTableEdits, type PendingSave } from '../lib/useTableEdits'
 import { SaveChangesDialog } from './SaveChangesDialog'
 import { ColumnFinder } from './ColumnFinder'
 import { isNumericType } from '@shared/edits'
@@ -17,6 +17,8 @@ import { displayValue, MAX_PAGE_SIZE } from '@shared/rows'
 import { useColumnLookup } from '../lib/lookups'
 import { LookupPanel } from './LookupPanel'
 import { LookupDialog } from './LookupDialog'
+import { UpdateChangesView } from './UpdateChangesView'
+import { readSaved, type UpdateChanges } from '../lib/updateChanges'
 
 const PAGE_SIZES = [50, 100, 250, 500, 1000]
 /** The last page size picked, so new table tabs start with it. */
@@ -89,7 +91,10 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
   const [reloadKey, setReloadKey] = useState(0)
   const [exporting, setExporting] = useState(false)
   const [editMode, setEditMode] = useState(false)
-  const [reviewing, setReviewing] = useState<string[] | null>(null)
+  /** The save being reviewed: its statements, and the edited rows as loaded for showing what changed. */
+  const [reviewing, setReviewing] = useState<{ statements: string[]; pending: PendingSave } | null>(null)
+  /** What the last save changed, read back from the table; changes is null while reading. */
+  const [saved, setSaved] = useState<{ count: number; pending: PendingSave; changes: UpdateChanges | null } | null>(null)
   /** Set by the column finder, or by opening this table at a column from Ctrl+K. */
   const [focusColumn, setFocusColumn] = useState(tab.focusColumn)
   useEffect(() => {
@@ -233,7 +238,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
 
   const review = (): void => {
     try {
-      setReviewing(edits.statements())
+      setReviewing({ statements: edits.statements(), pending: edits.pending() })
     } catch (e) {
       toast((e as Error).message)
     }
@@ -456,6 +461,15 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
         </div>
       )}
 
+      {saved && (
+        <div className="saved-changes">
+          <button className="icon small saved-close" title="Close" onClick={() => setSaved(null)}>✕</button>
+          {saved.changes
+            ? <UpdateChangesView changes={saved.changes} rowsAffected={saved.count} saved={saved.pending} />
+            : <div className="update-summary muted">Saved {saved.count} change{saved.count === 1 ? '' : 's'}. Reading the rows back…</div>}
+        </div>
+      )}
+
       <div className="view-body">
         <DataGrid
           loadingLabel={loading ? loadingLabel() : undefined}
@@ -536,13 +550,19 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
       {reviewing && (
         <SaveChangesDialog
           connection={conn}
-          statements={reviewing}
+          statements={reviewing.statements}
           onClose={() => setReviewing(null)}
           onSaved={(n) => {
+            const { pending } = reviewing
             setReviewing(null)
             edits.discard()
             refresh()
             toast(`Saved ${n} change${n === 1 ? '' : 's'}`)
+            setSaved({ count: n, pending, changes: null })
+            const keys = details?.columns.filter((c) => c.isPrimaryKey) ?? []
+            readSaved(conn, tab.table, keys, pending.before).then((changes) => {
+              setSaved((s) => (s && s.pending === pending ? { ...s, changes } : s))
+            })
           }}
           onOpenSql={(sqlText) => {
             setReviewing(null)

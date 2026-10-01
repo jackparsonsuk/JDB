@@ -9,13 +9,22 @@ function Value({ value }: { value: CellValue }) {
   return <span className={value === null ? 'null' : undefined}>{displayValue(value)}</span>
 }
 
-/** The rows an UPDATE changed, each changed value shown as before → after. */
-export function UpdateChangesView({ changes, rowsAffected }: { changes: UpdateChanges; rowsAffected: number }) {
+/**
+ * The rows an UPDATE changed, each changed value shown as before → after. `saved`: a table grid
+ * save, which can also delete and add rows; those are counted rather than listed.
+ */
+export function UpdateChangesView({ changes, rowsAffected, saved }: { changes: UpdateChanges; rowsAffected: number; saved?: { deleted: number; inserted: number } }) {
+  const others = saved && (
+    <>
+      {saved.deleted > 0 && <span> · <strong>{plural(saved.deleted, 'row')} deleted</strong></span>}
+      {saved.inserted > 0 && <span> · <strong>{plural(saved.inserted, 'row')} added</strong></span>}
+    </>
+  )
   if ('note' in changes) {
     return (
       <div className="update-changes">
         <div className="update-summary">
-          {plural(rowsAffected, 'row')} affected{changes.table ? ` in ${changes.table}` : ''}. The changes can't be shown: {changes.note}
+          {plural(rowsAffected, 'row')} affected{changes.table ? ` in ${changes.table}` : ''}{others}. The changes can't be shown: {changes.note}
         </div>
       </div>
     )
@@ -25,9 +34,12 @@ export function UpdateChangesView({ changes, rowsAffected }: { changes: UpdateCh
   return (
     <div className="update-changes">
       <div className="update-summary">
-        {matched === 0
-          ? <strong>No rows in {table} matched, so nothing changed.</strong>
-          : <><strong>{plural(diff.changed.length, 'row')} changed</strong> in {table}</>}
+        {saved && matched === 0
+          ? <>Saved to {table}</>
+          : matched === 0
+            ? <strong>No rows in {table} matched, so nothing changed.</strong>
+            : <><strong>{plural(diff.changed.length, 'row')} changed</strong> in {table}</>}
+        {others}
         {diff.unchanged > 0 && <span className="muted"> · {plural(diff.unchanged, 'row')} matched but already had these values</span>}
         {diff.missing > 0 && <span className="muted"> · {plural(diff.missing, 'row')} couldn't be found by key afterwards (the key changed)</span>}
         {diff.truncated && <span className="muted"> · only the first {formatCount(DIFF_ROW_LIMIT)} rows were compared</span>}

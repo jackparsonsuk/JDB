@@ -1,7 +1,8 @@
-import type { ColumnInfo, ConnectionConfig, ResultSet } from '@shared/types'
+import type { ColumnInfo, ConnectionConfig, ResultSet, TableRef } from '@shared/types'
 import type { Model } from '@shared/nl/model'
 import { mentionedTables, resolveMentions } from '@shared/sqlComplete'
-import { diffRows, keyIndexes, rowsByKey, updateSnapshot, type RowDiff } from '@shared/writeDiff'
+import { qualifiedName } from '@shared/rows'
+import { DIFF_ROW_LIMIT, diffRows, keyIndexes, rowsByKey, updateSnapshot, type RowDiff } from '@shared/writeDiff'
 
 /** What a query tab shows after an UPDATE: the rows it changed, or why they can't be shown. */
 export type UpdateChanges = { table: string; diff: RowDiff } | { table?: string; note: string }
@@ -49,4 +50,15 @@ export async function readAfter(conn: ConnectionConfig, before: UpdateBefore, tr
   }
 }
 
-export const isBefore = (x: UpdateBefore | UpdateChanges): x is UpdateBefore => 'rows' in x
+/**
+ * After a table grid save: reads the edited rows back by primary key and compares them with how
+ * they were loaded, so triggers and defaults show too. Never throws: a failure becomes a note.
+ */
+export function readSaved(conn: ConnectionConfig, table: TableRef, keys: ColumnInfo[], before: ResultSet): Promise<UpdateChanges> {
+  if (!before.rows.length) return Promise.resolve({ table: table.name, diff: { keyColumns: keys.map((k) => k.name), changed: [], unchanged: 0, missing: 0, columns: [], truncated: false } })
+  // One past the limit, so the view can say only the first ones were compared.
+  const rows = { columns: before.columns, rows: before.rows.slice(0, DIFF_ROW_LIMIT + 1) }
+  return readAfter(conn, { table: table.name, tables: qualifiedName(conn.kind, table), keys, rows })
+}
+
+export const isBefore =(x: UpdateBefore | UpdateChanges): x is UpdateBefore => 'rows' in x

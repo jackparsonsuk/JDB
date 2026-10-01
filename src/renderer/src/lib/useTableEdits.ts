@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import type { CellValue, ColumnInfo, DbKind, TableDetails, TableRef } from '@shared/types'
+import type { CellValue, ColumnInfo, DbKind, ResultSet, TableDetails, TableRef } from '@shared/types'
 import { changeSql, isEditableColumn, parseInput, type TableChange } from '@shared/edits'
 import type { GridEditing, RowMark } from '../components/DataGrid'
 
@@ -9,7 +9,13 @@ interface RowUpdate {
   set: Record<string, CellValue>
 }
 
-const sameValue = (a: CellValue, b: CellValue): boolean => a === b || (a !== null && b !== null && String(a) === String(b))
+export interface PendingSave {
+  before: ResultSet
+  deleted: number
+  inserted: number
+}
+
+const sameValue =(a: CellValue, b: CellValue): boolean => a === b || (a !== null && b !== null && String(a) === String(b))
 
 /**
  * Edits staged in the table grid until saved. Rows are tracked by primary key, so edits
@@ -164,5 +170,12 @@ export function useTableEdits(kind: DbKind, table: TableRef, columns: string[], 
     return changes.map((change) => changeSql(kind, table, details?.columns ?? [], change))
   }, [kind, table, details, keyColumns, columns, deletes, updates, inserts])
 
-  return { rows: view.rows, marks: view.marks, count, grid, addRow, discard, statements }
+  /** What saving is about to do: the edited rows as loaded (to compare with afterwards), and how many rows it deletes and adds. */
+  const pending = useCallback((): PendingSave => ({
+    before: { columns, rows: [...updates].filter(([key]) => !deletes.has(key)).map(([, u]) => u.original) },
+    deleted: deletes.size,
+    inserted: inserts.length
+  }), [columns, updates, deletes, inserts.length])
+
+  return { rows: view.rows, marks: view.marks, count, grid, addRow, discard, statements, pending }
 }
