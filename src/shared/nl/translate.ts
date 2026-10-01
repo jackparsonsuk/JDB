@@ -493,6 +493,15 @@ export function translate(input: string, model: Model, values: ValueCache, now =
       }
     }
 
+    // "order numbers": the table's own words and a plural after them can name a column (OrderNumber).
+    const named = tableNamedColumn(i)
+    if (named) {
+      if (!q.select!.some((s) => s.column === named.column)) q.select!.push({ column: named.column })
+      mark(range(i, named.length), 'column', `show ${named.column.info.name}`)
+      i += named.length
+      continue
+    }
+
     // <parent> <column> <operator> <value>: "job claim reference contains 123", "customer name is acme"
     const parentColumn = matchParentColumn(i)
     const plainColumn = matchColumn(table, tokens, i, used)
@@ -581,11 +590,31 @@ export function translate(input: string, model: Model, values: ValueCache, now =
    * leftover column word is more likely a filter the engine didn't follow, so it's reported instead.
    */
   function picksColumn(m: ColumnMatch, i: number): boolean {
-    if (!m.exact && m.alternatives.length) return false
-    if (i < tableStart) return true
     const last = tokens[i + m.length - 1]
     const plural = last.lower.endsWith('s') && stem(last.lower) !== last.lower
-    return plural && found!.indexes.includes(i - 1)
+    if (i >= tableStart && !(plural && found!.indexes.includes(i - 1))) return false
+    if (!m.exact && m.alternatives.length) {
+      const words = tokens.slice(i, i + m.length).map((t) => t.text).join(' ')
+      notes.push(`"${words}" could be ${[m.column, ...m.alternatives].map((c) => c.info.name).join(', ')}: name the column in full to show it`)
+      return false
+    }
+    return true
+  }
+
+  /** A plural straight after the table that, with the table's words in front, is exactly a column's name. */
+  function tableNamedColumn(i: number): { column: ModelColumn; length: number } | null {
+    if (!found!.indexes.includes(i - 1)) return null
+    const own = [...found!.indexes].sort((a, b) => a - b).map((k) => stem(tokens[k].lower))
+    for (let n = 3; n >= 1; n--) {
+      if (used.slice(i, i + n).some(Boolean)) continue
+      const phrase = phraseAt(tokens, i, n)
+      const last = tokens[i + n - 1]
+      if (!phrase || !last.lower.endsWith('s') || stem(last.lower) === last.lower) continue
+      const words = [...own, ...phrase]
+      const column = table.columns.find((c) => sameWords(c.words, words) || sameWords(c.core, words))
+      if (column) return { column, length: n }
+    }
+    return null
   }
 
   function matchTarget(i: number): { target: Target; length: number } | null {

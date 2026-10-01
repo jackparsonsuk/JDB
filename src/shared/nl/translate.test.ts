@@ -37,7 +37,7 @@ const SCHEMA: SchemaTable[] = [
     columns: [
       pk(), col('InvoiceDate', 'datetime2'), col('CreatedOn', 'datetime2'), col('ExportedDatetime', 'datetime2'),
       col('TotalNet', 'decimal(18,2)'), col('TotalGross', 'decimal(18,2)'), fk('InvoiceStatusId', 'Lookups'),
-      col('CustomerName', 'nvarchar(200)'), col('DeletedOn', 'datetime2')
+      col('CustomerName', 'nvarchar(200)'), col('InvoiceNumber', 'nvarchar(20)'), col('OrderNumber', 'nvarchar(20)'), col('DeletedOn', 'datetime2')
     ]
   },
   {
@@ -183,6 +183,13 @@ describe('translate', () => {
     const out = run('invoices total net')
     expect(out.sql).toContain('SELECT TOP 1000 i.*')
     expect(out.notes).toContain('Didn\'t understand "total"')
+    // The table's own words can complete the name: "invoice numbers" is InvoiceNumber, not just any number.
+    expect(sql('invoice numbers')).toMatch(/^SELECT TOP 1000 i\.\[InvoiceNumber\]\nFROM/)
+    expect(sql('latest 10 invoice numbers')).toMatch(/^SELECT TOP 10 i\.\[InvoiceNumber\]\nFROM[\s\S]*ORDER BY i\.\[InvoiceDate\] DESC$/)
+    // A word several columns share says which ones, rather than guessing.
+    const vague = run('numbers of invoices')
+    expect(vague.sql).toContain('SELECT TOP 1000 i.*')
+    expect(vague.notes).toContain('"numbers" could be InvoiceNumber, OrderNumber: name the column in full to show it')
     // Counting ignores it.
     expect(sql('how many invoice ids')).toContain('COUNT(*)')
   })
