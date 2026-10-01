@@ -405,6 +405,8 @@ body.resizing-cols { cursor: col-resize; user-select: none; }
 .resize { position: absolute; top: 0; right: -3px; width: 6px; height: 100%; cursor: col-resize; z-index: 2; }
 .grid td.rownum, .grid th.rownum { color: var(--text-dim); text-align: right; background: var(--bg-2); font-size: 11px; position: sticky; left: 0; }
 .grid th.rownum { z-index: 3; }
+/* Alternate rows, by row number so the stripes don't shift as the grid scrolls; on the row, so hover, selection and edits paint over them. */
+.grid tbody tr.stripe { background: var(--stripe, color-mix(in srgb, var(--text) 4%, transparent)); }
 .grid tbody tr:hover td { background: var(--bg-hover); }
 .grid tbody tr.selected td { background: var(--selected); }
 /* The row number stays put while cells scroll under it, so its selected tint goes over a solid colour. */

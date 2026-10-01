@@ -27,7 +27,7 @@ const SECTIONS: { id: Section; label: string; icon: string }[] = [
 /** Every stored setting, for Reset everything. */
 const ALL_KEYS: (keyof Appearance)[] = [
   'accent', 'env', 'uiFont', 'uiScale', 'codeFont', 'codeSize', 'ligatures', 'density', 'wordWrap', 'tabSize',
-  'dateFormat', 'hideFractions', 'localTime', 'nullText', 'thousands', 'hideLookupLabels',
+  'dateFormat', 'hideFractions', 'localTime', 'nullText', 'thousands', 'hideLookupLabels', 'noStripes',
   'ctrlEnter', 'lowerKeywords', 'hideRunGutter', 'hideRunNotes', 'completeOnRequest',
   'queryTimeout', 'maxRows', 'freshStart', 'defaultConnection'
 ]
@@ -260,7 +260,7 @@ function FontPicker({ value, fallback, options, onChange }: { value?: string; fa
 function GridSection({ a }: { a: Appearance }) {
   return (
     <>
-      <Group title="Row density" note="How tall rows are in tables and query results." onReset={a.density ? () => updateAppearance({ density: undefined }) : undefined}>
+      <Group title="Rows" note="How tall rows are in tables and query results, and whether alternate ones are shaded." onReset={a.density || a.noStripes ? () => resetAppearance(['density', 'noStripes']) : undefined}>
         <div className="density-options">
           {DENSITIES.map((d) => (
             <button key={d} className={`density ${(a.density ?? 'comfortable') === d ? 'on' : ''}`} onClick={() => updateAppearance({ density: d === 'comfortable' ? undefined : d })}>
@@ -269,6 +269,7 @@ function GridSection({ a }: { a: Appearance }) {
             </button>
           ))}
         </div>
+        <Toggle on={!a.noStripes} onChange={(on) => updateAppearance({ noStripes: on ? undefined : true })} label="Shade alternate rows" />
       </Group>
       <Group
         title="Dates and times"

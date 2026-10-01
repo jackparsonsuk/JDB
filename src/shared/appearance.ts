@@ -38,6 +38,8 @@ export interface Appearance {
   nullText?: NullText
   /** Thousands separators in numbers, except columns that look like IDs. */
   thousands?: boolean
+  /** Plain rows rather than alternate ones shaded. */
+  noStripes?: boolean
   /** Leave out the label shown beside a lookup key ("Draft" beside an OrderStatusId). */
   hideLookupLabels?: boolean
 
@@ -123,7 +125,7 @@ export function parseAppearance(raw: unknown): Appearance {
   if (DATE_FORMATS.includes(r.dateFormat as DateFormat)) out.dateFormat = r.dateFormat as DateFormat
   if (NULL_TEXTS.includes(r.nullText as NullText)) out.nullText = r.nullText as NullText
   if (r.ctrlEnter === 'all') out.ctrlEnter = 'all'
-  for (const key of ['hideFractions', 'localTime', 'thousands', 'lowerKeywords', 'hideRunGutter', 'hideRunNotes', 'completeOnRequest', 'freshStart', 'hideLookupLabels'] as const) {
+  for (const key of ['hideFractions', 'localTime', 'thousands', 'lowerKeywords', 'hideRunGutter', 'hideRunNotes', 'completeOnRequest', 'freshStart', 'hideLookupLabels', 'noStripes'] as const) {
     if (r[key] === true) out[key] = true
   }
   if (QUERY_TIMEOUTS.includes(r.queryTimeout as number)) out.queryTimeout = r.queryTimeout as number
@@ -154,6 +156,7 @@ export function appearanceVars(a: Appearance, dark: boolean): Record<string, str
   vars['--grid-size'] = `${size - 1}px`
   vars['--mono-ligatures'] = a.ligatures ? 'normal' : 'none'
   vars['--row-height'] = `${ROW_HEIGHTS[a.density ?? 'comfortable']}px`
+  if (a.noStripes) vars['--stripe'] = 'transparent'
   return vars
 }
 

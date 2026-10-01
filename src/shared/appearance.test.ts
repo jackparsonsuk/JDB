@@ -6,8 +6,10 @@ describe('parseAppearance', () => {
     expect(parseAppearance({
       dateFormat: 'uk', hideFractions: true, localTime: true, nullText: 'symbol', thousands: true,
       ctrlEnter: 'all', lowerKeywords: true, hideRunGutter: true, hideRunNotes: true, completeOnRequest: true,
-      queryTimeout: 60, maxRows: 10_000, freshStart: true, defaultConnection: '0b7c3f2e-1d2a-4c55-9e1a-3f0c2d1b9a77'
+      queryTimeout: 60, maxRows: 10_000, freshStart: true, defaultConnection: '0b7c3f2e-1d2a-4c55-9e1a-3f0c2d1b9a77',
+      noStripes: true, hideLookupLabels: true
     })).toEqual({
+      noStripes: true, hideLookupLabels: true,
       dateFormat: 'uk', hideFractions: true, localTime: true, nullText: 'symbol', thousands: true,
       ctrlEnter: 'all', lowerKeywords: true, hideRunGutter: true, hideRunNotes: true, completeOnRequest: true,
       queryTimeout: 60, maxRows: 10_000, freshStart: true, defaultConnection: '0b7c3f2e-1d2a-4c55-9e1a-3f0c2d1b9a77'
@@ -43,6 +45,10 @@ describe('appearanceVars', () => {
     expect(appearanceVars({}, true)).toEqual({
       '--code-size': '13px', '--grid-size': '12px', '--mono-ligatures': 'none', '--row-height': '26px'
     })
+  })
+
+  it('switches row stripes off by making them transparent', () => {
+    expect(appearanceVars({ noStripes: true }, true)['--stripe']).toBe('transparent')
   })
 
   it('derives the accent tints for light and dark themes', () => {

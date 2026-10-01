@@ -811,7 +811,7 @@ const GridRow = memo(function GridRow(props: RowProps) {
   }
   return (
     <tr
-      className={`${props.selected ? 'selected' : ''} ${props.active ? 'active' : ''} ${mark ? `row-${mark.state}` : ''}`}
+      className={`${index % 2 ? 'stripe' : ''} ${props.selected ? 'selected' : ''} ${props.active ? 'active' : ''} ${mark ? `row-${mark.state}` : ''}`}
       onMouseDown={(e) => e.button === 0 && h.selectRow(index, e)}
       onDoubleClick={() => handlers.current.onRowDoubleClick?.(index)}
     >
