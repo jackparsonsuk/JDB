@@ -2,6 +2,9 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 1.8.0
+- **Hover a table to see its columns.** In the SQL editor and stored procedure source, rest the pointer on a table name or an alias (`o` in `o.Status`) and a card lists the table's columns with their types, keys (PK, FK) and row count, with the column you're on highlighted. Hovering a procedure or function says what it is. Ctrl+click still opens it.
+
 ## 1.7.0
 - **Labels beside lookup keys.** A column like OrderStatusId now shows its label ("Draft") beside each key, in tables and in query results, while the key itself stays exactly as it was: copying, filtering and editing still use it. Lookup columns widen to fit both. Only the keys on screen are looked up, once each. Turn it off in Settings → Grid & values.
 - **The installer says OverlookDB.** The download is now `OverlookDB-Setup-x.y.z.exe`, and the setup wizard, Start menu and desktop shortcuts, and Apps & features all say OverlookDB. Updating renames your existing JDB shortcut rather than adding another, and your connections, passwords and settings carry on as they are. The first update after this may download the full installer once rather than just the changes.

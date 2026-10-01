@@ -40,7 +40,7 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 ## Features
 
 - [x] **Clickable names in routine source.** Ctrl+click a table or proc name in the code to open it, in routine source and the SQL editor. (1.4.0)
-- [ ] **Hover a table to see its columns**, in routine source and the SQL editor, reusing `nameAt` in `src/shared/routines.ts`.
+- [x] **Hover a table to see its columns**, in routine source and the SQL editor, from `nameAt` (`lib/clickableNames.ts`). (1.8.0)
 - [x] **Labels in the grid for lookup columns**, beside the key (which is unchanged), in tables and query results; `lib/lookupLabels.ts`. (1.7.0)
 - [ ] **Share lookups in connection files**, like links and saved queries.
 - [ ] **Search every table for a value.** Paste a GUID or email and see which tables and columns hold it, reading only indexed or likely columns, bounded and time-limited.
