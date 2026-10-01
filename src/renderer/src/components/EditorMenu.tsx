@@ -71,9 +71,9 @@ export function EditorMenu({ x, y, view, running, onRun, onFormat, onSave, onClo
           onRun(statement.text, statement.from)
         })}
       >
-        Run statement at cursor<kbd>Ctrl+Shift+Enter</kbd>
+        Run statement at cursor<kbd>Ctrl+Enter</kbd>
       </button>
-      <button disabled={running || !all.trim()} onClick={act(() => onRun(all, 0))}>Run all</button>
+      <button disabled={running || !all.trim()} onClick={act(() => onRun(all, 0))}>Run all<kbd>Ctrl+Shift+Enter</kbd></button>
       <div className="menu-sep" />
       <button disabled={!selected} onClick={act(() => { window.api.copy(selected); replaceSelection('') })}>Cut<kbd>Ctrl+X</kbd></button>
       <button disabled={!selected} onClick={act(() => window.api.copy(selected))}>Copy<kbd>Ctrl+C</kbd></button>

@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import type { ColumnFilter, ConnectionConfig, KeyKind, QueryResult, ResultSet, RoutineRef, RoutineSource, RowsRequest, SchemaTable, TableRef, ValueLookup, WriteCount } from '@shared/types'
 import { findImplicitCommit, findTransactionControl, findWriteKeyword } from '@shared/sqlGuard'
+import { MAX_PAGE_SIZE } from '@shared/rows'
 import { addHistory, getConnection } from '../store'
 import { TimeoutError, type Driver, type DriverTransaction } from './driver'
 import { MssqlDriver } from './mssql'
@@ -130,7 +131,8 @@ export async function applyDesign(connectionId: string, statements: string[]): P
     forgetSchema(connectionId)
   }
 }
-export const fetchRows = (id: string, request: RowsRequest) => withDriver(id, (d) => d.fetchRows(request))
+export const fetchRows = (id: string, request: RowsRequest) =>
+  withDriver(id, (d) => d.fetchRows({ ...request, limit: Math.min(request.limit, MAX_PAGE_SIZE) }))
 
 /** Counts stop after this long; a huge table then shows its estimate instead. */
 const COUNT_TIMEOUT_MS = 10_000

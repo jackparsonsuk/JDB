@@ -1,6 +1,6 @@
 import type { Completion, CompletionSource } from '@codemirror/autocomplete'
-import { syntaxTree } from '@codemirror/language'
-import type { SQLNamespace } from '@codemirror/lang-sql'
+import { LanguageSupport, syntaxTree } from '@codemirror/language'
+import { keywordCompletionSource, schemaCompletionSource, type SQLDialect, type SQLNamespace } from '@codemirror/lang-sql'
 import type { Model } from '@shared/nl/model'
 import type { TableInfo } from '@shared/types'
 import { columnOptions, defaultSchema, joinOptions, mentionedTables, resolveMentions, statementAt } from '@shared/sqlComplete'
@@ -25,6 +25,26 @@ export function sqlNamespace(tables: TableInfo[], model: Model | null): { schema
 }
 
 const WORD = /[\w$#@]*$/
+
+/**
+ * lang-sql's `sql()` without its keyword completion straying past a dot: after "o." only the
+ * table's columns are wanted, not DESC or DESCRIBE.
+ */
+export function sqlLanguage(dialect: SQLDialect, schema: SQLNamespace, defaultSchema?: string): LanguageSupport {
+  return new LanguageSupport(dialect.language, [
+    dialect.language.data.of({ autocomplete: schemaCompletionSource({ dialect, schema, defaultSchema }) }),
+    dialect.language.data.of({ autocomplete: notAfterDot(keywordCompletionSource(dialect, true)) })
+  ])
+}
+
+/** Leaves "alias.col" to the schema completion. */
+export function notAfterDot(source: CompletionSource): CompletionSource {
+  return (context) => {
+    const word = context.matchBefore(WORD)
+    const from = word ? word.from : context.pos
+    return context.state.sliceDoc(from - 1, from) === '.' ? null : source(context)
+  }
+}
 
 /**
  * Completes what lang-sql's schema completion can't: bare column names from the tables the statement

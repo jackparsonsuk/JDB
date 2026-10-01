@@ -3,7 +3,7 @@ import CodeMirror, { EditorView, type Extension, keymap, Prec } from '@uiw/react
 import { EditorState } from '@codemirror/state'
 import { indentUnit } from '@codemirror/language'
 import { useAppearance } from '../lib/appearance'
-import { sql, MSSQL, MySQL } from '@codemirror/lang-sql'
+import { MSSQL, MySQL } from '@codemirror/lang-sql'
 import { acceptCompletion } from '@codemirror/autocomplete'
 import type { HistoryEntry, QueryResult } from '@shared/types'
 import { findWriteKeyword } from '@shared/sqlGuard'
@@ -17,7 +17,7 @@ import { runFederated, type StepRun } from '../lib/federated'
 import type { TranslateResult } from '@shared/nl/translate'
 import type { Model } from '@shared/nl/model'
 import { localModel } from '../lib/useNl'
-import { sqlAssist, sqlNamespace } from '../lib/sqlAssist'
+import { notAfterDot, sqlAssist, sqlLanguage, sqlNamespace } from '../lib/sqlAssist'
 import { runExport } from '../lib/exporting'
 import { stagedChanges, useTransaction } from '../lib/useTransaction'
 import { TransactionBar } from './TransactionBar'
@@ -34,7 +34,12 @@ import { useClickableNames } from '../lib/clickableNames'
 import { findParams, type QueryParam } from '@shared/params'
 import { explainError, type ErrorHelp } from '@shared/sqlErrors'
 import { errorMarks, setErrorMark } from '../lib/errorMark'
+import { runGutter, runGutterConfig, setRunStatus, type RunStatus } from '../lib/runGutter'
 import { ParamDialog } from './ParamDialog'
+import { LookupPanel } from './LookupPanel'
+import { LookupDialog } from './LookupDialog'
+import { sqlPerResult, useResultLookups } from '../lib/resultLookups'
+import type { ColumnSource } from '@shared/sqlComplete'
 
 /** Where SQL being run came from in the editor, so an error can be pointed at: its text (before parameters are filled in) and offset. */
 interface Origin {
@@ -52,6 +57,7 @@ interface RunError {
 }
 
 const emptySelection: Selection = { rows: new Set(), active: null }
+const NO_COLUMNS: string[] = []
 
 /** `active`: the tab is showing in its pane; `focused`: and that pane has the keyboard. */
 export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 'query' }>; active: boolean; focused: boolean }) {
@@ -83,6 +89,12 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     else rememberTab(tab.id, { sql: text })
   }, [tab.id, text, rememberTab])
   const [result, setResult] = useState<QueryResult | null>(null)
+  /** The SELECT behind each result set, where it can be told, for finding lookups on its columns. */
+  const [resultSql, setResultSql] = useState<(string | null)[] | null>(null)
+  const [activeColumn, setActiveColumn] = useState<string | null>(null)
+  /** The user closed the lookup panel, so row details show even on lookup columns. */
+  const [preferRow, setPreferRow] = useState(false)
+  const [lookupDialog, setLookupDialog] = useState<ColumnSource | null>(null)
   const [runError, setRunError] = useState<RunError | null>(null)
   const setError = useCallback((message: string | null) => setRunError(message === null ? null : { message }), [])
   const [running, setRunning] = useState(false)
@@ -182,19 +194,19 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   const language = useMemo(() => {
     const dialect = conn?.kind === 'mssql' ? MSSQL : MySQL
     const { schema, defaultSchema } = sqlNamespace(tableList ?? [], model)
-    const extensions: Extension[] = [sql({ dialect, schema, defaultSchema, upperCaseKeywords: true })]
+    const extensions: Extension[] = [sqlLanguage(dialect, schema, defaultSchema)]
     if (model) extensions.push(dialect.language.data.of({ autocomplete: sqlAssist(model) }))
-    if (conn) extensions.push(dialect.language.data.of({ autocomplete: snippetCompletions(savedQueries, conn.id) }))
+    if (conn) extensions.push(dialect.language.data.of({ autocomplete: notAfterDot(snippetCompletions(savedQueries, conn.id)) }))
     return extensions
   }, [conn?.kind, conn?.id, tableList, model, savedQueries])
 
   /** Points the editor at a failed run's error, when the editor still holds the SQL that ran. */
-  const showError = useCallback((message: string, statement: string, origin: Origin | undefined, serverLine?: number) => {
+  const showError = useCallback((message: string, statement: string, origin: Origin | undefined, serverLine?: number): number | undefined => {
     const help = explainError(message, origin?.source ?? statement, model, serverLine)
     const view = viewRef.current
     if (!view || !origin || !help.line || view.state.sliceDoc(origin.from, origin.from + origin.source.length) !== origin.source) {
       setRunError({ message, help })
-      return
+      return undefined
     }
     const firstLine = view.state.doc.lineAt(origin.from).number
     const mark = {
@@ -203,6 +215,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     }
     view.dispatch({ effects: setErrorMark.of(mark) })
     setRunError({ message, help, mark, doc: view.state.doc.toString() })
+    return mark.from ?? view.state.doc.line(Math.min(mark.line, view.state.doc.lines)).from
   }, [model])
 
   /**
@@ -225,7 +238,12 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
       return
     }
 
-    const { id } = startRun()
+    const { id, signal } = startRun()
+    // The gutter notes how a run from the editor went, at the statement it ran.
+    const note = (status: RunStatus): void => {
+      if (origin) viewRef.current?.dispatch({ effects: setRunStatus.of({ source: origin.source, from: origin.from, status }) })
+    }
+    note({ kind: 'running' })
     let transactionId = txn.idRef.current
     setChanges(null)
     try {
@@ -234,7 +252,10 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
       const before = keyword === 'UPDATE' && !conn.readOnly ? await readBefore(conn, model, statement, transactionId ?? undefined) : null
       const r = await window.api.runQuery(tab.connectionId, statement, id, transactionId ?? undefined)
       const found = before && (isBefore(before) ? await readAfter(conn, before, transactionId ?? undefined) : before)
+      const last = r.resultSets[r.resultSets.length - 1]
+      note({ kind: 'done', rows: last?.rows.length, affected: r.rowsAffected.reduce((a, b) => a + b, 0), durationMs: r.durationMs })
       setResult(r)
+      setResultSql(sqlPerResult(statement, r.resultSets.length))
       setChanges(found)
       setShowChanges(!!found && r.resultSets.length === 0)
       setResultIndex(Math.max(0, r.resultSets.length - 1))
@@ -248,7 +269,8 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
         txn.record({ sql: statement, write: !!keyword, rowsAffected: 0, durationMs: 0, error: message })
         if (!(await txn.stillOpen())) message += '\n\nThe server rolled back the transaction, so none of its changes were kept.'
       }
-      showError(message, statement, origin, (e as { sqlLine?: number }).sqlLine)
+      const at = showError(message, statement, origin, (e as { sqlLine?: number }).sqlLine)
+      note(signal.aborted ? { kind: 'cancelled' } : { kind: 'error', message, at })
       setResult(null)
     } finally {
       runRef.current = null
@@ -322,6 +344,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
       const { result: merged, runs } = await runFederated(plan, (step) =>
         setStepLabel(`Step ${step.index} of ${plan.steps.length} · ${step.connectionName}: ${step.description}`), current)
       setResult(merged)
+      setResultSql(null)
       setStepRuns(runs)
       setResultIndex(0)
       setSelection(emptySelection)
@@ -344,14 +367,24 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     else runSql(text, 0)
   }, [runSql, text])
 
-  /** Ctrl+Shift+Enter: selects and runs the statement the cursor is in. */
+  /** Ctrl+Enter: runs the selection, or selects and runs the statement the cursor is in. */
   const runStatement = useCallback(() => {
     const view = viewRef.current
-    const statement = view && statementUnderCursor(view)
-    if (!view || !statement) return
+    if (!view) return
+    const range = view.state.selection.main
+    const selected = range.empty ? '' : view.state.sliceDoc(range.from, range.to)
+    if (selected.trim()) return runSql(selected, range.from)
+    const statement = statementUnderCursor(view)
+    if (!statement) return
     view.dispatch({ selection: { anchor: statement.from, head: statement.to } })
     runSql(statement.text, statement.from)
   }, [runSql])
+
+  // The gutter is built once, so it calls whichever runSql is current.
+  const runSqlRef = useRef(runSql)
+  runSqlRef.current = runSql
+  const gutter = useMemo(() => runGutter((sqlText, from) => runSqlRef.current(sqlText, from), cancel), [cancel])
+  const gutterConfig = useMemo(() => runGutterConfig.of({ readOnly: !!conn?.readOnly }), [conn?.readOnly])
 
   /** Shift+Alt+F: lays the whole editor out, as one change so Ctrl+Z puts it back. */
   const format = useCallback(() => {
@@ -382,15 +415,15 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
 
   const runKeymap = useMemo(
     () => Prec.highest(keymap.of([
-      { key: 'Mod-Shift-Enter', run: () => { runStatement(); return true } },
-      { key: 'Mod-Enter', run: () => { run(); return true } },
+      { key: 'Mod-Enter', run: () => { runStatement(); return true } },
+      { key: 'Mod-Shift-Enter', run: () => { runSql(text, 0); return true } },
       { key: 'Shift-Alt-f', run: () => { format(); return true } },
       { key: 'F5', run: () => { run(); return true } },
       { key: 'Mod-s', run: () => { save(); return true } },
       // Tab accepts the highlighted completion like Enter; with no list open it indents as before.
       { key: 'Tab', run: acceptCompletion }
     ])),
-    [run, runStatement, format, save]
+    [run, runStatement, runSql, text, format, save]
   )
 
   const startResize = (event: React.MouseEvent): void => {
@@ -411,9 +444,16 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     // Only on tab activation; toggling the ask bar shouldn't steal focus.
   }, [active])
 
-  if (!conn) return null
   const set = result?.resultSets[resultIndex]
+  const results = useResultLookups(tab.connectionId, model, resultSql?.[resultIndex], set?.columns ?? NO_COLUMNS, activeColumn, tableList)
+  const columnMenu = useCallback((column: string) => {
+    const source = set ? results.sources[set.columns.indexOf(column)] : undefined
+    return source ? [{ label: 'Look up values in another table…', run: () => setLookupDialog(source) }] : []
+  }, [set, results.sources])
+
+  if (!conn) return null
   const activeRow = set && selection.active !== null ? set.rows[selection.active] : undefined
+  const showLookup = !!activeRow && !!results.lookup && !!results.source && !preferRow
 
   return (
     <div className="view">
@@ -421,7 +461,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
         {running ? (
           <button className="danger" onClick={cancel} title="Stop the query on the server (Esc)">■ Cancel</button>
         ) : (
-          <button className="primary" onClick={run}>▶ Run</button>
+          <button className="primary" onClick={run} title="Run the selection, or everything (F5)">▶ Run</button>
         )}
         {!conn.readOnly && !txn.tx && (
           <button
@@ -438,7 +478,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
             ? 'Esc cancels the running query'
             : !txn.tx && !conn.readOnly && safety(conn) === 'protected'
               ? `Ctrl+Enter runs · writes on ${environment(conn.env).name.toUpperCase()} are staged until you commit`
-              : 'Ctrl+Enter runs the selection, or everything · Ctrl+Shift+Enter the statement at the cursor · Ctrl+click a table to open it'}
+              : 'Ctrl+Enter runs the selection, or the statement at the cursor · Ctrl+Shift+Enter runs everything · Ctrl+click a table to open it'}
         </span>
         <div className="toolbar-right">
           <button
@@ -495,7 +535,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
               value={text}
               height="100%"
               theme={scheme}
-              extensions={[...language, ...editorPrefs, errorMarks, names, runKeymap]}
+              extensions={[...language, ...editorPrefs, errorMarks, names, gutter, gutterConfig, runKeymap]}
               onChange={setText}
               onCreateEditor={(view) => {
                 viewRef.current = view
@@ -573,9 +613,31 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
                     selection={selection}
                     onSelectionChange={setSelection}
                     copyTarget={{ kind: conn.kind }}
+                    onActiveColumnChange={setActiveColumn}
+                    columnMenu={columnMenu}
                   />
-                  {activeRow && (
-                    <RowInspector kind={conn.kind} columns={set.columns} row={activeRow} onClose={() => setSelection(emptySelection)} />
+                  {showLookup && activeColumn !== null && (
+                    <LookupPanel
+                      conn={conn}
+                      column={results.source!.column}
+                      lookup={results.lookup!}
+                      targetRows={results.targetRows}
+                      value={activeRow ? activeRow[set.columns.indexOf(activeColumn)] : undefined}
+                      setBlocked="query results can't be edited"
+                      onPick={() => undefined}
+                      onSetUp={() => setLookupDialog(results.source!)}
+                      onShowRow={() => setPreferRow(true)}
+                      onClose={() => setPreferRow(true)}
+                    />
+                  )}
+                  {activeRow && !showLookup && (
+                    <RowInspector
+                      kind={conn.kind}
+                      columns={set.columns}
+                      row={activeRow}
+                      onShowLookup={results.lookup && results.source ? () => setPreferRow(false) : undefined}
+                      onClose={() => setSelection(emptySelection)}
+                    />
                   )}
                 </div>
               ) : (
@@ -623,6 +685,16 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
           onFormat={format}
           onSave={save}
           onClose={closeMenu}
+        />
+      )}
+      {lookupDialog && (
+        <LookupDialog
+          conn={conn}
+          table={{ schema: lookupDialog.table.info.schema, name: lookupDialog.table.info.name }}
+          column={lookupDialog.column}
+          existing={lookupDialog === results.source ? results.lookup : undefined}
+          tables={tableList ?? []}
+          onClose={() => setLookupDialog(null)}
         />
       )}
       {paramRun && (

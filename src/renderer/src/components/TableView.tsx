@@ -13,12 +13,23 @@ import { useTableEdits } from '../lib/useTableEdits'
 import { SaveChangesDialog } from './SaveChangesDialog'
 import { ColumnFinder } from './ColumnFinder'
 import { isNumericType } from '@shared/edits'
-import { displayValue } from '@shared/rows'
+import { displayValue, MAX_PAGE_SIZE } from '@shared/rows'
 import { useColumnLookup } from '../lib/lookups'
 import { LookupPanel } from './LookupPanel'
 import { LookupDialog } from './LookupDialog'
 
-const PAGE_SIZES = [50, 100, 250, 500]
+const PAGE_SIZES = [50, 100, 250, 500, 1000]
+/** The last page size picked, so new table tabs start with it. */
+const PAGE_SIZE_KEY = 'jdb.pageSize'
+
+function savedPageSize(): number {
+  try {
+    const n = Number(localStorage.getItem(PAGE_SIZE_KEY))
+    return Number.isInteger(n) && n >= 1 && n <= MAX_PAGE_SIZE ? n : 100
+  } catch {
+    return 100
+  }
+}
 const OPS: { op: FilterOp; label: string; needsValue: boolean }[] = [
   { op: '=', label: '=', needsValue: true },
   { op: '!=', label: '≠', needsValue: true },
@@ -54,7 +65,18 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
   const [filters, setFilters] = useState<ColumnFilter[]>(tab.initialFilters)
   const [sort, setSort] = useState<TableSort | undefined>(tab.initialSort)
   const [page, setPage] = useState(0)
-  const [pageSize, setPageSize] = useState(100)
+  const [pageSize, setPageSizeState] = useState(savedPageSize)
+  const setPageSize = (size: number): void => {
+    setPageSizeState(size)
+    setPage(0)
+    try {
+      localStorage.setItem(PAGE_SIZE_KEY, String(size))
+    } catch {
+      // Not remembered; this tab still uses it.
+    }
+  }
+  /** Typing a page size of one's own, in place of the dropdown. */
+  const [customSize, setCustomSize] = useState<string | null>(null)
   const [result, setResult] = useState<RowsResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -541,9 +563,41 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
             title={pageCount === undefined ? 'Waiting for the row count' : undefined}
             onClick={() => pageCount !== undefined && setPage(pageCount - 1)}
           >»</button>
-          <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0) }}>
-            {PAGE_SIZES.map((s) => <option key={s} value={s}>{s} / page</option>)}
-          </select>
+          {customSize !== null ? (
+            <input
+              className="page-size-input"
+              type="number"
+              min={1}
+              max={MAX_PAGE_SIZE}
+              autoFocus
+              value={customSize}
+              title={`Rows per page, up to ${formatCount(MAX_PAGE_SIZE)}. Enter to apply, Esc to cancel`}
+              onChange={(e) => setCustomSize(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'Escape') setCustomSize(null)
+              }}
+              onBlur={() => {
+                const n = Math.floor(Number(customSize))
+                if (customSize !== null && Number.isFinite(n) && n >= 1) setPageSize(Math.min(n, MAX_PAGE_SIZE))
+                setCustomSize(null)
+              }}
+            />
+          ) : (
+            <select
+              value={pageSize}
+              title="Rows per page"
+              onChange={(e) => {
+                const value = Number(e.target.value)
+                if (value === 0) setCustomSize(String(pageSize))
+                else setPageSize(value)
+              }}
+            >
+              {[...new Set([...PAGE_SIZES, pageSize])].sort((a, b) => a - b).map((s) => <option key={s} value={s}>{formatCount(s)} / page</option>)}
+              <option value={0}>Custom…</option>
+            </select>
+          )}
         </div>
         <span className="muted">
           {selection.rows.size > 1 ? `${selection.rows.size} rows selected · Ctrl+C copies for Excel` : canEditNow ? 'Right-click a cell to edit, set NULL, add a GUID or now/today' : 'Right-click a cell for copy and filter options'}

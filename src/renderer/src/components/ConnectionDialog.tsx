@@ -122,7 +122,7 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConf
           )}
 
           {form.authType === 'entra-browser' && (
-            <label>Tenant ID <span className="muted">(optional)</span>
+            <label><span>Tenant ID <span className="muted">(optional)</span></span>
               <input value={form.tenantId ?? ''} onChange={(e) => set('tenantId', e.target.value)} placeholder="organisation tenant, if sign-in picks the wrong one" />
             </label>
           )}
@@ -142,7 +142,7 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConf
           )}
 
           <div className="form-row">
-            <label className="grow">Folder <span className="muted">(optional)</span>
+            <label className="grow"><span>Folder <span className="muted">(optional)</span></span>
               <input
                 list="connection-folders"
                 value={form.folder ?? ''}
