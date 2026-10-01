@@ -73,4 +73,4 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 
 - [ ] Tests only cover `src/shared`. Consider a small scripted smoke test of the installed app (the debug-port approach used during testing) for the main flows.
 - [ ] RELEASE.md: note that GitHub CLI isn't installed on this machine, and releases are checked through the public jdb-releases API instead.
-- [ ] Delete merged branches (`fixes/minor`, `feature/saved-queries`, `feature/customisation`, `feature/query-params-errors`, `feature/clickable-names`, `feature/1.5.0`, `fix/rownum-see-through`, `feature/database-tree`) once nothing else is needed from them.
+- [ ] Delete merged branches (`fixes/minor`, `feature/saved-queries`, `feature/customisation`, `feature/query-params-errors`, `feature/clickable-names`, `feature/1.5.0`, `fix/rownum-see-through`, `feature/database-tree`, `feature/grid-edit-changes`) once nothing else is needed from them.

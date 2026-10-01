@@ -3,6 +3,7 @@
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
 ## 1.6.0
+- The SQL shown before saving grid edits or confirming a write now wraps, so a long UPDATE can be read without scrolling sideways.
 - **See what a grid save changed.** After **Review & save** in a table, a panel above the grid shows each edited row's values before → after, shown straight away, then checked against the database in the background (so changes made by triggers or defaults show too), plus how many rows were deleted and added. Close it with ✕.
 
 ## 1.5.1
