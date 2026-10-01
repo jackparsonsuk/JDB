@@ -21,7 +21,8 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [x] **Databases as folders** in the sidebar when a connection spans several, like DBeaver. (1.5.1)
 - [x] Fixed: the connection dialog's Folder box sat below Environment (1.5.0), and the selected row's number showed cells through it when scrolled right (1.5.1).
 - [x] **Watch a row for changes** in the record explorer, read again by key every few seconds. (1.8.0)
-- [ ] **Watch a record's child rows too**: inserts, updates and deletes in related tables, capped per watch. Then, if polling misses too much, a MySQL binlog mode for local that catches every change.
+- [x] **Watch a record's related rows too**: rows added, removed and changed in its related tables, up to 20 tables of up to 200 rows each. (1.8.0)
+- [ ] **Binlog mode for watching on local MySQL**, if polling turns out to miss too much: catches every change in order, not just what differs between reads.
 
 ## Check first (built but not yet seen for real)
 

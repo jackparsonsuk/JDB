@@ -749,8 +749,16 @@ tr:hover .fk-jump { opacity: 1; }
 .watch-gone { padding: 6px 10px; margin-bottom: 6px; border-radius: 6px; background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
 .watch-events { list-style: none; margin: 0; padding: 0; }
 .watch-event { display: flex; gap: 14px; padding: 6px 2px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
-.watch-event.gone strong, .watch-event.back strong { color: var(--danger); font-size: 13px; }
-.watch-event.back strong { color: var(--ok); }
+.watch-what { font-size: 13px; }
+.watch-event.gone .watch-what, .watch-event.removed .watch-what { color: var(--danger); }
+.watch-event.back .watch-what, .watch-event.added .watch-what { color: var(--ok); }
+.watch-event.related .watch-detail { border-left: 2px solid var(--border); padding-left: 8px; }
+.watch-values { display: flex; flex-wrap: wrap; gap: 2px 14px; font: 12px var(--mono); }
+.watch-values .watch-column { min-width: 0; margin-right: 4px; }
+.watch-related { color: var(--text-dim); margin-bottom: 6px; }
+.watch-child-problem { color: #d29922; }
+.watch-skipped { margin: 4px 0 0; padding-left: 18px; }
+.watch-controls label { display: flex; align-items: center; gap: 4px; color: var(--text-dim); }
 .watch-time { font: 12px var(--mono); color: var(--text-dim); flex-shrink: 0; padding-top: 1px; }
 .watch-detail { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .watch-cell { display: flex; align-items: baseline; gap: 8px; font: 12px var(--mono); min-width: 0; }
