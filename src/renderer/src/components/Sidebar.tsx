@@ -628,11 +628,8 @@ function RoutineList({ connectionId, filter, inSource, schemas }: { connectionId
   const { routines, loadRoutines } = useAppState()
   const link = useOpenLink()
   const state = routines[connectionId]
-  /**
-   * Kind groups toggled from how they start (open, or closed inside a schema folder), and those
-   * showing every routine: "kind", or "schema|kind" when grouped.
-   */
-  const [closed, setClosed] = useState<Set<string>>(() => new Set())
+  /** Kind groups the user opened (they start closed), and those showing every routine: "kind", or "schema|kind" when grouped. */
+  const [opened, setOpened] = useState<Set<string>>(() => new Set())
   const [showAll, setShowAll] = useState<Set<string>>(() => new Set())
   const [sources, setSources] = useState<Sources | null>(null)
   const needle = useDeferredValue(filter)
@@ -727,13 +724,13 @@ function RoutineList({ connectionId, filter, inSource, schemas }: { connectionId
         const group = routines.filter((r) => r.kind === kind)
         if (!group.length) return null
         const key = `${prefix}${kind}`
-        // Inside a schema folder groups start closed, like its Tables and Views; `closed` holds the
-        // ones toggled away from that. Filtering opens every group, so a match is never tucked away.
-        const open = !!needle.trim() || (prefix ? closed.has(key) : !closed.has(key))
+        // Groups start closed, like a schema's Tables and Views; `opened` holds the ones opened.
+        // Filtering opens every group, so a match is never tucked away.
+        const open = !!needle.trim() || opened.has(key)
         const shown = showAll.has(key) ? group : group.slice(0, ROUTINE_PAGE)
         return (
           <div key={kind} className="routine-group">
-            <button className="group-head" onClick={() => setClosed((c) => toggled(c, key))}>
+            <button className="group-head" onClick={() => setOpened((c) => toggled(c, key))}>
               <span className={`chevron ${open ? 'open' : ''}`}>›</span>
               <span className={`kind-dot kind-${kind}`} />
               <span className="group-name">{ROUTINE_LABELS[kind].plural}</span>

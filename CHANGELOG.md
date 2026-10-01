@@ -3,7 +3,7 @@
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
 ## 1.8.1
-- **Database and schema folders open tidier.** Opening a database or schema in the sidebar now shows its Tables, Views and routine groups closed, with their counts, rather than every table at once. Click a group to open it; filtering still opens every group so matches are never hidden.
+- **Database and schema folders open tidier.** Opening a database or schema in the sidebar now shows its Tables and Views closed, with their counts, rather than every table at once. On the Routines tab, Procedures, Functions and Triggers start closed too. Click a group to open it; filtering still opens every group so matches are never hidden.
 
 ## 1.8.0
 - **Find a value everywhere.** Right-click a cell and choose **Find this value everywhere**, or pick **Find a value…** from a connection's right-click menu (or Ctrl+K), and paste a GUID, an email or an id. OverlookDB lists the tables and columns that hold it, with how many rows each, and opens the matching rows, explores or watches a single one. It doesn't scan every table: only columns that could hold the value are read (GUID-sized columns for a GUID, id columns for a number, text columns for an email), indexed ones first, and unindexed ones only on tables under 200,000 rows. Bigger ones are listed with **search anyway**. Every lookup is an exact match, capped and time-limited, and the search can be stopped.
