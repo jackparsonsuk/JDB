@@ -1,6 +1,6 @@
 # Releasing JDB
 
-Installed copies of JDB update themselves from the public [jdb-releases](https://github.com/jackparsonsUK/jdb-releases) repo. The source stays in the private `jdb` repo. A release goes out to everyone who has JDB installed, so only release something that has been tested.
+Installed copies of JDB update themselves from the public [jdb-releases](https://github.com/jackparsonsUK/jdb-releases) repo. The source is the open-source `jdb` repo; jdb-releases holds only the installers. A release goes out to everyone who has JDB installed, so only release something that has been tested.
 
 ## Doing a release
 
@@ -24,7 +24,7 @@ Installed copies of JDB update themselves from the public [jdb-releases](https:/
    - `OverlookDB-Setup-X.Y.Z.exe.blockmap`
    - `latest.yml`
 
-The whole run takes a few minutes, most of it building the installer and uploading about 117 MB. On Actions, Windows runners count double against the private repo's 2,000 free minutes a month, so a release costs roughly 15–25 of them.
+The whole run takes a few minutes, most of it building the installer and uploading about 117 MB. Actions minutes are free now that the `jdb` repo is public (a release took roughly 15–25 of a private repo's monthly allowance before).
 
 ## What `npm run release` does
 

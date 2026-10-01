@@ -22,7 +22,7 @@ nsis:
   shortcutName: OverlookDB
   uninstallDisplayName: OverlookDB ${version}
   include: build/installer.nsh
-# Installers go to a public releases-only repo (the source repo is private). Installed apps check its
+# Installers go to a releases-only repo, separate from the source. Installed apps check its
 # releases for updates (electron-updater), and `npm run release` publishes there.
 publish:
   provider: github
