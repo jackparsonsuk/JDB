@@ -61,4 +61,10 @@ export function readSaved(conn: ConnectionConfig, table: TableRef, keys: ColumnI
   return readAfter(conn, { table: table.name, tables: qualifiedName(conn.kind, table), keys, rows })
 }
 
-export const isBefore =(x: UpdateBefore | UpdateChanges): x is UpdateBefore => 'rows' in x
+/** A grid save's changes as staged: the loaded rows against the values written. Shown at once, while `readSaved` checks them. */
+export function stagedDiff(table: TableRef, keys: ColumnInfo[], before: ResultSet, after: ResultSet): UpdateChanges {
+  const diff = diffRows(before, after, keys)
+  return diff ? { table: table.name, diff } : { table: table.name, note: "The primary key wasn't in the grid's columns, so the rows couldn't be matched up." }
+}
+
+export const isBefore = (x: UpdateBefore | UpdateChanges): x is UpdateBefore => 'rows' in x

@@ -501,6 +501,7 @@ tr:hover .fk-jump { opacity: 1; }
 .saved-changes { position: relative; display: flex; flex-direction: column; max-height: 35%; min-height: 0; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--ok) 5%, var(--bg)); }
 .saved-changes .update-summary { padding-right: 36px; }
 .saved-close { position: absolute; top: 4px; right: 8px; z-index: 1; }
+.saved-check { padding: 4px 12px; font-size: 11px; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
 .update-table { border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
 .update-table th, .update-table td { padding: 4px 10px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); text-align: left; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
 .update-table th { position: sticky; top: 0; background: var(--bg-2); font-weight: 600; }

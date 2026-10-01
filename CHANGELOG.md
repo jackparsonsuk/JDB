@@ -3,7 +3,7 @@
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
 ## 1.6.0
-- **See what a grid save changed.** After **Review & save** in a table, a panel above the grid shows each edited row's values before → after, read back from the database (so changes made by triggers or defaults show too), plus how many rows were deleted and added. Close it with ✕.
+- **See what a grid save changed.** After **Review & save** in a table, a panel above the grid shows each edited row's values before → after, shown straight away, then checked against the database in the background (so changes made by triggers or defaults show too), plus how many rows were deleted and added. Close it with ✕.
 
 ## 1.5.1
 - **Databases as folders.** When a connection shows more than one database (or schema), the sidebar groups them like DBeaver: a folder per database with its Tables and Views inside, and in Routines its procedures, functions and triggers. The connection's own database starts open, and filtering opens every folder with a match.

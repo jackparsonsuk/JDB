@@ -10,7 +10,9 @@ interface RowUpdate {
 }
 
 export interface PendingSave {
+  /** The edited rows as loaded, and with the edits applied. */
   before: ResultSet
+  after: ResultSet
   deleted: number
   inserted: number
 }
@@ -171,11 +173,15 @@ export function useTableEdits(kind: DbKind, table: TableRef, columns: string[], 
   }, [kind, table, details, keyColumns, columns, deletes, updates, inserts])
 
   /** What saving is about to do: the edited rows as loaded (to compare with afterwards), and how many rows it deletes and adds. */
-  const pending = useCallback((): PendingSave => ({
-    before: { columns, rows: [...updates].filter(([key]) => !deletes.has(key)).map(([, u]) => u.original) },
-    deleted: deletes.size,
-    inserted: inserts.length
-  }), [columns, updates, deletes, inserts.length])
+  const pending = useCallback((): PendingSave => {
+    const edited = [...updates].filter(([key]) => !deletes.has(key)).map(([, u]) => u)
+    return {
+      before: { columns, rows: edited.map((u) => u.original) },
+      after: { columns, rows: edited.map((u) => columns.map((name, ci) => (name in u.set ? u.set[name] : u.original[ci]))) },
+      deleted: deletes.size,
+      inserted: inserts.length
+    }
+  }, [columns, updates, deletes, inserts.length])
 
   return { rows: view.rows, marks: view.marks, count, grid, addRow, discard, statements, pending }
 }

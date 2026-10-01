@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CellValue, ColumnFilter, ColumnInfo, FilterOp, RowsResult, TableDetails, TableRef, TableSort } from '@shared/types'
 import { useAppState, useCloseWarning, useTableList, type OpenTarget, type Tab } from '../state'
 import { incomingLinks, outgoingLinks } from '@shared/links'
-import { formatCount, selectSql } from '../lib/format'
+import { formatCount, formatDuration, selectSql } from '../lib/format'
 import { DataGrid, type Selection } from './DataGrid'
 import { RowInspector } from './RowInspector'
 import { recordKey } from './RecordView'
@@ -18,7 +18,7 @@ import { useColumnLookup } from '../lib/lookups'
 import { LookupPanel } from './LookupPanel'
 import { LookupDialog } from './LookupDialog'
 import { UpdateChangesView } from './UpdateChangesView'
-import { readSaved, type UpdateChanges } from '../lib/updateChanges'
+import { readSaved, stagedDiff, type UpdateChanges } from '../lib/updateChanges'
 
 const PAGE_SIZES = [50, 100, 250, 500, 1000]
 /** The last page size picked, so new table tabs start with it. */
@@ -93,8 +93,11 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
   const [editMode, setEditMode] = useState(false)
   /** The save being reviewed: its statements, and the edited rows as loaded for showing what changed. */
   const [reviewing, setReviewing] = useState<{ statements: string[]; pending: PendingSave } | null>(null)
-  /** What the last save changed, read back from the table; changes is null while reading. */
-  const [saved, setSaved] = useState<{ count: number; pending: PendingSave; changes: UpdateChanges | null } | null>(null)
+  /**
+   * What the last save changed: as staged at first, then as read back from the table. `check` is
+   * how the read-back went: running, done in `ms`, or why it couldn't be done.
+   */
+  const [saved, setSaved] = useState<{ count: number; pending: PendingSave; changes: UpdateChanges; check: 'running' | { ms: number } | { problem: string } } | null>(null)
   /** Set by the column finder, or by opening this table at a column from Ctrl+K. */
   const [focusColumn, setFocusColumn] = useState(tab.focusColumn)
   useEffect(() => {
@@ -464,9 +467,14 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
       {saved && (
         <div className="saved-changes">
           <button className="icon small saved-close" title="Close" onClick={() => setSaved(null)}>✕</button>
-          {saved.changes
-            ? <UpdateChangesView changes={saved.changes} rowsAffected={saved.count} saved={saved.pending} />
-            : <div className="update-summary muted">Saved {saved.count} change{saved.count === 1 ? '' : 's'}. Reading the rows back…</div>}
+          <UpdateChangesView changes={saved.changes} rowsAffected={saved.count} saved={saved.pending} />
+          {saved.pending.before.rows.length > 0 && (
+            <div className="saved-check muted">
+              {saved.check === 'running' ? 'As saved · checking against the database…'
+                : 'ms' in saved.check ? `Checked against the database in ${formatDuration(saved.check.ms)}`
+                  : `As saved. Couldn't check against the database: ${saved.check.problem}`}
+            </div>
+          )}
         </div>
       )}
 
@@ -556,13 +564,17 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
             const { pending } = reviewing
             setReviewing(null)
             edits.discard()
-            refresh()
             toast(`Saved ${n} change${n === 1 ? '' : 's'}`)
-            setSaved({ count: n, pending, changes: null })
             const keys = details?.columns.filter((c) => c.isPrimaryKey) ?? []
+            setSaved({ count: n, pending, changes: stagedDiff(tab.table, keys, pending.before, pending.after), check: 'running' })
+            const started = performance.now()
             readSaved(conn, tab.table, keys, pending.before).then((changes) => {
-              setSaved((s) => (s && s.pending === pending ? { ...s, changes } : s))
+              const ms = performance.now() - started
+              // A read-back that failed leaves the staged values showing, saying why they weren't checked.
+              setSaved((s) => (s && s.pending === pending ? ('note' in changes ? { ...s, check: { problem: changes.note } } : { ...s, changes, check: { ms } }) : s))
             })
+            // After the read-back has started, so it isn't queued behind the reload.
+            refresh()
           }}
           onOpenSql={(sqlText) => {
             setReviewing(null)
