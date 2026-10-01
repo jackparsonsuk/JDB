@@ -10,7 +10,8 @@ import { wordScore } from '@shared/fuzzy'
 import { appVersion } from '../lib/version'
 import { useUpdate } from '../lib/useUpdate'
 import { setTheme, useColorScheme } from '../lib/theme'
-import { formatCount } from '../lib/format'
+import { formatCount, selectSql } from '../lib/format'
+import { pinKey, usePinnedTables } from '../lib/pinnedTables'
 import { toast } from './Toast'
 import { APP_NAME } from '@shared/brand'
 
@@ -367,7 +368,12 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
     loadTables(connection.id, true)
   }
 
-  const list = filterTables(state?.tables ?? [], filter)
+  const { pinned, setPinned } = usePinnedTables(connection.id)
+  const [tableMenu, setTableMenu] = useState<{ x: number; y: number; table: TableInfo } | null>(null)
+  const filtered = filterTables(state?.tables ?? [], filter)
+  // Pinned tables sit at the top, in the order they were pinned, and leave the list below.
+  const pinnedList = pinned.flatMap((key) => filtered.find((t) => pinKey(t) === key) ?? [])
+  const list = pinnedList.length ? filtered.filter((t) => !pinned.includes(pinKey(t))) : filtered
   // Grouped by database (MySQL) or schema (SQL Server) once there's more than one, like DBeaver's tree.
   const showSchema = new Set((state?.tables ?? []).map((t) => t.schema)).size > 1
   const schemaLabel = connection.kind === 'mysql' ? 'database' : 'schema'
@@ -377,7 +383,11 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
       key={`${t.schema}.${t.name}`}
       className="table-item"
       onClick={() => openTable(connection.id, t)}
-      title={`${t.schema}.${t.name}${t.rowEstimate !== undefined ? ` · ~${formatCount(t.rowEstimate)} rows` : ''}`}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        setTableMenu({ x: e.clientX, y: e.clientY, table: t })
+      }}
+      title={`${t.schema}.${t.name}${t.rowEstimate !== undefined ? ` · ~${formatCount(t.rowEstimate)} rows` : ''}\nRight-click to pin it to the top`}
     >
       <span className="table-icon">{t.type === 'view' ? '◫' : '▦'}</span>
       <span className="table-name">
@@ -439,6 +449,25 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
         </ConnectionMenu>
       )}
 
+      {tableMenu && (() => {
+        const t = tableMenu.table
+        const isPinned = pinned.includes(pinKey(t))
+        return (
+          <ConnectionMenu x={tableMenu.x} y={tableMenu.y} onClose={() => setTableMenu(null)}>
+            {(act) => (
+              <>
+                <div className="menu-label">{t.schema}.{t.name}</div>
+                <button onClick={act(() => setPinned(t, !isPinned))}>{isPinned ? 'Unpin' : 'Pin to top'}</button>
+                <div className="menu-sep" />
+                <button onClick={act(() => openTable(connection.id, t))}>Open</button>
+                <button onClick={act(() => openQuery(connection.id, selectSql(connection.kind, t, [], undefined, undefined, 100)))}>New query on this {t.type === 'view' ? 'view' : 'table'}</button>
+                <button onClick={act(() => window.api.copy(t.name))}>Copy name</button>
+              </>
+            )}
+          </ConnectionMenu>
+        )
+      })()}
+
       {expanded && (
         <div className="conn-body">
           {state?.status === 'loading' && <div className="muted pad">Connecting…</div>}
@@ -492,6 +521,12 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
                 />
               )}
               <div className="tables" hidden={mode !== 'tables'}>
+                {pinnedList.length > 0 && (
+                  <div className="routine-group pinned-group">
+                    <div className="group-head"><span className="pin-icon">📌</span><span className="group-name">Pinned</span></div>
+                    {pinnedList.map((t) => tableItem(t, showSchema))}
+                  </div>
+                )}
                 {showSchema ? (
                   <SchemaGroups items={list} open={openSchemas} filtering={!!filter.trim()} onToggle={toggleSchema} label={schemaLabel}>
                     {(group, schema) => (['table', 'view'] as const).map((type) => {

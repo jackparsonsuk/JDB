@@ -46,7 +46,8 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [ ] **Undo last change.** After an UPDATE or grid save, offer a script that puts the rows back, from the Changes view's before values.
 - [ ] **Diff between connections.** Compare a table's columns and keys between two connections, one row by key, or a query's results on both. Link discovery already does much of the sampling.
 - [ ] **Query plans.** An Explain button on query tabs (SHOWPLAN_XML on SQL Server, EXPLAIN FORMAT=JSON on MySQL) that flags table scans on big tables.
-- [ ] **Recent and pinned tables** per connection, at the top of its table list.
+- [x] **Pinned tables** per connection, at the top of its table list, from a right-click menu. (1.6.0)
+- [ ] **Recent tables** per connection, beside the pinned ones.
 - [ ] **Share a result** as a Markdown table or a Teams / Slack message, with the query and connection name.
 - [ ] **ER diagram from the Ask model.** A "tables around this one" diagram, including inferred keys and cross-database links.
 - [ ] **Pinned records.** Pin a record in the explorer and come back to it later, across databases.

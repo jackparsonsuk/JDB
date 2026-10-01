@@ -839,6 +839,10 @@ html.slop ::selection { background: #ff4ecd; color: #fff; }
 .source-toggle.on { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 
 .routine-group + .routine-group { margin-top: 2px; }
+/* Tables pinned to the top of a connection's list. */
+.pinned-group { padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
+.pinned-group .group-head { cursor: default; }
+.pin-icon { font-size: 10px; }
 .group-head { display: flex; align-items: center; gap: 7px; width: 100%; border: none; background: none; padding: 5px 6px 3px; border-radius: 4px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-dim); }
 .group-head:hover:not(:disabled) { background: none; color: var(--text); }
 .group-head .chevron { width: 8px; font-size: 12px; }
