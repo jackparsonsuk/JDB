@@ -381,6 +381,8 @@ body.resizing-cols { cursor: col-resize; user-select: none; }
 .grid th.rownum { z-index: 3; }
 .grid tbody tr:hover td { background: var(--bg-hover); }
 .grid tbody tr.selected td { background: var(--selected); }
+/* The row number stays put while cells scroll under it, so its selected tint goes over a solid colour. */
+.grid tbody tr.selected td.rownum { background: linear-gradient(var(--selected), var(--selected)), var(--bg-2); }
 .grid tbody tr.active td.rownum { color: var(--accent); font-weight: 700; }
 .grid td.null { color: var(--null); font-style: italic; }
 .grid td.num { color: var(--num); text-align: right; }
