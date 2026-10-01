@@ -17,6 +17,7 @@ import { ConfirmHost } from './components/Confirm'
 import { Logo } from './components/Logo'
 import { SettingsDialog } from './components/SettingsDialog'
 import { environmentCss } from '@shared/environments'
+import { APP_NAME } from '@shared/brand'
 import { LinksDialog } from './components/LinksDialog'
 import { SlopLayer } from './components/SlopLayer'
 import { WhatsNewDialog } from './components/WhatsNewDialog'
@@ -108,6 +109,13 @@ export function App() {
   const split = isSplit(layout)
   const tabs = layout.tabs
   const activeTab = tabs.find((t) => t.id === activeTabId)
+
+  // The window's title follows its focused tab, so windows can be told apart on the taskbar and in Alt+Tab.
+  const activeConnection = activeTab && connections.find((c) => c.id === activeTab.connectionId)
+  const windowTitle = activeTab ? `${tabTitle(activeTab)}${activeConnection ? ` · ${activeConnection.name}` : ''} — ${APP_NAME}` : APP_NAME
+  useEffect(() => {
+    document.title = windowTitle
+  }, [windowTitle])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -362,7 +370,7 @@ function PaneHead({ pane, split }: { pane: PaneId; split: boolean }) {
 
 /** A tab's right-click menu. Bulk closes act on its own pane and leave pinned tabs open. */
 function TabMenu({ x, y, tabId, onClose }: { x: number; y: number; tabId: string; onClose(): void }) {
-  const { layout, closeTab, closeTabs, pinTab, moveTab, moveToNewWindow } = useAppState()
+  const { layout, closeTab, closeTabs, pinTab, moveTab, moveToNewWindow, duplicateTab } = useAppState()
   const tab = layout.tabs.find((t) => t.id === tabId)
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ left: x, top: y })
@@ -402,6 +410,8 @@ function TabMenu({ x, y, tabId, onClose }: { x: number; y: number; tabId: string
   return (
     <div ref={ref} className="menu tab-menu" style={position} onMouseDown={(e) => e.stopPropagation()}>
       <button onClick={act(() => pinTab(tabId, !tab.pinned))}>{tab.pinned ? 'Unpin tab' : 'Pin tab'}</button>
+      <button onClick={act(() => duplicateTab(tabId))} title="Open a copy of this tab next to it, as it is now">Duplicate</button>
+      <button onClick={act(() => duplicateTab(tabId, true))} title="Open a copy of this tab in a new window">Duplicate in new window</button>
       <div className="menu-sep" />
       <button onClick={act(() => closeTab(tabId))}>Close{!tab.pinned && <kbd>Ctrl+W</kbd>}</button>
       <button disabled={!others} onClick={act(() => closeTabs(tabId, 'others'))}>Close others{others ? ` (${others})` : ''}</button>

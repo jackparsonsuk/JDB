@@ -137,6 +137,8 @@ interface AppState {
   openWindow(): void
   /** Moves a tab into a new window of its own, results and all; refused for tabs with unsaved work. */
   moveToNewWindow(id: string): void
+  /** Opens a copy of a tab as it is now, beside it or (`inWindow`) in a new window. */
+  duplicateTab(id: string, inWindow?: boolean): void
   /** Bumped when JDB changes a connection's schema, so open views re-read their columns. */
   schemaVersions: Record<string, number>
   schemaChanged(connectionId: string): void
@@ -564,6 +566,37 @@ export function AppStateProvider({ children, session, carried }: { children: Rea
     setLayout((s) => panes.closeTab(s, id))
   }, [])
 
+  /**
+   * A tab as it is now (its SQL, filters, sort or record), to open again: never pinned, and a query
+   * copy gets a name of its own and isn't tied to the saved query, so saving it can't overwrite that.
+   */
+  const copyOf = useCallback((tab: Tab): SavedTab => {
+    const { pinned: _pinned, ...saved } = toSaved(tab, memory.current.get(tab.id))
+    if (saved.kind !== 'query') return saved
+    const { savedId: _savedId, ...query } = saved
+    return { ...query, title: `Query ${++queryCounter.current}${query.schema ? ` · ${query.schema}` : ''}` }
+  }, [])
+
+  const duplicateTab = useCallback(async (id: string, inWindow = false) => {
+    const tab = layoutRef.current.tabs.find((t) => t.id === id)
+    if (!tab) return
+    const saved = copyOf(tab)
+    const result = tab.kind === 'query' ? tabResults.get(id) : undefined
+    if (inWindow) {
+      window.api.openWindow({ tabs: [{ ...saved, pane: 0 }], active: [0, null], focused: 0, ratio: 0.5 }, result ? { results: { 0: result } } : undefined)
+        .catch((e) => toast((e as Error).message, true))
+      return
+    }
+    const fresh = fromSaved({ ...saved, pane: tab.pane })
+    const copy: Tab = fresh.kind === 'query' && result ? { ...fresh, initialResult: result } : fresh
+    setLayout((s) => {
+      // Straight after the original, in its pane.
+      const inPane = s.tabs.filter((t) => t.pane === tab.pane)
+      const next = inPane[inPane.findIndex((t) => t.id === id) + 1]
+      return panes.reorderTab(panes.addTab(s, copy), copy.id, tab.pane, next?.id ?? null)
+    })
+  }, [copyOf])
+
   // Another window saved something this one shows.
   useEffect(() => window.api.onStoreChanged((topics) => {
     if (topics.includes('connections')) reloadConnections().catch(() => undefined)
@@ -614,6 +647,7 @@ export function AppStateProvider({ children, session, carried }: { children: Rea
     pinTab,
     openWindow,
     moveToNewWindow,
+    duplicateTab,
     reorderTab,
     schemaVersions,
     schemaChanged,
@@ -621,7 +655,7 @@ export function AppStateProvider({ children, session, carried }: { children: Rea
     rememberTab,
     initialRatio,
     rememberRatio
-  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, routines, loadRoutines, layout, setActiveTab, focusPane, moveTab, open, openTable, openQuery, environments, saveEnvironments, reloadEnvironments, deleteEnvironment, environment, safety, savedQueries, saveQuery, deleteQuery, reloadQueries, openSaved, linkQueryTab, insertIntoQuery, unsavedTabs, setTabUnsaved, openRecord, closeTab, closeTabs, pinTab, openWindow, moveToNewWindow, reorderTab, schemaVersions, schemaChanged, rememberTab, initialRatio, rememberRatio])
+  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, routines, loadRoutines, layout, setActiveTab, focusPane, moveTab, open, openTable, openQuery, environments, saveEnvironments, reloadEnvironments, deleteEnvironment, environment, safety, savedQueries, saveQuery, deleteQuery, reloadQueries, openSaved, linkQueryTab, insertIntoQuery, unsavedTabs, setTabUnsaved, openRecord, closeTab, closeTabs, pinTab, openWindow, moveToNewWindow, duplicateTab, reorderTab, schemaVersions, schemaChanged, rememberTab, initialRatio, rememberRatio])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
