@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 OverlookDB (formerly JDB) is a desktop database viewer (Electron + React + TypeScript, built with electron-vite) for SQL Server / Azure SQL and MySQL. It is a DBeaver replacement focused on reading data safely; writes are deliberately guarded.
 
-The name people see comes from `APP_NAME` in `src/shared/brand.ts`, and the logo from `components/Logo.tsx` (in the app) and `scripts/make-icon.cjs` (the icon), which draw the same shapes. Everything else keeps the JDB name on purpose: the installer and exe, `productName`, app id and pinned `nsis.guid`, the install folder and `%APPDATA%\JDB` userData (which holds the key that decrypts saved passwords), the jdb-releases repo, the `jdb-connections` file format and `.jdb.json` extension, and `jdb.*` localStorage keys. Renaming any of those breaks upgrades, passwords or shared files.
+The name people see comes from `APP_NAME` in `src/shared/brand.ts`, and the logo from `components/Logo.tsx` (in the app) and `scripts/make-icon.cjs` (the icon), which draw the same shapes. Everything else keeps the JDB name on purpose: the exe, `productName`, app id and pinned `nsis.guid`, the install folder and `%APPDATA%\JDB` userData (which holds the key that decrypts saved passwords), the jdb-releases repo, the `jdb-connections` file format and `.jdb.json` extension, and `jdb.*` localStorage keys. Renaming any of those breaks upgrades, passwords or shared files. The installer itself shows OverlookDB (file name, wizard, shortcuts, Apps & features) through `nsis` settings and `build/installer.nsh`; see RELEASE.md.
 
 ## Commands
 

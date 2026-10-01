@@ -9,7 +9,8 @@ import { readFileSync } from 'node:fs'
 
 const { version } = JSON.parse(readFileSync('package.json', 'utf8'))
 const tag = `v${version}`
-const needed = ['latest.yml', `JDB-Setup-${version}.exe`, `JDB-Setup-${version}.exe.blockmap`]
+// The installer's file name comes from nsis.artifactName in electron-builder.yml.
+const needed = ['latest.yml', `OverlookDB-Setup-${version}.exe`, `OverlookDB-Setup-${version}.exe.blockmap`]
 
 /**
  * This version's section of CHANGELOG.md, as the release description. The app reads the same file

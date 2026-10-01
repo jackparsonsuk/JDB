@@ -15,6 +15,13 @@ nsis:
   guid: 4d324775-1d91-5185-8204-0843849efc55
   oneClick: false
   allowToChangeInstallationDirectory: true
+  # What people see is OverlookDB (the installer file, wizard, shortcuts, Apps & features); the exe,
+  # install folder and userData keep the JDB name, so upgrades and saved passwords carry on. Upgrades
+  # rename an old "JDB" shortcut rather than adding a second one.
+  artifactName: OverlookDB-Setup-${version}.${ext}
+  shortcutName: OverlookDB
+  uninstallDisplayName: OverlookDB
+  include: build/installer.nsh
 # Installers go to a public releases-only repo (the source repo is private). Installed apps check its
 # releases for updates (electron-updater), and `npm run release` publishes there.
 publish:

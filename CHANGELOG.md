@@ -3,6 +3,7 @@
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
 ## 1.7.0
+- **The installer says OverlookDB.** The download is now `OverlookDB-Setup-x.y.z.exe`, and the setup wizard, Start menu and desktop shortcuts, and Apps & features all say OverlookDB. Updating renames your existing JDB shortcut rather than adding another, and your connections, passwords and settings carry on as they are. The first update after this may download the full installer once rather than just the changes.
 - The interface now uses your operating system's own font by default (Segoe UI on Windows). Settings → Fonts & size calls it **System default**, and Segoe UI Variable is now one of the fonts you can pick.
 - **Striped rows.** Alternate rows in tables and query results are lightly shaded, so a wide row is easier to follow across. Turn it off in Settings → Grid & values → Rows.
 - **Check for updates in Settings.** Settings → About & updates shows the version you're running, checks for an update on the spot, and offers **Restart to update** once one has downloaded.

@@ -6,7 +6,7 @@ A streamlined desktop database viewer for SQL Server / Azure SQL and MySQL, buil
 
 ## Install
 
-Download `JDB-Setup-x.y.z.exe` from the [latest release](https://github.com/jackparsonsUK/jdb-releases/releases/latest) and run it. Windows may warn about an unknown publisher because the installer isn't code-signed; choose **More info → Run anyway**.
+Download `OverlookDB-Setup-x.y.z.exe` from the [latest release](https://github.com/jackparsonsUK/jdb-releases/releases/latest) and run it. Windows may warn about an unknown publisher because the installer isn't code-signed; choose **More info → Run anyway**.
 
 Once installed, OverlookDB checks for new releases in the background. A new version downloads by itself and installs the next time you close it, or straight away from **Restart to update** in the sidebar.
 
