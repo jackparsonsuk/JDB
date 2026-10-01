@@ -21,6 +21,7 @@ import { SlopLayer } from './components/SlopLayer'
 import { WhatsNewDialog } from './components/WhatsNewDialog'
 import { announceUpdate } from './lib/whatsNew'
 import { appVersion } from './lib/version'
+import { useAppearance } from './lib/appearance'
 
 const SIDEBAR_DEFAULT = 270
 const SIDEBAR_MIN = 180
@@ -80,6 +81,7 @@ function useSidebar() {
 export function App() {
   const sidebar = useSidebar()
   const { layout, activeTabId, setActiveTab, closeTab, moveTab, focusPane, connections, openQuery, initialRatio, rememberRatio, environments } = useAppState()
+  const { defaultConnection } = useAppearance()
   const [editing, setEditing] = useState<ConnectionConfig | null | 'new'>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -126,7 +128,9 @@ export function App() {
         sidebar.setHidden(!sidebar.hidden)
       } else if (mod && key === 't') {
         e.preventDefault()
-        const target = activeTab?.connectionId ?? connections[0]?.id
+        // With no tab open, Settings' default connection, else the first one.
+        const fallback = connections.find((c) => c.id === defaultConnection)?.id ?? connections[0]?.id
+        const target = activeTab?.connectionId ?? fallback
         if (target) openQuery(target)
       } else if (mod && e.key === '\\' && activeTab) {
         e.preventDefault()
@@ -142,7 +146,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [activeTab, activeTabId, closeTab, connections, layout, moveTab, openQuery, setActiveTab, sidebar])
+  }, [activeTab, activeTabId, closeTab, connections, layout, moveTab, openQuery, setActiveTab, sidebar, defaultConnection])
 
   const startResize = (event: React.MouseEvent): void => {
     event.preventDefault()

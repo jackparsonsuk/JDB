@@ -899,7 +899,7 @@ html.slop ::selection { background: #ff4ecd; color: #fff; }
 .pad-side { padding: 12px 14px; }
 
 /* Formatted / As written, All / Changes */
-.segmented { display: inline-flex; padding: 2px; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; margin-right: 6px; }
+.segmented { display: inline-flex; flex-wrap: wrap; padding: 2px; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; margin-right: 6px; }
 .segmented button { border: none; background: none; border-radius: 5px; padding: 2px 10px; font-size: 12px; color: var(--text-dim); transition: background 120ms, color 120ms; }
 .segmented button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
 .segmented button.on { background: var(--bg-3); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18); }
@@ -1077,7 +1077,11 @@ button.linkish:hover:not(:disabled) { background: none; text-decoration: underli
 .settings-note.about { margin-top: auto; padding-bottom: 12px; }
 .settings-actions { position: sticky; bottom: 0; margin: auto -26px 0; padding: 12px 26px; display: flex; justify-content: space-between; background: var(--bg-2); border-top: 1px solid var(--border); }
 .settings-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
-.settings-label { width: 56px; font-size: 12px; color: var(--text-dim); }
+.settings-label { min-width: 56px; flex-shrink: 0; font-size: 12px; color: var(--text-dim); }
+.settings-row { flex-wrap: wrap; }
+.settings-row select { padding: 3px 8px; }
+.settings-sample { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 12px; }
+.settings-sample code { font: 12px var(--mono); padding: 3px 8px; border-radius: 5px; background: var(--bg); border: 1px solid var(--border); }
 .settings-value { min-width: 40px; font: 12px var(--mono); color: var(--text-dim); }
 .settings input[type="range"] { flex: 1; max-width: 280px; accent-color: var(--accent); padding: 0; border: none; background: none; }
 
@@ -1195,3 +1199,5 @@ button.linkish:hover:not(:disabled) { background: none; text-decoration: underli
 .param-name { display: flex; flex-direction: column; font: 600 12px var(--mono); overflow: hidden; }
 .param-name .muted { font: 11px var(--sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .param-preview { max-height: 200px; overflow: auto; font: 11px var(--mono); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; white-space: pre-wrap; margin: 0 0 12px; }
+/* A query result cut to Settings' row limit. */
+.result-capped { color: var(--env-test); }

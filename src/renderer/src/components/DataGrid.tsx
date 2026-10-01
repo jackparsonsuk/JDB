@@ -6,7 +6,8 @@ import { COPY_FORMATS, displayValue, formatRows, type CopyFormat } from '../lib/
 import { useOpenLink } from '../lib/openLink'
 import type { OpenTarget } from '../state'
 import { toast } from './Toast'
-import { useRowHeight } from '../lib/appearance'
+import { useAppearance, useRowHeight } from '../lib/appearance'
+import { formatCell, type CellFormat } from '@shared/cellFormat'
 
 /** Row height for the chosen density (Settings); set by DataGrid on each render, read live by its handlers. */
 let ROW_HEIGHT = 26
@@ -107,6 +108,9 @@ export function DataGrid(props: Props) {
 function Grid(props: Props) {
   const { columns, rows, columnInfo, selection, onSelectionChange } = props
   const link = useOpenLink()
+  // How dates, NULLs and numbers show (Settings); the values themselves stay as read.
+  const { dateFormat, hideFractions, localTime, nullText, thousands } = useAppearance()
+  const cellFormat = useMemo<CellFormat>(() => ({ dateFormat, hideFractions, localTime, nullText, thousands }), [dateFormat, hideFractions, localTime, nullText, thousands])
   const scrollRef = useRef<HTMLDivElement>(null)
   const [widths, setWidths] = useState<number[]>([])
   /** Rows and columns currently rendered; only changes when the viewport crosses a step. */
@@ -120,7 +124,7 @@ function Grid(props: Props) {
     setWidths(columns.map((name, ci) => {
       let longest = name.length + 3
       for (let r = 0; r < Math.min(rows.length, 60); r++) {
-        longest = Math.max(longest, displayValue(rows[r][ci]).length)
+        longest = Math.max(longest, formatCell(rows[r][ci], name, cellFormat).length)
       }
       return Math.min(360, Math.max(70, longest * 7.4 + 20))
     }))
@@ -568,6 +572,7 @@ function Grid(props: Props) {
                   mark={props.marks?.get(index)}
                   editingColumn={editCell?.row === index ? editCell.column : null}
                   handlers={handlers}
+                  format={cellFormat}
                 />
               )
             })}
@@ -736,6 +741,7 @@ interface RowProps {
   /** The column being edited in this row, if any. */
   editingColumn: number | null
   handlers: { current: RowHandlers }
+  format: CellFormat
 }
 
 /** One grid row. Memoised, so moving the scroll window only renders the rows that come into view. */
@@ -769,7 +775,7 @@ const GridRow = memo(function GridRow(props: RowProps) {
     } else {
       cells.push(
         <td key={ci} className={cellClass(value) + edited} onMouseDown={onMouseDown} onContextMenu={(e) => h.openMenu(e, index, ci)} onDoubleClick={onDoubleClick}>
-          <CellContent value={value} column={columns[ci]} info={info} crossInfo={value !== null ? props.crossLinks?.get(columns[ci]) : undefined} handlers={h} />
+          <CellContent value={value} column={columns[ci]} format={props.format} info={info} crossInfo={value !== null ? props.crossLinks?.get(columns[ci]) : undefined} handlers={h} />
         </td>
       )
     }
@@ -788,14 +794,15 @@ const GridRow = memo(function GridRow(props: RowProps) {
   )
 })
 
-function CellContent({ value, column, info, crossInfo, handlers }: {
+function CellContent({ value, column, format, info, crossInfo, handlers }: {
   value: CellValue
   column: string
+  format: CellFormat
   info?: ColumnInfo
   crossInfo?: { title: string; env: string }
   handlers: RowHandlers
 }) {
-  const text = clip(displayValue(value))
+  const text = clip(formatCell(value, column, format))
   const fk = info?.references && value !== null && handlers.referenceTarget ? handlers.referenceTarget(info, value) : null
   const crossTarget = crossInfo ? handlers.crossLinkTarget?.(column, value) : undefined
   const cross = crossInfo && crossTarget ? { ...crossInfo, target: crossTarget } : null

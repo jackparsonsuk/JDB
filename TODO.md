@@ -32,6 +32,7 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [ ] **Azure database picker** on a connection with a blank Database (it should land in master and list ProdDB and the rest).
 - [ ] **Run gutter in use** (1.5.0): markers on the left of the line numbers, the spinner stopping a slow query, notes clearing when a statement is edited, and the ✕ note jumping to the error.
 - [ ] **Lookups in query results** (1.5.0): `SELECT *` with joins, `alias.*`, `AS` names, and a script with several SELECTs.
+- [ ] **Settings** (1.6.0): each date format on both dialects, local time across a BST change, the time limit on a slow query (the message, and the gutter note), the row cap on a big SELECT *, and Ctrl+Enter swapped back.
 - [ ] **Grid save changes** (1.6.0): edits, a delete and an add in one save, a table with a trigger, and over 200 edited rows (only the first are compared).
 - [ ] **Database folders** (1.5.1) on a MySQL connection with a blank Database, and on a SQL Server database with several schemas, including the filter and the Routines switch.
 
@@ -55,6 +56,7 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [ ] **Quick charts.** A bar or line chart of a grouped query result, drawn as SVG.
 - [x] **Filter from a cell.** Right-click a cell and choose "filter to this value" or "exclude it", added as a filter chip.
 - [x] **Insert a saved query into the open tab** from the sidebar, rather than only opening it in a new tab. (1.2.1)
+- [x] **More settings**: date, NULL and number display, Ctrl+Enter, keyword case, the run gutter and notes, autocompletion, a query time limit, a row cap, starting fresh, and Ctrl+T's default connection. (1.6.0)
 - [ ] **Import and export appearance settings**, so a theme and colours can be shared.
 - [ ] **More from the run gutter**: right-click a ▶ for Count rows first, Explain, Run in a new tab and Copy; Shift+click to run from there down; one result tab per statement when running several.
 - [ ] **Database folders, the rest of DBeaver's tree**: empty databases, Indexes and Events folders, and routines under each database in one tree rather than the Tables / Routines switch.

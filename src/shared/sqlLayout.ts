@@ -225,12 +225,15 @@ interface RawItem {
   depth: number
 }
 
-/** Formats (when asked) and outlines `source`. Never throws: a failure returns the source as is. */
-export function layoutSql(source: string, kind: DbKind, format: boolean): Layout {
+/**
+ * Formats (when asked) and outlines `source`. Never throws: a failure returns the source as is.
+ * `lowerKeywords`: write keywords in lower case rather than upper.
+ */
+export function layoutSql(source: string, kind: DbKind, format: boolean, lowerKeywords = false): Layout {
   const tokens = lex(source, kind)
   let result: { text: string; items: RawItem[]; lineOf: number[] }
   try {
-    result = new Walker(tokens, kind).run()
+    result = new Walker(tokens, kind, lowerKeywords).run()
   } catch (error) {
     return { text: source, outline: [], formatted: false, problem: format ? `Couldn't lay this out: ${(error as Error).message}` : undefined }
   }
@@ -300,7 +303,7 @@ class Walker {
   private readonly match = new Map<number, number>()
   private readonly caseEnd = new Map<number, number>()
 
-  constructor(private readonly t: SqlToken[], private readonly kind: DbKind) {
+  constructor(private readonly t: SqlToken[], private readonly kind: DbKind, private readonly lowerKeywords = false) {
     this.lineOf = new Array(t.length).fill(0)
     this.pair()
   }
@@ -445,7 +448,7 @@ class Walker {
     if (this.breakNext && this.cur.trim() && !glued) this.newline(this.continuation())
     if (!glued) this.breakNext = false
     let text = tok.text
-    if (tok.type === 'word' && KEYWORDS.has(tok.upper) && !this.afterDot(i)) text = tok.upper
+    if (tok.type === 'word' && KEYWORDS.has(tok.upper) && !this.afterDot(i)) text = this.lowerKeywords ? tok.upper.toLowerCase() : tok.upper
     this.lineOf[i] = this.lines.length
     if (!this.cur) this.cur = this.indentOf(this.curIndent) + text
     else this.cur += (tok.space ? ' ' : '') + text

@@ -218,6 +218,8 @@ export interface QueryResult {
   resultSets: ResultSet[]
   rowsAffected: number[]
   durationMs: number
+  /** Settings' row limit, when a result set had more rows than it and was cut to it. */
+  capped?: number
 }
 
 /** One side of a cross-database link: a column in a table on a saved connection. */

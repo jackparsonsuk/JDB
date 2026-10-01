@@ -2,6 +2,22 @@ import { describe, expect, it } from 'vitest'
 import { appearanceVars, parseAppearance, textOn } from './appearance'
 
 describe('parseAppearance', () => {
+  it('keeps the value, editor, query and startup settings, and drops anything else', () => {
+    expect(parseAppearance({
+      dateFormat: 'uk', hideFractions: true, localTime: true, nullText: 'symbol', thousands: true,
+      ctrlEnter: 'all', lowerKeywords: true, hideRunGutter: true, hideRunNotes: true, completeOnRequest: true,
+      queryTimeout: 60, maxRows: 10_000, freshStart: true, defaultConnection: '0b7c3f2e-1d2a-4c55-9e1a-3f0c2d1b9a77'
+    })).toEqual({
+      dateFormat: 'uk', hideFractions: true, localTime: true, nullText: 'symbol', thousands: true,
+      ctrlEnter: 'all', lowerKeywords: true, hideRunGutter: true, hideRunNotes: true, completeOnRequest: true,
+      queryTimeout: 60, maxRows: 10_000, freshStart: true, defaultConnection: '0b7c3f2e-1d2a-4c55-9e1a-3f0c2d1b9a77'
+    })
+    expect(parseAppearance({
+      dateFormat: 'dd-mm', nullText: 'nil', ctrlEnter: 'statement', thousands: 'yes', hideRunGutter: false,
+      queryTimeout: 7, maxRows: -1, defaultConnection: '"><script>'
+    })).toEqual({})
+  })
+
   it('keeps valid settings and normalises colours', () => {
     expect(parseAppearance({
       accent: '#A371F7', env: { prod: '#FF0000', dev: 'blue' }, uiFont: ' Inter ', codeFont: 'JetBrains Mono',

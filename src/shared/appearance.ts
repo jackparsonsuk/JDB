@@ -26,7 +26,51 @@ export interface Appearance {
   /** Wrap long lines in the SQL editor. */
   wordWrap?: boolean
   tabSize?: 2 | 4
+
+  // How values show in grids. None of these change what's copied, exported, filtered or edited.
+  /** How dates and times show; none shows them as the database sent them. */
+  dateFormat?: DateFormat
+  /** Leave out fractions of a second. */
+  hideFractions?: boolean
+  /** Treat stored times as UTC and show them in this PC's time zone. */
+  localTime?: boolean
+  /** How NULL shows; none shows NULL. */
+  nullText?: NullText
+  /** Thousands separators in numbers, except columns that look like IDs. */
+  thousands?: boolean
+
+  // The SQL editor.
+  /** What Ctrl+Enter runs; none runs the selection or the statement at the cursor. */
+  ctrlEnter?: 'all'
+  /** Lower-case keywords in autocompletion and formatting; none is upper case. */
+  lowerKeywords?: boolean
+  /** Hide the ▶ run gutter. */
+  hideRunGutter?: boolean
+  /** Hide the ✓ / ✕ note after each statement runs. */
+  hideRunNotes?: boolean
+  /** Autocompletion only on Ctrl+Space, not while typing. */
+  completeOnRequest?: boolean
+
+  // Queries and startup.
+  /** Stop queries from query tabs after this many seconds; none means no limit. */
+  queryTimeout?: number
+  /** Keep at most this many rows per result set; none means no limit. */
+  maxRows?: number
+  /** Start with no tabs rather than reopening the last session's. */
+  freshStart?: boolean
+  /** Connection id Ctrl+T uses when no tab is open; none uses the first connection. */
+  defaultConnection?: string
 }
+
+export type DateFormat = 'iso' | 'uk' | 'us' | 'long'
+export type NullText = 'blank' | 'symbol' | 'paren'
+
+export const DATE_FORMATS: DateFormat[] = ['iso', 'uk', 'us', 'long']
+export const NULL_TEXTS: NullText[] = ['blank', 'symbol', 'paren']
+/** Query time limits offered in Settings, in seconds. */
+export const QUERY_TIMEOUTS = [30, 60, 120, 300, 600, 1800]
+/** Row caps offered in Settings. */
+export const ROW_CAPS = [1000, 5000, 10_000, 50_000, 100_000, 500_000]
 
 export type UiScale = 0.9 | 1 | 1.1 | 1.25
 export type Density = 'compact' | 'comfortable' | 'spacious'
@@ -74,6 +118,15 @@ export function parseAppearance(raw: unknown): Appearance {
   if (DENSITIES.includes(r.density as Density)) out.density = r.density as Density
   if (typeof r.wordWrap === 'boolean') out.wordWrap = r.wordWrap
   if (r.tabSize === 2 || r.tabSize === 4) out.tabSize = r.tabSize
+  if (DATE_FORMATS.includes(r.dateFormat as DateFormat)) out.dateFormat = r.dateFormat as DateFormat
+  if (NULL_TEXTS.includes(r.nullText as NullText)) out.nullText = r.nullText as NullText
+  if (r.ctrlEnter === 'all') out.ctrlEnter = 'all'
+  for (const key of ['hideFractions', 'localTime', 'thousands', 'lowerKeywords', 'hideRunGutter', 'hideRunNotes', 'completeOnRequest', 'freshStart'] as const) {
+    if (r[key] === true) out[key] = true
+  }
+  if (QUERY_TIMEOUTS.includes(r.queryTimeout as number)) out.queryTimeout = r.queryTimeout as number
+  if (ROW_CAPS.includes(r.maxRows as number)) out.maxRows = r.maxRows as number
+  if (typeof r.defaultConnection === 'string' && /^[\w-]{1,64}$/.test(r.defaultConnection)) out.defaultConnection = r.defaultConnection
   return out
 }
 

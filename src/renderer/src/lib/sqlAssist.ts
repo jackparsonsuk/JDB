@@ -30,10 +30,10 @@ const WORD = /[\w$#@]*$/
  * lang-sql's `sql()` without its keyword completion straying past a dot: after "o." only the
  * table's columns are wanted, not DESC or DESCRIBE.
  */
-export function sqlLanguage(dialect: SQLDialect, schema: SQLNamespace, defaultSchema?: string): LanguageSupport {
+export function sqlLanguage(dialect: SQLDialect, schema: SQLNamespace, defaultSchema?: string, upperKeywords = true): LanguageSupport {
   return new LanguageSupport(dialect.language, [
     dialect.language.data.of({ autocomplete: schemaCompletionSource({ dialect, schema, defaultSchema }) }),
-    dialect.language.data.of({ autocomplete: notAfterDot(keywordCompletionSource(dialect, true)) })
+    dialect.language.data.of({ autocomplete: notAfterDot(keywordCompletionSource(dialect, upperKeywords)) })
   ])
 }
 

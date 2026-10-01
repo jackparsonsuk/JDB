@@ -15,9 +15,15 @@ export type RunStatus =
 export const setRunStatus = StateEffect.define<{ source: string; from: number; status: RunStatus }>()
 
 /** What the gutter needs from the tab that changes while it's open. */
-export const runGutterConfig = Facet.define<{ readOnly: boolean }, { readOnly: boolean }>({
-  combine: (values) => values[values.length - 1] ?? { readOnly: false }
+export const runGutterConfig = Facet.define<GutterConfig, GutterConfig>({
+  combine: (values) => values[values.length - 1] ?? { readOnly: false, notes: true }
 })
+
+interface GutterConfig {
+  readOnly: boolean
+  /** Show the note after each statement saying how its last run went (Settings can hide it). */
+  notes: boolean
+}
 
 interface Statement {
   from: number
@@ -159,7 +165,8 @@ class StatusWidget extends WidgetType {
   }
 }
 
-const notes = EditorView.decorations.compute([statements, statuses], (state): DecorationSet => {
+const notes = EditorView.decorations.compute([statements, statuses, runGutterConfig], (state): DecorationSet => {
+  if (!state.facet(runGutterConfig).notes) return Decoration.none
   const out = []
   for (const s of state.field(statements)) {
     const status = statusOf(state, s)
@@ -175,7 +182,9 @@ const notes = EditorView.decorations.compute([statements, statuses], (state): De
  * is read-only, and a spinner that stops the run while it runs. `run(sql, from)` gets the statement's
  * text and where it starts in the editor.
  */
-export function runGutter(run: (sql: string, from: number) => void, cancel: () => void): Extension {
+export function runGutter(run: (sql: string, from: number) => void, cancel: () => void, showGutter = true): Extension {
+  // The notes still work with the gutter hidden in Settings.
+  if (!showGutter) return [statements, statuses, notes]
   return [
     statements,
     statuses,

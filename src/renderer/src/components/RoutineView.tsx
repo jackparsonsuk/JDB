@@ -8,6 +8,7 @@ import { callTemplate, findInSource, ROUTINE_LABELS, routineUses, type RoutineUs
 import { layoutSql, type OutlineItem } from '@shared/sqlLayout'
 import { useAppState, type Tab } from '../state'
 import { useColorScheme } from '../lib/theme'
+import { useAppearance } from '../lib/appearance'
 import { useOpenLink } from '../lib/openLink'
 import { formatAgo, parseStamp } from '../lib/format'
 import { EFFECT_KINDS, effectMarkers } from '../lib/routineEditor'
@@ -87,7 +88,8 @@ export function RoutineView({ tab }: { tab: Extract<Tab, { kind: 'routine' }> })
     ? routineUses(def.definition, conn.kind, tab.routine, tableList ?? [], routineList ?? [])
     : null), [def, conn, tab.routine, tableList, routineList])
 
-  const layout = useMemo(() => (def?.definition && conn ? layoutSql(def.definition, conn.kind, formatted) : null), [def, conn, formatted])
+  const { lowerKeywords } = useAppearance()
+  const layout = useMemo(() => (def?.definition && conn ? layoutSql(def.definition, conn.kind, formatted, !!lowerKeywords) : null), [def, conn, formatted, lowerKeywords])
   // Ctrl+click a table or routine in the source to open it; unqualified names are this routine's schema's (or dbo's).
   const nameDefaults = useMemo(() => (conn?.kind === 'mssql' ? [schema, 'dbo'] : [schema]), [conn?.kind, schema])
   const names = useClickableNames(tab.connectionId, tab.pane, conn?.kind, nameDefaults)

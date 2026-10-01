@@ -1,19 +1,31 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ThemeSetting } from '@shared/types'
-import { ACCENT_PRESETS, CODE_SIZES, DENSITIES, UI_SCALES, type Appearance, type Density } from '@shared/appearance'
+import { ACCENT_PRESETS, CODE_SIZES, DATE_FORMATS, DENSITIES, NULL_TEXTS, QUERY_TIMEOUTS, ROW_CAPS, UI_SCALES, type Appearance, type DateFormat, type Density, type NullText } from '@shared/appearance'
+import { formatCell } from '@shared/cellFormat'
+import { useAppState } from '../state'
 import { APP_NAME } from '@shared/brand'
 import { resetAppearance, updateAppearance, useAppearance } from '../lib/appearance'
 import { setTheme, THEME_LABELS, THEMES, useTheme } from '../lib/theme'
 import { CODE_FONTS, isInstalled, UI_FONTS } from '../lib/fonts'
 import { EnvironmentSettings } from './EnvironmentSettings'
 
-type Section = 'theme' | 'env' | 'fonts' | 'grid'
+type Section = 'theme' | 'env' | 'fonts' | 'grid' | 'editor' | 'queries'
 
 const SECTIONS: { id: Section; label: string; icon: string }[] = [
   { id: 'theme', label: 'Theme & colours', icon: '◐' },
   { id: 'env', label: 'Environments', icon: '●' },
   { id: 'fonts', label: 'Fonts & size', icon: 'Aa' },
-  { id: 'grid', label: 'Grid & editor', icon: '▦' }
+  { id: 'grid', label: 'Grid & values', icon: '▦' },
+  { id: 'editor', label: 'SQL editor', icon: '⌨' },
+  { id: 'queries', label: 'Queries & startup', icon: '⏱' }
+]
+
+/** Every stored setting, for Reset everything. */
+const ALL_KEYS: (keyof Appearance)[] = [
+  'accent', 'env', 'uiFont', 'uiScale', 'codeFont', 'codeSize', 'ligatures', 'density', 'wordWrap', 'tabSize',
+  'dateFormat', 'hideFractions', 'localTime', 'nullText', 'thousands',
+  'ctrlEnter', 'lowerKeywords', 'hideRunGutter', 'hideRunNotes', 'completeOnRequest',
+  'queryTimeout', 'maxRows', 'freshStart', 'defaultConnection'
 ]
 
 /** Colours each theme card previews: background, panel, text, and a border. */
@@ -59,8 +71,10 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
           {section === 'env' && <EnvironmentSettings a={a} />}
           {section === 'fonts' && <FontSection a={a} />}
           {section === 'grid' && <GridSection a={a} />}
+          {section === 'editor' && <EditorSection a={a} />}
+          {section === 'queries' && <QueriesSection a={a} />}
           <div className="settings-actions">
-            <button className="ghost" onClick={() => { setTheme('system'); resetAppearance(['accent', 'env', 'uiFont', 'uiScale', 'codeFont', 'codeSize', 'ligatures', 'density', 'wordWrap', 'tabSize']) }}>
+            <button className="ghost" onClick={() => { setTheme('system'); resetAppearance(ALL_KEYS) }}>
               Reset everything
             </button>
             <button className="primary" onClick={onClose}>Done</button>
@@ -250,13 +264,89 @@ function GridSection({ a }: { a: Appearance }) {
           ))}
         </div>
       </Group>
-      <Group title="SQL editor" onReset={a.wordWrap === false || a.tabSize ? () => resetAppearance(['wordWrap', 'tabSize']) : undefined}>
-        <label className="toggle">
-          {/* Wrapping is on unless switched off, so only "off" is stored. */}
-          <input type="checkbox" checked={a.wordWrap !== false} onChange={(e) => updateAppearance({ wordWrap: e.target.checked ? undefined : false })} />
-          <span className="toggle-track"><span className="toggle-thumb" /></span>
-          Wrap long lines
-        </label>
+      <Group
+        title="Dates and times"
+        note="How the grid and row details show them. Copying, exporting, filtering and editing still use the value as stored."
+        onReset={a.dateFormat || a.hideFractions || a.localTime ? () => resetAppearance(['dateFormat', 'hideFractions', 'localTime']) : undefined}
+      >
+        <div className="segmented">
+          <button className={!a.dateFormat ? 'on' : ''} onClick={() => updateAppearance({ dateFormat: undefined })}>As stored</button>
+          {DATE_FORMATS.map((f) => (
+            <button key={f} className={a.dateFormat === f ? 'on' : ''} onClick={() => updateAppearance({ dateFormat: f })}>{DATE_LABELS[f]}</button>
+          ))}
+        </div>
+        <Toggle on={!!a.hideFractions} onChange={(on) => updateAppearance({ hideFractions: on || undefined })} label="Hide fractions of a second" />
+        <Toggle on={!!a.localTime} onChange={(on) => updateAppearance({ localTime: on || undefined })} label="Show times in this PC's time zone" note="(treats stored times as UTC; leave off for columns that already hold local time)" />
+        <div className="settings-sample">
+          <span className="muted">Example</span>
+          <code>{formatCell(SAMPLE_DATE, 'CreatedOn', a)}</code>
+        </div>
+      </Group>
+      <Group title="Empty values and numbers" onReset={a.nullText || a.thousands ? () => resetAppearance(['nullText', 'thousands']) : undefined}>
+        <div className="settings-row">
+          <span className="settings-label">NULL shows as</span>
+          <div className="segmented">
+            <button className={!a.nullText ? 'on' : ''} onClick={() => updateAppearance({ nullText: undefined })}>NULL</button>
+            {NULL_TEXTS.map((n) => (
+              <button key={n} className={a.nullText === n ? 'on' : ''} onClick={() => updateAppearance({ nullText: n })}>{NULL_LABELS[n]}</button>
+            ))}
+          </div>
+        </div>
+        <Toggle on={!!a.thousands} onChange={(on) => updateAppearance({ thousands: on || undefined })} label="Thousands separators" note="(1,227,695; not in columns ending Id, No, Code, Year…)" />
+      </Group>
+      <p className="settings-note about">{APP_NAME} keeps these settings on this PC only; they aren't included when you share connections.</p>
+    </>
+  )
+}
+
+const DATE_LABELS: Record<DateFormat, string> = { iso: '2026-06-15', uk: '15/06/2026', us: '06/15/2026', long: '15 Jun 2026' }
+const NULL_LABELS: Record<NullText, string> = { blank: 'Blank', symbol: '∅', paren: '(null)' }
+const SAMPLE_DATE = '2026-06-15T09:07:47.890Z'
+
+function Toggle({ on, onChange, label, note }: { on: boolean; onChange(on: boolean): void; label: string; note?: string }) {
+  return (
+    <label className="toggle">
+      <input type="checkbox" checked={on} onChange={(e) => onChange(e.target.checked)} />
+      <span className="toggle-track"><span className="toggle-thumb" /></span>
+      {label}
+      {note && <span className="muted">{note}</span>}
+    </label>
+  )
+}
+
+function EditorSection({ a }: { a: Appearance }) {
+  return (
+    <>
+      <Group title="Running" onReset={a.ctrlEnter ? () => updateAppearance({ ctrlEnter: undefined }) : undefined}>
+        <div className="settings-row">
+          <span className="settings-label">Ctrl+Enter runs</span>
+          <div className="segmented">
+            <button className={!a.ctrlEnter ? 'on' : ''} onClick={() => updateAppearance({ ctrlEnter: undefined })}>The statement at the cursor</button>
+            <button className={a.ctrlEnter === 'all' ? 'on' : ''} onClick={() => updateAppearance({ ctrlEnter: 'all' })}>Everything (like SSMS)</button>
+          </div>
+        </div>
+        <p className="settings-note">
+          {a.ctrlEnter === 'all'
+            ? 'Ctrl+Enter runs the selection or the whole editor; Ctrl+Shift+Enter runs the statement at the cursor.'
+            : 'Ctrl+Enter runs the selection or the statement at the cursor; Ctrl+Shift+Enter runs the whole editor.'}
+        </p>
+      </Group>
+      <Group title="Run gutter" note="The ▶ beside each statement, and the ✓ / ✕ note after it runs." onReset={a.hideRunGutter || a.hideRunNotes ? () => resetAppearance(['hideRunGutter', 'hideRunNotes']) : undefined}>
+        <Toggle on={!a.hideRunGutter} onChange={(on) => updateAppearance({ hideRunGutter: on ? undefined : true })} label="Show ▶ run buttons" />
+        <Toggle on={!a.hideRunNotes} onChange={(on) => updateAppearance({ hideRunNotes: on ? undefined : true })} label="Show how each statement went" note="(✓ 1,204 rows · 85 ms)" />
+      </Group>
+      <Group title="Typing" onReset={a.lowerKeywords || a.completeOnRequest || a.wordWrap === false || a.tabSize ? () => resetAppearance(['lowerKeywords', 'completeOnRequest', 'wordWrap', 'tabSize']) : undefined}>
+        <div className="settings-row">
+          <span className="settings-label">Keywords</span>
+          <div className="segmented">
+            <button className={!a.lowerKeywords ? 'on' : ''} onClick={() => updateAppearance({ lowerKeywords: undefined })}>SELECT</button>
+            <button className={a.lowerKeywords ? 'on' : ''} onClick={() => updateAppearance({ lowerKeywords: true })}>select</button>
+          </div>
+          <span className="muted">in suggestions and Shift+Alt+F formatting</span>
+        </div>
+        <Toggle on={!a.completeOnRequest} onChange={(on) => updateAppearance({ completeOnRequest: on ? undefined : true })} label="Suggest while typing" note="(off: only on Ctrl+Space)" />
+        {/* Wrapping is on unless switched off, so only "off" is stored. */}
+        <Toggle on={a.wordWrap !== false} onChange={(on) => updateAppearance({ wordWrap: on ? undefined : false })} label="Wrap long lines" />
         <div className="settings-row">
           <span className="settings-label">Indent</span>
           <div className="segmented">
@@ -266,7 +356,42 @@ function GridSection({ a }: { a: Appearance }) {
           </div>
         </div>
       </Group>
-      <p className="settings-note about">{APP_NAME} keeps these settings on this PC only; they aren't included when you share connections.</p>
+    </>
+  )
+}
+
+function QueriesSection({ a }: { a: Appearance }) {
+  const { connections } = useAppState()
+  return (
+    <>
+      <Group title="Limits" note="For query tabs. Tables already page through their rows." onReset={a.queryTimeout || a.maxRows ? () => resetAppearance(['queryTimeout', 'maxRows']) : undefined}>
+        <div className="settings-row">
+          <span className="settings-label">Stop queries after</span>
+          <select value={a.queryTimeout ?? ''} onChange={(e) => updateAppearance({ queryTimeout: e.target.value ? Number(e.target.value) : undefined })}>
+            <option value="">No limit</option>
+            {QUERY_TIMEOUTS.map((s) => <option key={s} value={s}>{s < 60 ? `${s} seconds` : `${s / 60} minute${s === 60 ? '' : 's'}`}</option>)}
+          </select>
+        </div>
+        <div className="settings-row">
+          <span className="settings-label">Keep at most</span>
+          <select value={a.maxRows ?? ''} onChange={(e) => updateAppearance({ maxRows: e.target.value ? Number(e.target.value) : undefined })}>
+            <option value="">All rows</option>
+            {ROW_CAPS.map((n) => <option key={n} value={n}>{n.toLocaleString()} rows</option>)}
+          </select>
+          <span className="muted">per result</span>
+        </div>
+        <p className="settings-note">The row limit stops a huge result flooding the window; the server still sends every row, so add a WHERE or TOP / LIMIT for big tables.</p>
+      </Group>
+      <Group title="Startup" onReset={a.freshStart || a.defaultConnection ? () => resetAppearance(['freshStart', 'defaultConnection']) : undefined}>
+        <Toggle on={!a.freshStart} onChange={(on) => updateAppearance({ freshStart: on ? undefined : true })} label="Reopen last session's tabs" />
+        <div className="settings-row">
+          <span className="settings-label">Ctrl+T with no tab open</span>
+          <select value={a.defaultConnection ?? ''} onChange={(e) => updateAppearance({ defaultConnection: e.target.value || undefined })}>
+            <option value="">The first connection</option>
+            {connections.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      </Group>
     </>
   )
 }
