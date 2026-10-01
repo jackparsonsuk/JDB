@@ -330,6 +330,8 @@ export type SavedTab = (
   | { kind: 'record'; pane: 0 | 1; connectionId: string; table: TableRef; key: ColumnFilter[] }
   | { kind: 'design'; pane: 0 | 1; connectionId: string; table: TableRef }
   | { kind: 'routine'; pane: 0 | 1; connectionId: string; routine: RoutineRef }
+  /** Find value: the value last searched for, searched again only when asked. */
+  | { kind: 'search'; pane: 0 | 1; connectionId: string; value: string }
 ) & { pinned?: boolean }
 
 /** The open tabs and split, saved so the app reopens where it was left. */

@@ -36,6 +36,11 @@ export type Tab = (
       /** Text to find and select in the source (from a source search); `seq` changes when asked again. Not saved. */
       find?: { text: string; seq: number }
     }
+  | {
+      kind: 'search'; id: string; pane: PaneId; connectionId: string; value: string
+      /** Search for `value` now; `seq` changes when asked again. Not saved, so a restored tab waits. */
+      run?: { seq: number }
+    }
 ) & { pinned?: boolean }
 
 /** Something a reference points at, which can be clicked open or dragged into a pane. */
@@ -44,12 +49,16 @@ export type OpenTarget =
   | { kind: 'record'; connectionId: string; table: TableRef; key: ColumnFilter[]; watch?: boolean }
   | { kind: 'design'; connectionId: string; table: TableRef }
   | { kind: 'routine'; connectionId: string; routine: RoutineRef; find?: string }
+  /** Find which tables hold a value; an empty value just opens the search. */
+  | { kind: 'search'; connectionId: string; value: string }
 
 /** What a tab has changed since it opened, kept for saving the session. */
 export interface TabMemory {
   sql?: string
   filters?: ColumnFilter[]
   sort?: TableSort | null
+  /** A search tab's value as last searched. */
+  value?: string
 }
 
 export interface TablesState {
@@ -163,9 +172,11 @@ export function useCloseWarning(tabId: string, warning: string | null): void {
 let tabCounter = 0
 const nextTabId = (): string => `tab-${++tabCounter}`
 
-/** An open tab showing the same thing: an unfiltered table, or the same record. */
+/** An open tab showing the same thing: an unfiltered table, the same record, or a connection's search. */
 function sameAs(tab: Tab, target: OpenTarget): boolean {
   if (tab.kind === 'query' || tab.kind !== target.kind || tab.connectionId !== target.connectionId) return false
+  if (tab.kind === 'search') return true
+  if (target.kind === 'search') return false
   if (tab.kind === 'routine' || target.kind === 'routine') return tab.kind === 'routine' && target.kind === 'routine' && sameRoutine(tab.routine, target.routine)
   if (tab.table.schema !== target.table.schema || tab.table.name !== target.table.name) return false
   if (tab.kind === 'table') return target.kind === 'table' && !target.filters.length && !tab.initialFilters.length
@@ -195,6 +206,8 @@ function savedContent(tab: Tab, memory: TabMemory | undefined): SavedTab {
       return { kind: 'design', pane, connectionId, table: tab.table }
     case 'routine':
       return { kind: 'routine', pane, connectionId, routine: tab.routine }
+    case 'search':
+      return { kind: 'search', pane, connectionId, value: memory?.value ?? tab.value }
   }
 }
 
@@ -215,6 +228,8 @@ function savedTab(saved: SavedTab): Tab {
       return { kind: 'design', id, pane: saved.pane, connectionId: saved.connectionId, table: saved.table }
     case 'routine':
       return { kind: 'routine', id, pane: saved.pane, connectionId: saved.connectionId, routine: saved.routine }
+    case 'search':
+      return { kind: 'search', id, pane: saved.pane, connectionId: saved.connectionId, value: saved.value }
   }
 }
 
@@ -357,6 +372,7 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     const focusColumn = target.kind === 'table' && target.column ? { name: target.column, seq: Date.now() } : undefined
     const find = target.kind === 'routine' && target.find ? { text: target.find, seq: Date.now() } : undefined
     const watch = target.kind === 'record' && target.watch ? { seq: Date.now() } : undefined
+    const search = target.kind === 'search' && target.value.trim() ? { value: target.value, run: { seq: Date.now() } } : undefined
     if (existing) {
       // Already open: bring it forward, moving it if a particular pane was asked for.
       setLayout((s) => {
@@ -364,6 +380,7 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
         if (focusColumn) return { ...moved, tabs: moved.tabs.map((t) => (t.id === existing.id && t.kind === 'table' ? { ...t, focusColumn } : t)) }
         if (find) return { ...moved, tabs: moved.tabs.map((t) => (t.id === existing.id && t.kind === 'routine' ? { ...t, find } : t)) }
         if (watch) return { ...moved, tabs: moved.tabs.map((t) => (t.id === existing.id && t.kind === 'record' ? { ...t, watch } : t)) }
+        if (search) return { ...moved, tabs: moved.tabs.map((t) => (t.id === existing.id && t.kind === 'search' ? { ...t, ...search } : t)) }
         return moved
       })
       return
@@ -372,6 +389,8 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     const id = nextTabId()
     const tab: Tab = target.kind === 'table'
       ? { kind: 'table', id, pane: into, connectionId: target.connectionId, table: target.table, initialFilters: target.filters, focusColumn }
+      : target.kind === 'search'
+        ? { kind: 'search', id, pane: into, connectionId: target.connectionId, value: target.value, ...(search && { run: search.run }) }
       : target.kind === 'routine'
         ? { kind: 'routine', id, pane: into, connectionId: target.connectionId, routine: target.routine, find }
         : target.kind === 'design'

@@ -64,7 +64,7 @@ const NO_ROWS: CellValue[][] = []
 
 /** `active`: the tab is showing in its pane; `focused`: and that pane has the keyboard. */
 export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 'query' }>; active: boolean; focused: boolean }) {
-  const { connection, tables, loadTables, rememberTab, savedQueries, saveQuery, linkQueryTab, setTabUnsaved, safety, environment } = useAppState()
+  const { connection, tables, loadTables, rememberTab, savedQueries, saveQuery, linkQueryTab, setTabUnsaved, safety, environment, open } = useAppState()
   const conn = connection(tab.connectionId)
   const editorTheme = useEditorTheme()
   const [text, setText] = useState(tab.initialSql)
@@ -648,6 +648,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
                     selection={selection}
                     onSelectionChange={setSelection}
                     copyTarget={{ kind: conn.kind }}
+                    onFindValue={(value) => open({ kind: 'search', connectionId: tab.connectionId, value })}
                     onActiveColumnChange={setActiveColumn}
                     columnMenu={columnMenu}
                     cellLabels={cellLabels}

@@ -338,7 +338,7 @@ function ConnectionMenu({ x, y, onClose, children }: { x: number; y: number; onC
 }
 
 function ConnectionNode({ connection, onEdit, onLinks }: { connection: ConnectionConfig; onEdit(): void; onLinks(): void }) {
-  const { tables, loadTables, forgetTables, routines, loadRoutines, openTable, openQuery, environment } = useAppState()
+  const { tables, loadTables, forgetTables, routines, loadRoutines, openTable, openQuery, open, environment } = useAppState()
   const [expanded, setExpanded] = useState(false)
   const [filter, setFilter] = useState('')
   const [mode, setMode] = useState<'tables' | 'routines'>('tables')
@@ -441,6 +441,7 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
           {(act) => (
             <>
               <button onClick={act(() => openQuery(connection.id))}>New query<kbd>Ctrl+T</kbd></button>
+              <button onClick={act(() => open({ kind: 'search', connectionId: connection.id, value: '' }))}>Find a value…</button>
               <div className="menu-sep" />
               <button onClick={act(onLinks)}>Cross-database links</button>
               <button onClick={act(reconnect)}>Reconnect and refresh</button>

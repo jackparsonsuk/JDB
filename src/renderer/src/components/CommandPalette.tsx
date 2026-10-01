@@ -116,6 +116,15 @@ export function CommandPalette({ onClose, onNewConnection, onLinks, onSettings }
         })
       }
       out.push({
+        key: `f:${c.id}`,
+        label: `Find a value in ${c.name}…`,
+        detail: 'which tables hold a GUID, email or id',
+        icon: '⌕',
+        haystack: `find search value guid email id everywhere ${c.name}`,
+        bias: -6,
+        run: () => open({ kind: 'search', connectionId: c.id, value: '' })
+      })
+      out.push({
         key: `q:${c.id}`,
         label: `New query on ${c.name}`,
         detail: environment(c.env).name,

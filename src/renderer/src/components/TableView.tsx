@@ -493,6 +493,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
 
       <div className="view-body">
         <DataGrid
+          onFindValue={(value) => open({ kind: 'search', connectionId: tab.connectionId, value })}
           loadingLabel={loading ? loadingLabel() : undefined}
           columns={columnNames}
           rows={edits.rows}
