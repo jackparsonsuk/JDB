@@ -57,6 +57,7 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [ ] **Query plans.** An Explain button on query tabs (SHOWPLAN_XML on SQL Server, EXPLAIN FORMAT=JSON on MySQL) that flags table scans on big tables.
 - [x] **Pinned tables** per connection, at the top of its table list, from a right-click menu. (1.6.0)
 - [ ] **Recent tables** per connection, beside the pinned ones.
+- [ ] **Drag tabs between windows**, and out of a window to open a new one, like a browser. 1.8.1 moves a tab with its right-click menu.
 - [ ] **Share a result** as a Markdown table or a Teams / Slack message, with the query and connection name.
 - [ ] **ER diagram from the Ask model.** A "tables around this one" diagram, including inferred keys and cross-database links.
 - [ ] **Pinned records.** Pin a record in the explorer and come back to it later, across databases.

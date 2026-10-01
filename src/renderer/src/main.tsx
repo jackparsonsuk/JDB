@@ -1,27 +1,29 @@
 import { createRoot } from 'react-dom/client'
 import type { SavedSession } from '@shared/types'
 import { parseSession } from '@shared/session'
-import { AppStateProvider } from './state'
+import { AppStateProvider, parseCarried, type Carried } from './state'
 import { App } from './App'
 import './styles.css'
 // Applies the saved colours, fonts and size before the first render.
 import './lib/appearance'
 
-/** The last session, loaded before the first render so restored tabs don't flash in. */
-async function loadSession(): Promise<SavedSession | null> {
+/**
+ * This window's tabs, loaded before the first render so restored tabs don't flash in: its own from
+ * the last session, or the tab moved into it, with any results that tab brought. Main leaves the
+ * session out when Settings says to start without it.
+ */
+async function loadSession(): Promise<{ session: SavedSession | null; carried: Carried | null }> {
   try {
-    const [raw, connections, settings] = await Promise.all([window.api.loadSession(), window.api.listConnections(), window.api.getAppearance()])
-    // Settings can start with no tabs instead.
-    if (settings.freshStart) return null
-    return parseSession(raw, new Set(connections.map((c) => c.id)))
+    const [raw, connections, carried] = await Promise.all([window.api.loadSession(), window.api.listConnections(), window.api.takeCarried()])
+    return { session: parseSession(raw, new Set(connections.map((c) => c.id))), carried: parseCarried(carried) }
   } catch {
-    return null
+    return { session: null, carried: null }
   }
 }
 
-loadSession().then((session) => {
+loadSession().then(({ session, carried }) => {
   createRoot(document.getElementById('root')!).render(
-    <AppStateProvider session={session}>
+    <AppStateProvider session={session} carried={carried}>
       <App />
     </AppStateProvider>
   )

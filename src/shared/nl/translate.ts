@@ -1,5 +1,5 @@
 import type { DbKind } from '../types'
-import { formatRangeLabel, isoDate, parseDate, type DateRange } from './dates'
+import { formatRangeLabel, isoDate, parseDate, weekdayIndex, type DateRange } from './dates'
 import { valueSources, type ChildLink, type Model, type ModelColumn, type ModelTable, type ValueSource } from './model'
 import { buildPlan, type Plan } from './plan'
 import { buildFederated, usesRemote, type FederatedPlan } from './federated'
@@ -54,13 +54,30 @@ export type Condition =
   /** Key list produced by an earlier step of a cross-database plan. */
   | { kind: 'inKeys'; target: Target; step: number; negate: boolean }
 
+export type AggregateFn = 'sum' | 'avg' | 'min' | 'max'
+
+/** A sum, average, minimum or maximum of a column, e.g. SUM(Total). */
+export interface Aggregate {
+  fn: AggregateFn
+  target: Target
+}
+
+/** Dates grouped by their day, month or year rather than their exact value. */
+export type DateBucket = 'day' | 'month' | 'year'
+
 export interface Query {
   table: ModelTable
   conditions: Condition[]
   /** Extra columns from joined tables, e.g. a lookup's label. */
   shown: Target[]
+  /** Columns asked for by name ("the id and name of customers"); every column when empty or missing. */
+  select?: Target[]
   count: boolean
+  /** Sums, averages, minimums and maximums shown instead of rows, per group when grouped. */
+  aggregates?: Aggregate[]
   groupBy?: Target
+  /** Set when grouping by a date: by day, month or year. */
+  groupBucket?: DateBucket
   limit?: number
   order?: { target: Target; desc: boolean }
   latest?: 'desc' | 'asc'
@@ -78,6 +95,15 @@ const BOUNDARY = new Set([
 const DATE_PREPOSITIONS = new Set(['after', 'since', 'from', 'before', 'until', 'till', 'on', 'in', 'during', 'between', 'within'])
 const RELATIVE_STARTERS = new Set(['today', 'yesterday', 'tomorrow', 'this', 'last', 'next', 'past', 'previous', 'current'])
 const NEGATORS = new Set(['not', 'no', 'never', 'non', 'isnt', "isn't", 'without'])
+
+const AGGREGATE_WORDS: Record<string, AggregateFn> = {
+  sum: 'sum', total: 'sum', average: 'avg', avg: 'avg', mean: 'avg', minimum: 'min', min: 'min', maximum: 'max', max: 'max'
+}
+const BUCKETS: Record<string, DateBucket> = { day: 'day', days: 'day', date: 'day', month: 'month', months: 'month', year: 'year', years: 'year' }
+const AGGREGATE_LABELS: Record<AggregateFn, string> = { sum: 'Sum of', avg: 'Average', min: 'Lowest', max: 'Highest' }
+
+/** The column heading for an aggregate: "Sum of Total", "Average Net". */
+export const aggregateLabel = (a: Aggregate): string => `${AGGREGATE_LABELS[a.fn]} ${a.target.column.info.name}`
 
 interface ColumnMatch {
   column: ModelColumn
@@ -230,7 +256,8 @@ export function translate(input: string, model: Model, values: ValueCache, now =
   const table = found.table
   mark(found.indexes, 'table', `${table.info.schema}.${table.info.name}`)
   const wanted = valueSources(table).filter((s) => !values.has(s.key))
-  const q: Query = { table, conditions: [], shown: [], count: false, includeDeleted: false }
+  const q: Query = { table, conditions: [], shown: [], select: [], aggregates: [], count: false, includeDeleted: false }
+  const tableStart = Math.min(...found.indexes)
   const describe = (t: Target): string => (t.via ? `${t.via.info.name} → ${t.column.info.name}` : t.column.info.name)
   const noteAlternatives = (m: ColumnMatch, word: string): void => {
     if (m.alternatives.length && !m.exact) notes.push(`"${word}" → ${m.column.info.name} (also: ${m.alternatives.map((a) => a.info.name).join(', ')})`)
@@ -298,7 +325,8 @@ export function translate(input: string, model: Model, values: ValueCache, now =
     }
     if (!allowBare) return null
     const t = tokens[i]
-    const relative = RELATIVE_STARTERS.has(w) || t.type === 'date' || tokens[i + 2]?.lower === 'ago'
+    // Bare weekdays only by their full names, so "sat" or "sun" in a value isn't read as a day.
+    const relative = RELATIVE_STARTERS.has(w) || t.type === 'date' || tokens[i + 2]?.lower === 'ago' || weekdayIndex(w, false) !== null
     const d = relative ? parseDate(tokens, i, now) : null
     return d ? { range: d.range, length: d.length } : null
   }
@@ -323,9 +351,30 @@ export function translate(input: string, model: Model, values: ValueCache, now =
       continue
     }
 
-    // count ... by/per <column>
-    if (q.count && (w === 'by' || w === 'per' || (w === 'grouped' && w2 === 'by'))) {
+    // sum / total / average / minimum / maximum of <number columns>: "sum of total", "average net and gross"
+    const aggregates = readAggregates(i)
+    if (aggregates) {
+      for (const a of aggregates.list) {
+        if (!q.aggregates!.some((x) => x.fn === a.fn && x.target.column === a.target.column)) q.aggregates!.push(a)
+      }
+      mark(range(i, aggregates.length), 'column', aggregates.list.map(aggregateLabel).join(', '))
+      i += aggregates.length
+      continue
+    }
+
+    // count / sum ... by/per <column>, or by day / month / year
+    if ((q.count || q.aggregates!.length) && (w === 'by' || w === 'per' || (w === 'grouped' && w2 === 'by'))) {
       const offset = w === 'grouped' ? 2 : 1
+      const bucket = BUCKETS[tokens[i + offset]?.lower ?? '']
+      const date = bucket && defaultDate()
+      if (bucket && date) {
+        q.groupBy = { column: date }
+        q.groupBucket = bucket
+        mark(range(i, offset), 'keyword', 'group by')
+        mark([i + offset], 'column', `${date.info.name} by ${bucket}`)
+        i += offset + 1
+        continue
+      }
       const target = matchTarget(i + offset)
       if (target) {
         mark(range(i, offset), 'keyword', 'group by')
@@ -364,7 +413,7 @@ export function translate(input: string, model: Model, values: ValueCache, now =
     }
 
     // sorted / ordered by <column> [asc|desc]
-    if (w === 'sorted' || w === 'ordered' || w === 'sort' || w === 'order' || (w === 'by' && !q.count)) {
+    if (w === 'sorted' || w === 'ordered' || w === 'sort' || w === 'order' || (w === 'by' && !q.count && !q.aggregates!.length)) {
       const offset = w2 === 'by' && w !== 'by' ? 2 : 1
       const target = matchTarget(i + offset)
       if (target) {
@@ -456,7 +505,9 @@ export function translate(input: string, model: Model, values: ValueCache, now =
     // for / from / belonging to <parent> "<value>"
     if (w === 'for' || w === 'from' || w === 'of' || (w === 'belonging' && w2 === 'to')) {
       const offset = w === 'belonging' ? 2 : 1
-      const parent = matchParent(table, tokens, i + offset)
+      const found = matchParent(table, tokens, i + offset)
+      // "of order lines": words already read as the table aren't a parent (OrderLines.OrderId → Orders).
+      const parent = found && !used.slice(i + offset, i + offset + found.length).some(Boolean) ? found : null
       if (parent) {
         const value = readValue(i + offset + parent.length)
         const target: Target = { column: parent.column.ref!.table.display!, via: parent.column }
@@ -489,6 +540,15 @@ export function translate(input: string, model: Model, values: ValueCache, now =
       }
     }
 
+    // "order numbers": the table's own words and a plural after them can name a column (OrderNumber).
+    const named = tableNamedColumn(i)
+    if (named) {
+      if (!q.select!.some((s) => s.column === named.column)) q.select!.push({ column: named.column })
+      mark(range(i, named.length), 'column', `show ${named.column.info.name}`)
+      i += named.length
+      continue
+    }
+
     // <parent> <column> <operator> <value>: "job claim reference contains 123", "customer name is acme"
     const parentColumn = matchParentColumn(i)
     const plainColumn = matchColumn(table, tokens, i, used)
@@ -509,6 +569,14 @@ export function translate(input: string, model: Model, values: ValueCache, now =
         noteAlternatives(column, t.text)
         negate = false
         i += consumed
+        continue
+      }
+      // A column named but not compared is one to show: "the id and name of customers", "order ids".
+      if (picksColumn(column, i)) {
+        if (!q.select!.some((s) => s.column === column.column)) q.select!.push({ column: column.column })
+        mark(range(i, column.length), 'column', `show ${column.column.info.name}`)
+        noteAlternatives(column, t.text)
+        i += column.length
         continue
       }
     }
@@ -562,6 +630,78 @@ export function translate(input: string, model: Model, values: ValueCache, now =
   return { sql: buildSql(q, model.kind).sql, table, spans: spans(), notes: dedupe(notes), wanted, plan: buildPlan(q) }
 
   // ---- closures that need the parse state ----
+
+  /**
+   * Reads "<sum | average | ...> [and <...>] [of] <column> [and <column>]" at tokens[i]: every
+   * function applies to every column. Sums and averages take number columns (not keys); the lowest
+   * and highest take dates too. "total" is only an aggregate when it doesn't start a column's own
+   * name, so "total net" stays the TotalNet column while "total of net" or "sum of total" adds up.
+   */
+  function readAggregates(i: number): { list: Aggregate[]; length: number } | null {
+    const fns: AggregateFn[] = []
+    let k = i
+    while (tokens[k] && !used[k]) {
+      const fn = AGGREGATE_WORDS[tokens[k].lower]
+      if (!fn) break
+      if (tokens[k].lower === 'total') {
+        const own = matchColumn(table, tokens, k, used)
+        if (tokens[k + 1]?.lower !== 'of' && own?.exact && own.length > 1) break
+      }
+      fns.push(fn)
+      k++
+      if (tokens[k]?.lower === 'and' && AGGREGATE_WORDS[tokens[k + 1]?.lower ?? '']) k++
+      else break
+    }
+    if (!fns.length) return null
+    if (tokens[k]?.lower === 'of') k++
+    if (tokens[k]?.lower === 'the') k++
+    const fits = (c: ModelColumn): boolean => !c.info.isPrimaryKey && !c.ref &&
+      (c.kind === 'number' || (c.kind === 'date' && fns.every((f) => f === 'min' || f === 'max')))
+    const columns: ModelColumn[] = []
+    while (tokens[k]) {
+      const m = matchColumn(table, tokens, k, used, fits)
+      if (!m) break
+      columns.push(m.column)
+      k += m.length
+      // "net, vat and gross": commas aren't tokens, so a list runs on with or without "and".
+      if (tokens[k]?.lower === 'and' && matchColumn(table, tokens, k + 1, used, fits)) k++
+    }
+    if (!columns.length) return null
+    return { list: fns.flatMap((fn) => columns.map((column) => ({ fn, target: { column } }))), length: k - i }
+  }
+
+  /**
+   * Whether a column match not used in a condition names a column to show: it comes before the
+   * table ("the id of all orders") or is a plural straight after it ("order ids"). Anywhere else a
+   * leftover column word is more likely a filter the engine didn't follow, so it's reported instead.
+   */
+  function picksColumn(m: ColumnMatch, i: number): boolean {
+    const last = tokens[i + m.length - 1]
+    const plural = last.lower.endsWith('s') && stem(last.lower) !== last.lower
+    if (i >= tableStart && !(plural && found!.indexes.includes(i - 1))) return false
+    if (!m.exact && m.alternatives.length) {
+      const words = tokens.slice(i, i + m.length).map((t) => t.text).join(' ')
+      notes.push(`"${words}" could be ${[m.column, ...m.alternatives].map((c) => c.info.name).join(', ')}: name the column in full to show it`)
+      return false
+    }
+    return true
+  }
+
+  /** A plural straight after the table that, with the table's words in front, is exactly a column's name. */
+  function tableNamedColumn(i: number): { column: ModelColumn; length: number } | null {
+    if (!found!.indexes.includes(i - 1)) return null
+    const own = [...found!.indexes].sort((a, b) => a - b).map((k) => stem(tokens[k].lower))
+    for (let n = 3; n >= 1; n--) {
+      if (used.slice(i, i + n).some(Boolean)) continue
+      const phrase = phraseAt(tokens, i, n)
+      const last = tokens[i + n - 1]
+      if (!phrase || !last.lower.endsWith('s') || stem(last.lower) === last.lower) continue
+      const words = [...own, ...phrase]
+      const column = table.columns.find((c) => sameWords(c.words, words) || sameWords(c.core, words))
+      if (column) return { column, length: n }
+    }
+    return null
+  }
 
   function matchTarget(i: number): { target: Target; length: number } | null {
     const parent = matchParent(table, tokens, i)
@@ -870,24 +1010,48 @@ export function buildSql(q: Query, kind: DbKind, options: BuildOptions = {}): { 
     return `${col(t)} AS ${quote(label)}`
   })
   const order = q.order ? `${col(q.order.target)} ${q.order.desc ? 'DESC' : 'ASC'}` : null
+  const aggregates = q.aggregates ?? []
+  const aggregateSql = (a: Aggregate): string => {
+    const c = col(a.target)
+    // SQL Server averages whole numbers as whole numbers, so make them decimal first.
+    const inner = a.fn === 'avg' && kind === 'mssql' && /int/i.test(a.target.column.info.dataType) ? `1.0 * ${c}` : c
+    return `${a.fn.toUpperCase()}(${inner}) AS ${quote(aggregateLabel(a))}`
+  }
+  /** The grouping expression: the column, or its day / month / year for a date. */
+  const groupSql = (t: Target, bucket?: DateBucket): string => {
+    const c = col(t)
+    if (bucket === 'year') return `YEAR(${c})`
+    if (bucket === 'month') return kind === 'mssql' ? `CONVERT(char(7), ${c}, 120)` : `DATE_FORMAT(${c}, '%Y-%m')`
+    if (bucket === 'day') return kind === 'mssql' ? `CAST(${c} AS date)` : `DATE(${c})`
+    return c
+  }
 
   let select: string
   let groupBy = ''
   let orderBy = order ? `\nORDER BY ${order}` : ''
-  let limit = options.limit !== undefined ? options.limit ?? undefined : q.limit ?? (q.count ? undefined : DEFAULT_LIMIT)
+  let limit = options.limit !== undefined ? options.limit ?? undefined : q.limit ?? (q.count || q.aggregates?.length ? undefined : DEFAULT_LIMIT)
   if (options.select) {
     const cols = options.select.columns.map((c) => `${main}.${quote(c.name)}${c.alias ? ` AS ${quote(c.alias)}` : ''}`)
     select = cols.join(', ')
     orderBy = ''
-  } else if (q.count && q.groupBy) {
-    const g = col(q.groupBy)
-    select = `${g}, COUNT(*) AS ${quote('Count')}`
-    groupBy = `\nGROUP BY ${g}`
-    orderBy = `\nORDER BY ${quote('Count')} DESC`
-  } else if (q.count) {
-    select = `COUNT(*) AS ${quote('Count')}`
-    orderBy = ''
-    limit = undefined
+  } else if (q.count || aggregates.length) {
+    const parts: string[] = []
+    if (q.groupBy) {
+      const g = groupSql(q.groupBy, q.groupBucket)
+      const bucketName = q.groupBucket ? q.groupBucket[0].toUpperCase() + q.groupBucket.slice(1) : null
+      parts.push(bucketName ? `${g} AS ${quote(bucketName)}` : g)
+      groupBy = `\nGROUP BY ${g}`
+      // Dates read in order; anything else biggest first.
+      orderBy = q.groupBucket ? `\nORDER BY ${g}` : `\nORDER BY ${quote(q.count ? 'Count' : aggregateLabel(aggregates[0]))} DESC`
+    } else {
+      orderBy = ''
+      limit = undefined
+    }
+    if (q.count) parts.push(`COUNT(*) AS ${quote('Count')}`)
+    parts.push(...aggregates.map(aggregateSql))
+    select = parts.join(', ')
+  } else if (q.select?.length) {
+    select = [...q.select.map(col), ...shownCols].join(', ')
   } else {
     select = [`${main}.*`, ...shownCols].join(', ')
   }

@@ -92,6 +92,12 @@ export interface Api {
   /** The last saved session, unchecked; pass it through parseSession. */
   loadSession(): Promise<unknown>
   saveSession(session: SavedSession): void
+  /** Opens another window: empty, or with `session`'s tabs; `carried` is handed to it once (takeCarried). */
+  openWindow(session?: SavedSession, carried?: unknown): Promise<void>
+  /** What the window that opened this one handed over with a moved tab, once; null otherwise. */
+  takeCarried(): Promise<unknown>
+  /** Called when another window saved something this one shows: 'connections', 'queries', 'links', 'lookups', 'environments', 'theme', 'appearance'. */
+  onStoreChanged(listener: (topics: string[]) => void): () => void
   /** What would be lost if the window closed now (open transactions, unsaved edits), so closing can ask. */
   setUnsavedWork(warnings: string[]): void
   /** Forgets saved Entra sign-ins and disconnects, so the next connection signs in again. */

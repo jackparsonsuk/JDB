@@ -28,6 +28,13 @@ function write(next: Pins): void {
   listeners.forEach((l) => l())
 }
 
+// Windows share localStorage, so a pin made in another window arrives as a storage event.
+window.addEventListener('storage', (event) => {
+  if (event.key !== STORE_KEY) return
+  pins = read()
+  listeners.forEach((l) => l())
+})
+
 const subscribe = (listener: () => void): (() => void) => {
   listeners.add(listener)
   return () => listeners.delete(listener)

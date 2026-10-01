@@ -48,6 +48,33 @@ function shift(unit: 'day' | 'week' | 'month' | 'quarter' | 'year', date: Date, 
   }
 }
 
+/** Weekday names, Sunday first like Date.getDay(); abbreviations are read too ("fri", "tues", "thurs"). */
+const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+const WEEKDAY_ABBREVIATIONS: Record<string, number> = { sun: 0, mon: 1, tue: 2, tues: 2, wed: 3, weds: 3, thu: 4, thur: 4, thurs: 4, fri: 5, sat: 6 }
+
+/** The day of the week a word names (0 = Sunday), or null. Plurals count too: "on fridays". */
+export function weekdayIndex(word: string, abbreviations = true): number | null {
+  const w = word.toLowerCase().replace(/days$/, 'day')
+  const full = WEEKDAYS.indexOf(w)
+  if (full >= 0) return full
+  return abbreviations ? WEEKDAY_ABBREVIATIONS[w] ?? null : null
+}
+
+/**
+ * The day a weekday means: plain "friday" is the latest one up to today, "last friday" the one
+ * before today, "this friday" the one in this (Monday-start) week and "next friday" the next after today.
+ */
+function weekdayDate(target: number, which: 'plain' | 'last' | 'this' | 'next', now: Date): Date {
+  const today = startOf('day', now)
+  const back = (today.getDay() - target + 7) % 7
+  switch (which) {
+    case 'plain': return addDays(today, -back)
+    case 'last': return addDays(today, -(back || 7))
+    case 'next': return addDays(today, (target - today.getDay() + 7) % 7 || 7)
+    case 'this': return addDays(startOf('week', now), (target + 6) % 7)
+  }
+}
+
 function monthIndex(word: string): number {
   return MONTHS.indexOf(word.slice(0, 3))
 }
@@ -94,7 +121,8 @@ function fmt(date: Date): string {
 
 /**
  * Tries to read a date expression starting at tokens[i]. Handles explicit dates,
- * "12 dec 2025", "december 2025", "2025", "today", "this week", "last 30 days", "3 months ago".
+ * "12 dec 2025", "december 2025", "2025", "today", "now", "this week", "last 30 days", "3 months ago",
+ * "friday", "last friday", "next tue".
  */
 export function parseDate(tokens: Token[], i: number, now: Date): DateMatch | null {
   const t = tokens[i]
@@ -111,6 +139,17 @@ export function parseDate(tokens: Token[], i: number, now: Date): DateMatch | nu
   if (w === 'today') return { range: { from: today, to: addDays(today, 1) }, length: 1, label: 'today' }
   if (w === 'yesterday') return { range: { from: addDays(today, -1), to: today }, length: 1, label: 'yesterday' }
   if (w === 'tomorrow') return { range: { from: addDays(today, 1), to: addDays(today, 2) }, length: 1, label: 'tomorrow' }
+  // Dates here are whole days, so "now" is today: "between last friday and now" includes today.
+  if (w === 'now') return { range: { from: today, to: addDays(today, 1) }, length: 1, label: 'now' }
+
+  // [last / this / next] friday
+  const qualifier = w === 'last' || w === 'previous' ? 'last' : w === 'this' || w === 'current' ? 'this' : w === 'next' ? 'next' : null
+  const weekday = weekdayIndex(qualifier ? next ?? '' : w)
+  if (weekday !== null) {
+    const date = weekdayDate(weekday, qualifier ?? 'plain', now)
+    const name = WEEKDAYS[weekday]
+    return { range: { from: date, to: addDays(date, 1) }, length: qualifier ? 2 : 1, label: `${qualifier ? `${w} ` : ''}${name} (${fmt(date)})` }
+  }
 
   // this / last / next <unit>
   if ((w === 'this' || w === 'last' || w === 'next' || w === 'previous' || w === 'current') && next && UNITS[next]) {

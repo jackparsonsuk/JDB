@@ -21,6 +21,10 @@ function apply(theme: ThemeSetting): void {
 
 window.api.getTheme().then(apply).catch(() => undefined)
 media.addEventListener('change', notify)
+// Another window picked a theme.
+window.api.onStoreChanged((topics) => {
+  if (topics.includes('theme')) window.api.getTheme().then(apply).catch(() => undefined)
+})
 
 export const THEME_LABELS: Record<ThemeSetting, string> = {
   system: 'System', light: 'Light', dark: 'Dark', dim: 'Dim', midnight: 'Midnight', contrast: 'High contrast', gruvbox: 'Gruvbox'

@@ -43,6 +43,8 @@ The source is open source on GitHub (jackparsonsUK/jdb, MIT); installers are pub
 
 IPC handlers in `src/main/ipc.ts` return `{ ok, value } | { ok: false, error }` instead of throwing, because Electron mangles thrown errors; `src/preload/index.ts` unwraps them back into exceptions. Adding a call means touching `ipc.ts`, `preload/index.ts` and `preload/api.d.ts`, and usually `main/db/index.ts`.
 
+There can be several windows (`src/main/windows.ts`), each a whole app with its own `state.tsx`, sharing main's connections. Anything per window goes by the IPC sender (`handleFrom`): its session (session.json holds a list of windows, the first also at the top level for older versions), its unsaved-work warnings and its staged transactions (`owner`, rolled back when that window reloads or closes). A saving call listed in `CHANGES` in `ipc.ts` tells the other windows to re-read it (`onStoreChanged`); add new saved data there. Closing one window of several forgets its tabs; closing them all (quit, update, deploy) keeps them.
+
 ### Databases (`src/main/db`)
 
 `Driver` (`driver.ts`) is implemented by `mssql.ts` (via `mssql`/tedious, with SQL login, Entra browser sign-in or Entra default credentials) and `mysql.ts` (via `mysql2`). Every new capability needs both implementations. `db/index.ts` caches one driver per connection, drops it on connection errors so the next call reconnects, caches whole-schema reads (`cachedSchema`), and applies the read-only guard.

@@ -3,7 +3,7 @@ import type { ColumnInfo, DbKind, SchemaTable } from '../types'
 import { buildModel, valueSources } from './model'
 import { translate, type ValueCache } from './translate'
 
-// Thursday 25 September 2026
+// Friday 25 September 2026
 const NOW = new Date(2026, 8, 25, 14, 30)
 
 function col(name: string, dataType: string, extra: Partial<ColumnInfo> = {}): ColumnInfo {
@@ -37,7 +37,7 @@ const SCHEMA: SchemaTable[] = [
     columns: [
       pk(), col('InvoiceDate', 'datetime2'), col('CreatedOn', 'datetime2'), col('ExportedDatetime', 'datetime2'),
       col('TotalNet', 'decimal(18,2)'), col('TotalGross', 'decimal(18,2)'), fk('InvoiceStatusId', 'Lookups'),
-      col('CustomerName', 'nvarchar(200)'), col('DeletedOn', 'datetime2')
+      col('CustomerName', 'nvarchar(200)'), col('InvoiceNumber', 'nvarchar(20)'), col('OrderNumber', 'nvarchar(20)'), col('DeletedOn', 'datetime2')
     ]
   },
   {
@@ -163,6 +163,78 @@ describe('translate', () => {
 
   it('escapes quotes in values', () => {
     expect(sql("users where email contains o'brien")).toContain("LIKE '%o''brien%'")
+  })
+
+  it('reads weekdays and now in date ranges', () => {
+    const out = run('I want to see the id of all invoices created between last friday and now')
+    expect(out.notes.filter((n) => n.startsWith("Didn't understand"))).toEqual([])
+    expect(out.sql).toContain("i.[CreatedOn] >= '20260918'")
+    expect(out.sql).toContain("i.[CreatedOn] < '20260926'")
+    expect(sql('invoices since monday', 'mysql')).toContain("i.`InvoiceDate` >= '2026-09-21'")
+    expect(sql('jobs friday')).toContain("j.[CreatedDate] >= '20260925'")
+  })
+
+  it('picks the columns named before the table, or plural after it', () => {
+    expect(sql('the id and total net of invoices')).toMatch(/^SELECT TOP 1000 i\.\[Id\], i\.\[TotalNet\]\nFROM/)
+    expect(sql('id, name and email of users')).toMatch(/^SELECT TOP 1000 u\.\[Id\], u\.\[UserName\], u\.\[Email\]\nFROM/)
+    expect(sql('invoice ids created this week', 'mysql')).toMatch(/^SELECT i\.`Id`\nFROM/)
+    expect(sql('user emails')).toMatch(/^SELECT TOP 1000 u\.\[Email\]\nFROM/)
+    // A column word after the table that isn't a plural stays a question, not a column list.
+    const out = run('invoices total net')
+    expect(out.sql).toContain('SELECT TOP 1000 i.*')
+    expect(out.notes).toContain('Didn\'t understand "total"')
+    // The table's own words can complete the name: "invoice numbers" is InvoiceNumber, not just any number.
+    expect(sql('invoice numbers')).toMatch(/^SELECT TOP 1000 i\.\[InvoiceNumber\]\nFROM/)
+    expect(sql('latest 10 invoice numbers')).toMatch(/^SELECT TOP 10 i\.\[InvoiceNumber\]\nFROM[\s\S]*ORDER BY i\.\[InvoiceDate\] DESC$/)
+    // A word several columns share says which ones, rather than guessing.
+    const vague = run('numbers of invoices')
+    expect(vague.sql).toContain('SELECT TOP 1000 i.*')
+    expect(vague.notes).toContain('"numbers" could be InvoiceNumber, OrderNumber: name the column in full to show it')
+    // Counting ignores it.
+    expect(sql('how many invoice ids')).toContain('COUNT(*)')
+  })
+
+  it('sums and averages number columns', () => {
+    const out = sql('sum of total net of invoices')
+    expect(out).toMatch(/^SELECT SUM\(i\.\[TotalNet\]\) AS \[Sum of TotalNet\]\nFROM/)
+    expect(out).not.toContain('TOP')
+    expect(out).not.toContain('ORDER BY')
+    expect(sql('sum and average of total net and total gross of invoices created this year')).toContain(
+      'SUM(i.[TotalNet]) AS [Sum of TotalNet], SUM(i.[TotalGross]) AS [Sum of TotalGross], AVG(i.[TotalNet]) AS [Average TotalNet], AVG(i.[TotalGross]) AS [Average TotalGross]')
+    expect(sql('maximum created on of invoices')).toContain('MAX(i.[CreatedOn]) AS [Highest CreatedOn]')
+    // Commas aren't tokens, so a list of columns runs on without "and".
+    expect(sql('sum of total net, total gross of invoices')).toContain('SUM(i.[TotalNet]) AS [Sum of TotalNet], SUM(i.[TotalGross]) AS [Sum of TotalGross]')
+  })
+
+  it('does not read the table\'s own words after "of" as a parent', () => {
+    // InvoiceLines.InvoiceId points at Invoices; "of invoice lines" names the table, not that parent.
+    const out = sql('sum of amount of invoice lines')
+    expect(out).toBe('SELECT SUM(il.[Amount]) AS [Sum of Amount]\nFROM [dbo].[InvoiceLines] il')
+  })
+
+  it('groups sums by a lookup, biggest first', () => {
+    const out = sql('average total gross of invoices by status')
+    expect(out).toContain('SELECT status.[Label], AVG(i.[TotalGross]) AS [Average TotalGross]')
+    expect(out).toContain('GROUP BY status.[Label]')
+    expect(out).toContain('ORDER BY [Average TotalGross] DESC')
+    expect(sql('top 3 sum of total net of invoices per status')).toContain('SELECT TOP 3 status.[Label], SUM')
+  })
+
+  it('groups by day, month or year of the date, in date order', () => {
+    const mysql = sql('sum of total net of invoices by month', 'mysql')
+    expect(mysql).toContain("SELECT DATE_FORMAT(i.`InvoiceDate`, '%Y-%m') AS `Month`, SUM(i.`TotalNet`) AS `Sum of TotalNet`")
+    expect(mysql).toContain("GROUP BY DATE_FORMAT(i.`InvoiceDate`, '%Y-%m')\nORDER BY DATE_FORMAT(i.`InvoiceDate`, '%Y-%m')")
+    expect(sql('sum of total net of invoices by month')).toContain('CONVERT(char(7), i.[InvoiceDate], 120) AS [Month]')
+    expect(sql('how many invoices by year')).toContain('SELECT YEAR(i.[InvoiceDate]) AS [Year], COUNT(*) AS [Count]')
+    expect(sql('how many jobs per day', 'mysql')).toContain('GROUP BY DATE(j.`CreatedDate`)')
+  })
+
+  it('keeps "total" as a column name when it is one', () => {
+    expect(sql('total net of invoices')).toMatch(/^SELECT TOP 1000 i\.\[TotalNet\]\nFROM/)
+    // Nothing to add up: "sum" is reported rather than guessed.
+    const out = run('sum of invoices')
+    expect(out.sql).toContain('SELECT TOP 1000 i.*')
+    expect(out.notes).toContain('Didn\'t understand "sum"')
   })
 
   it('flags words it did not understand', () => {

@@ -17,6 +17,7 @@ import { ConfirmHost } from './components/Confirm'
 import { Logo } from './components/Logo'
 import { SettingsDialog } from './components/SettingsDialog'
 import { environmentCss } from '@shared/environments'
+import { APP_NAME } from '@shared/brand'
 import { LinksDialog } from './components/LinksDialog'
 import { SlopLayer } from './components/SlopLayer'
 import { WhatsNewDialog } from './components/WhatsNewDialog'
@@ -81,7 +82,7 @@ function useSidebar() {
 
 export function App() {
   const sidebar = useSidebar()
-  const { layout, activeTabId, setActiveTab, closeTab, moveTab, focusPane, connections, openQuery, initialRatio, rememberRatio, environments } = useAppState()
+  const { layout, activeTabId, setActiveTab, closeTab, moveTab, focusPane, connections, openQuery, initialRatio, rememberRatio, environments, openWindow } = useAppState()
   const { defaultConnection } = useAppearance()
   const [editing, setEditing] = useState<ConnectionConfig | null | 'new'>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -109,6 +110,13 @@ export function App() {
   const tabs = layout.tabs
   const activeTab = tabs.find((t) => t.id === activeTabId)
 
+  // The window's title follows its focused tab, so windows can be told apart on the taskbar and in Alt+Tab.
+  const activeConnection = activeTab && connections.find((c) => c.id === activeTab.connectionId)
+  const windowTitle = activeTab ? `${tabTitle(activeTab)}${activeConnection ? ` · ${activeConnection.name}` : ''} — ${APP_NAME}` : APP_NAME
+  useEffect(() => {
+    document.title = windowTitle
+  }, [windowTitle])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const mod = e.ctrlKey || e.metaKey
@@ -127,6 +135,9 @@ export function App() {
       } else if (mod && key === 'b') {
         e.preventDefault()
         sidebar.setHidden(!sidebar.hidden)
+      } else if (mod && e.shiftKey && key === 'n') {
+        e.preventDefault()
+        openWindow()
       } else if (mod && key === 't') {
         e.preventDefault()
         // With no tab open, Settings' default connection, else the first one.
@@ -147,7 +158,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [activeTab, activeTabId, closeTab, connections, layout, moveTab, openQuery, setActiveTab, sidebar, defaultConnection])
+  }, [activeTab, activeTabId, closeTab, connections, layout, moveTab, openQuery, setActiveTab, sidebar, defaultConnection, openWindow])
 
   const startResize = (event: React.MouseEvent): void => {
     event.preventDefault()
@@ -359,7 +370,7 @@ function PaneHead({ pane, split }: { pane: PaneId; split: boolean }) {
 
 /** A tab's right-click menu. Bulk closes act on its own pane and leave pinned tabs open. */
 function TabMenu({ x, y, tabId, onClose }: { x: number; y: number; tabId: string; onClose(): void }) {
-  const { layout, closeTab, closeTabs, pinTab, moveTab } = useAppState()
+  const { layout, closeTab, closeTabs, pinTab, moveTab, moveToNewWindow, duplicateTab } = useAppState()
   const tab = layout.tabs.find((t) => t.id === tabId)
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ left: x, top: y })
@@ -399,6 +410,8 @@ function TabMenu({ x, y, tabId, onClose }: { x: number; y: number; tabId: string
   return (
     <div ref={ref} className="menu tab-menu" style={position} onMouseDown={(e) => e.stopPropagation()}>
       <button onClick={act(() => pinTab(tabId, !tab.pinned))}>{tab.pinned ? 'Unpin tab' : 'Pin tab'}</button>
+      <button onClick={act(() => duplicateTab(tabId))} title="Open a copy of this tab next to it, as it is now">Duplicate</button>
+      <button onClick={act(() => duplicateTab(tabId, true))} title="Open a copy of this tab in a new window">Duplicate in new window</button>
       <div className="menu-sep" />
       <button onClick={act(() => closeTab(tabId))}>Close{!tab.pinned && <kbd>Ctrl+W</kbd>}</button>
       <button disabled={!others} onClick={act(() => closeTabs(tabId, 'others'))}>Close others{others ? ` (${others})` : ''}</button>
@@ -408,6 +421,7 @@ function TabMenu({ x, y, tabId, onClose }: { x: number; y: number; tabId: string
       <button disabled={!canMove} onClick={act(() => moveTab(tabId, otherPane(tab.pane)))}>
         Move to {tab.pane === 0 ? 'right' : 'left'} side<kbd>Ctrl+\</kbd>
       </button>
+      <button onClick={act(() => moveToNewWindow(tabId))} title="Open this tab in a window of its own, e.g. to put it on another screen">Move to new window</button>
       {tabsIn(layout, tab.pane).some((t) => t.pinned) && <div className="menu-label">Pinned tabs stay open when closing several</div>}
     </div>
   )
@@ -491,6 +505,7 @@ function Welcome({ onPalette }: { onPalette(): void }) {
         <li><kbd>Ctrl Enter</kbd> Run query (or selection)</li>
         <li><kbd>Ctrl W</kbd> Close tab</li>
         <li><kbd>Ctrl \</kbd> Move tab to the other side</li>
+        <li><kbd>Ctrl Shift N</kbd> New window</li>
         <li><kbd>Shift</kbd> click a reference to open it beside</li>
         <li><kbd>F5</kbd> Refresh table</li>
         <li><kbd>Ctrl C</kbd> Copy selected rows for Excel</li>

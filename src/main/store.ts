@@ -7,6 +7,9 @@ import { sameDatabase, type ConnectionCollection, type ImportSummary } from '@sh
 import { parseAppearance, type Appearance } from '@shared/appearance'
 import { mergeEnvironments, parseEnvironments, safetyOf, type EnvironmentDef } from '@shared/environments'
 import type { LookupLink } from '@shared/lookups'
+import { parseWindowSessions, windowSessionsFile, type WindowSession } from '@shared/session'
+
+export type { WindowBounds } from '@shared/session'
 
 interface StoredConnection extends ConnectionConfig {
   /** Password encrypted with the OS keychain (DPAPI on Windows), base64 encoded. */
@@ -277,12 +280,13 @@ export function addHistory(entry: Omit<HistoryEntry, 'id'>): void {
 }
 
 /** Returned as stored; the renderer checks it with parseSession, since it may be stale. */
-export function loadSession(): unknown {
-  return readJson<unknown>('session.json', null)
+/** Each window's last session. */
+export function loadWindowSessions(): WindowSession[] {
+  return parseWindowSessions(readJson<unknown>('session.json', null))
 }
 
-export function saveSession(session: SavedSession): void {
-  writeJson('session.json', session)
+export function saveWindowSessions(windows: WindowSession[]): void {
+  writeJson('session.json', windowSessionsFile(windows))
 }
 
 interface Settings {

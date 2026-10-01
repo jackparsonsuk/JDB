@@ -23,6 +23,11 @@ const subscribe = (listener: () => void): (() => void) => {
   return () => listeners.delete(listener)
 }
 
+// Another window set up or removed a lookup.
+window.api.onStoreChanged((topics) => {
+  if (topics.includes('lookups')) window.api.listLookups().then(publish, () => undefined)
+})
+
 export function useLookupLinks(): LookupLink[] {
   return useSyncExternalStore(subscribe, () => links)
 }

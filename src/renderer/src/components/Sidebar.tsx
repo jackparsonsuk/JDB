@@ -347,8 +347,8 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
   /** Open database / schema folders (lowercased): the connection's own database to start with. */
   const [openSchemas, setOpenSchemas] = useState<Set<string>>(() => new Set([(connection.database || (connection.kind === 'mssql' ? 'dbo' : '')).toLowerCase()]))
   const toggleSchema = useCallback((schema: string) => setOpenSchemas((s) => toggled(s, schema.toLowerCase())), [])
-  /** Tables / Views folders the user closed inside a schema, as "schema|type". */
-  const [closedTypes, setClosedTypes] = useState<Set<string>>(() => new Set())
+  /** Tables / Views folders the user opened inside a schema, as "schema|type"; they start closed. */
+  const [openTypes, setOpenTypes] = useState<Set<string>>(() => new Set())
   const state = tables[connection.id]
   const routineState = routines[connection.id]
 
@@ -535,10 +535,10 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
                       const items = group.filter((t) => t.type === type)
                       if (!items.length) return null
                       const key = `${schema}|${type}`.toLowerCase()
-                      const open = !!filter.trim() || !closedTypes.has(key)
+                      const open = !!filter.trim() || openTypes.has(key)
                       return (
                         <div key={type} className="routine-group">
-                          <button className="group-head" onClick={() => setClosedTypes((c) => toggled(c, key))}>
+                          <button className="group-head" onClick={() => setOpenTypes((c) => toggled(c, key))}>
                             <span className={`chevron ${open ? 'open' : ''}`}>›</span>
                             <span className="table-icon">{type === 'view' ? '◫' : '▦'}</span>
                             <span className="group-name">{type === 'view' ? 'Views' : 'Tables'}</span>
@@ -628,8 +628,8 @@ function RoutineList({ connectionId, filter, inSource, schemas }: { connectionId
   const { routines, loadRoutines } = useAppState()
   const link = useOpenLink()
   const state = routines[connectionId]
-  /** Kind groups the user closed, and those showing every routine: "kind", or "schema|kind" when grouped. */
-  const [closed, setClosed] = useState<Set<string>>(() => new Set())
+  /** Kind groups the user opened (they start closed), and those showing every routine: "kind", or "schema|kind" when grouped. */
+  const [opened, setOpened] = useState<Set<string>>(() => new Set())
   const [showAll, setShowAll] = useState<Set<string>>(() => new Set())
   const [sources, setSources] = useState<Sources | null>(null)
   const needle = useDeferredValue(filter)
@@ -724,12 +724,13 @@ function RoutineList({ connectionId, filter, inSource, schemas }: { connectionId
         const group = routines.filter((r) => r.kind === kind)
         if (!group.length) return null
         const key = `${prefix}${kind}`
+        // Groups start closed, like a schema's Tables and Views; `opened` holds the ones opened.
         // Filtering opens every group, so a match is never tucked away.
-        const open = !!needle.trim() || !closed.has(key)
+        const open = !!needle.trim() || opened.has(key)
         const shown = showAll.has(key) ? group : group.slice(0, ROUTINE_PAGE)
         return (
           <div key={kind} className="routine-group">
-            <button className="group-head" onClick={() => setClosed((c) => toggled(c, key))}>
+            <button className="group-head" onClick={() => setOpened((c) => toggled(c, key))}>
               <span className={`chevron ${open ? 'open' : ''}`}>›</span>
               <span className={`kind-dot kind-${kind}`} />
               <span className="group-name">{ROUTINE_LABELS[kind].plural}</span>

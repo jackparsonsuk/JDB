@@ -62,6 +62,13 @@ const api: Api = {
   deleteQuery: (id) => call('queries:delete', id),
   loadSession: () => call('session:load'),
   saveSession: (session) => ipcRenderer.send('session:save', session),
+  openWindow: (session, carried) => call('window:open', session, carried),
+  takeCarried: () => call('window:carried'),
+  onStoreChanged: (listener) => {
+    const handler = (_event: unknown, topics: string[]): void => listener(topics)
+    ipcRenderer.on('store:changed', handler)
+    return () => ipcRenderer.removeListener('store:changed', handler)
+  },
   setUnsavedWork: (warnings) => ipcRenderer.send('app:unsaved', warnings),
   signOutEntra: () => call('entra:signOut'),
   getTheme: () => call('theme:get'),

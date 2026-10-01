@@ -142,7 +142,8 @@ export function buildPlan(q: Query): Plan {
   })
 
   for (const target of q.shown) place(target, 'shown', 'shown')
-  if (q.groupBy) place(q.groupBy, 'group', 'grouped, counted')
+  for (const a of q.aggregates ?? []) place(a.target, 'shown', { sum: 'summed', avg: 'averaged', min: 'lowest', max: 'highest' }[a.fn])
+  if (q.groupBy) place(q.groupBy, 'group', `grouped${q.groupBucket ? ` by ${q.groupBucket}` : ''}${q.count ? ', counted' : ''}`)
   if (q.order) place(q.order.target, 'sort', q.order.desc ? 'sorted ↓' : 'sorted ↑')
 
   const usedParents = new Set([...tables.keys()].filter((id) => id.includes('#') && !id.includes('#exists')).map((id) => id.split('#')[1]))

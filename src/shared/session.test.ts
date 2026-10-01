@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSession } from './session'
+import { parseSession, parseWindowSessions, windowSessionsFile } from './session'
 import { restore } from './panes'
 
 const conns = new Set(['a', 'b'])
@@ -98,5 +98,30 @@ describe('parseSession', () => {
       active: [0, null]
     }, conns)
     expect(s?.tabs.map((t) => t.pinned)).toEqual([true, undefined])
+  })
+})
+
+describe('window sessions', () => {
+  const one = { tabs: [{ kind: 'query', pane: 0, connectionId: 'a', title: 'Query 1', sql: 'SELECT 1' }], active: [0, null], focused: 0, ratio: 0.5 }
+  const two = { tabs: [{ kind: 'search', pane: 0, connectionId: 'b', value: 'x' }], active: [0, null], focused: 0, ratio: 0.5 }
+
+  it('reads a single-window session from before windows as the main window', () => {
+    expect(parseWindowSessions(one)).toEqual([{ key: 'main', session: one }])
+    expect(parseWindowSessions(null)).toEqual([])
+  })
+
+  it('round-trips several windows with their bounds, dropping bad entries and bounds', () => {
+    const windows = [
+      { key: 'main', session: one, bounds: { x: 10, y: 20, width: 1400, height: 900, maximized: true } },
+      { key: 'w2', session: two }
+    ]
+    const file = windowSessionsFile(windows)
+    expect(parseWindowSessions(JSON.parse(JSON.stringify(file)))).toEqual(windows)
+    expect(parseWindowSessions({ windows: [{ key: 'w3', session: two, bounds: { x: 'left' } }, { session: one }, 'junk'] })).toEqual([{ key: 'w3', session: two }])
+  })
+
+  it('keeps the first window at the top level, so older versions still reopen it', () => {
+    const file = windowSessionsFile([{ key: 'main', session: one }, { key: 'w2', session: two }])
+    expect(parseSession(file, conns)?.tabs).toEqual(one.tabs)
   })
 })

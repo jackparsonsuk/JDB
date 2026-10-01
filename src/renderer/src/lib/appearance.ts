@@ -30,6 +30,14 @@ window.api.getAppearance().then((a) => {
 }, () => undefined)
 // Accent tints differ between light and dark themes.
 onThemeChange(apply)
+// Another window changed Settings; a change of this window's own still waiting to save wins.
+window.api.onStoreChanged((topics) => {
+  if (!topics.includes('appearance') || saveTimer !== undefined) return
+  window.api.getAppearance().then((a) => {
+    current = a
+    apply()
+  }, () => undefined)
+})
 
 /** Changes some settings; `undefined` for a key puts it back to its default. */
 export function updateAppearance(patch: Partial<Appearance>): void {
@@ -39,6 +47,7 @@ export function updateAppearance(patch: Partial<Appearance>): void {
   apply()
   clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
+    saveTimer = undefined
     window.api.setAppearance(current).catch(() => undefined)
   }, SAVE_DELAY_MS)
 }

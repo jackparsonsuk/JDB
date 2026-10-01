@@ -27,7 +27,7 @@ const MAX_RESULTS = 60
 const COLUMN_QUERY_MIN = 2
 
 export function CommandPalette({ onClose, onNewConnection, onLinks, onSettings }: { onClose(): void; onNewConnection(): void; onLinks(connectionId: string): void; onSettings(): void }) {
-  const { connections, tables, loadTables, routines, loadRoutines, openTable, openQuery, open, savedQueries, openSaved, activeTabId, tabs, environment } = useAppState()
+  const { connections, tables, loadTables, routines, loadRoutines, openTable, openQuery, open, savedQueries, openSaved, activeTabId, tabs, environment, openWindow, moveToNewWindow, duplicateTab } = useAppState()
   const theme = useTheme()
   const slop = useSlop()
   const [query, setQuery] = useState('')
@@ -162,6 +162,11 @@ export function CommandPalette({ onClose, onNewConnection, onLinks, onSettings }
       })
     }
     out.push({ key: 'new', label: 'New connection…', detail: '', icon: '＋', haystack: 'new connection add', bias: -10, run: onNewConnection })
+    out.push({ key: 'window', label: 'New window', detail: 'another window with its own tabs (Ctrl+Shift+N)', icon: '⧉', haystack: 'new window open another second screen monitor', bias: -9, run: openWindow })
+    if (activeTabId) {
+      out.push({ key: 'duplicate', label: 'Duplicate tab', detail: 'open a copy of this tab next to it', icon: '⧉', haystack: 'duplicate copy clone tab', bias: -9, run: () => duplicateTab(activeTabId) })
+      out.push({ key: 'move-window', label: 'Move tab to new window', detail: 'open this tab in a window of its own', icon: '⧉', haystack: 'move tab new window pop out detach another screen monitor', bias: -9, run: () => moveToNewWindow(activeTabId) })
+    }
     if (connections.some((c) => c.authType === 'entra-browser')) {
       out.push({
         key: 'entra-signout',
