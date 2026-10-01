@@ -381,6 +381,8 @@ body.resizing-cols { cursor: col-resize; user-select: none; }
 .grid th.rownum { z-index: 3; }
 .grid tbody tr:hover td { background: var(--bg-hover); }
 .grid tbody tr.selected td { background: var(--selected); }
+/* The row number stays put while cells scroll under it, so its selected tint goes over a solid colour. */
+.grid tbody tr.selected td.rownum { background: linear-gradient(var(--selected), var(--selected)), var(--bg-2); }
 .grid tbody tr.active td.rownum { color: var(--accent); font-weight: 700; }
 .grid td.null { color: var(--null); font-style: italic; }
 .grid td.num { color: var(--num); text-align: right; }
@@ -831,6 +833,12 @@ html.slop ::selection { background: #ff4ecd; color: #fff; }
 .group-head:hover:not(:disabled) { background: none; color: var(--text); }
 .group-head .chevron { width: 8px; font-size: 12px; }
 .group-name { flex: 1; }
+/* Database / schema folders, when a connection spans several. Names keep their case. */
+.schema-head { font-size: 12.5px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text); padding: 4px 6px; }
+.schema-head:hover:not(:disabled) { background: var(--bg-hover); }
+.schema-head .group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.schema-icon { color: var(--accent); font-size: 12px; }
+.schema-body { padding-left: 12px; margin-left: 9px; border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
 /* Long routine names shrink with an ellipsis rather than pushing the sidebar sideways. */
 .routine-item { padding-left: 29px; min-width: 0; max-width: 100%; }
 .routine-item .table-name { min-width: 0; }

@@ -2,6 +2,10 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 1.5.1
+- **Databases as folders.** When a connection shows more than one database (or schema), the sidebar groups them like DBeaver: a folder per database with its Tables and Views inside, and in Routines its procedures, functions and triggers. The connection's own database starts open, and filtering opens every folder with a match.
+- Fixed: in results scrolled to the right, the selected row's number could show the cells passing underneath it, so the selected cell looked like it sat over the row numbers.
+
 ## 1.5.0
 - **More rows per page.** Tables can show 1,000 rows a page, or pick **Custom…** and type your own number (up to 10,000). The size you pick is remembered for the next table you open.
 - **New query from the sidebar.** Each connection has a ⌨ button that opens a query tab on it, and right-clicking a connection gives a menu with New query, links, reconnect and edit.

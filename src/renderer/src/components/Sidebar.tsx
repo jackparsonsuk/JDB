@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import type { ConnectionConfig, DatabaseList, RoutineInfo, RoutineKind, RoutineSource, TableInfo } from '@shared/types'
 import { ROUTINE_LABELS, searchSources } from '@shared/routines'
 import { useOpenLink } from '../lib/openLink'
@@ -343,6 +343,11 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
   const [mode, setMode] = useState<'tables' | 'routines'>('tables')
   const [inSource, setInSource] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  /** Open database / schema folders (lowercased): the connection's own database to start with. */
+  const [openSchemas, setOpenSchemas] = useState<Set<string>>(() => new Set([(connection.database || (connection.kind === 'mssql' ? 'dbo' : '')).toLowerCase()]))
+  const toggleSchema = useCallback((schema: string) => setOpenSchemas((s) => toggled(s, schema.toLowerCase())), [])
+  /** Tables / Views folders the user closed inside a schema, as "schema|type". */
+  const [closedTypes, setClosedTypes] = useState<Set<string>>(() => new Set())
   const state = tables[connection.id]
   const routineState = routines[connection.id]
 
@@ -363,8 +368,25 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
   }
 
   const list = filterTables(state?.tables ?? [], filter)
-  const schemas = new Set(list.map((t) => t.schema))
-  const showSchema = schemas.size > 1
+  // Grouped by database (MySQL) or schema (SQL Server) once there's more than one, like DBeaver's tree.
+  const showSchema = new Set((state?.tables ?? []).map((t) => t.schema)).size > 1
+  const schemaLabel = connection.kind === 'mysql' ? 'database' : 'schema'
+
+  const tableItem = (t: TableInfo, withSchema: boolean): ReactNode => (
+    <button
+      key={`${t.schema}.${t.name}`}
+      className="table-item"
+      onClick={() => openTable(connection.id, t)}
+      title={`${t.schema}.${t.name}${t.rowEstimate !== undefined ? ` · ~${formatCount(t.rowEstimate)} rows` : ''}`}
+    >
+      <span className="table-icon">{t.type === 'view' ? '◫' : '▦'}</span>
+      <span className="table-name">
+        {withSchema && <span className="muted">{t.schema}.</span>}
+        {t.name}
+      </span>
+      {t.rowEstimate !== undefined && <span className="table-rows">{compact(t.rowEstimate)}</span>}
+    </button>
+  )
 
   return (
     <div className={`conn env-${connection.env}`}>
@@ -461,23 +483,36 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
                   </button>
                 )}
               </div>
-              {mode === 'routines' && <RoutineList connectionId={connection.id} filter={filter} inSource={inSource} />}
+              {mode === 'routines' && (
+                <RoutineList
+                  connectionId={connection.id}
+                  filter={filter}
+                  inSource={inSource}
+                  schemas={{ open: openSchemas, onToggle: toggleSchema, label: schemaLabel }}
+                />
+              )}
               <div className="tables" hidden={mode !== 'tables'}>
-                {list.map((t) => (
-                  <button
-                    key={`${t.schema}.${t.name}`}
-                    className="table-item"
-                    onClick={() => openTable(connection.id, t)}
-                    title={`${t.schema}.${t.name}${t.rowEstimate !== undefined ? ` · ~${formatCount(t.rowEstimate)} rows` : ''}`}
-                  >
-                    <span className="table-icon">{t.type === 'view' ? '◫' : '▦'}</span>
-                    <span className="table-name">
-                      {showSchema && <span className="muted">{t.schema}.</span>}
-                      {t.name}
-                    </span>
-                    {t.rowEstimate !== undefined && <span className="table-rows">{compact(t.rowEstimate)}</span>}
-                  </button>
-                ))}
+                {showSchema ? (
+                  <SchemaGroups items={list} open={openSchemas} filtering={!!filter.trim()} onToggle={toggleSchema} label={schemaLabel}>
+                    {(group, schema) => (['table', 'view'] as const).map((type) => {
+                      const items = group.filter((t) => t.type === type)
+                      if (!items.length) return null
+                      const key = `${schema}|${type}`.toLowerCase()
+                      const open = !!filter.trim() || !closedTypes.has(key)
+                      return (
+                        <div key={type} className="routine-group">
+                          <button className="group-head" onClick={() => setClosedTypes((c) => toggled(c, key))}>
+                            <span className={`chevron ${open ? 'open' : ''}`}>›</span>
+                            <span className="table-icon">{type === 'view' ? '◫' : '▦'}</span>
+                            <span className="group-name">{type === 'view' ? 'Views' : 'Tables'}</span>
+                            <span className="table-rows">{items.length.toLocaleString()}</span>
+                          </button>
+                          {open && items.map((t) => tableItem(t, false))}
+                        </div>
+                      )
+                    })}
+                  </SchemaGroups>
+                ) : list.map((t) => tableItem(t, false))}
                 {!state.tables.length
                   ? <NoTables connection={connection} onEdit={onEdit} />
                   : !list.length && <div className="muted pad">No matches</div>}
@@ -552,12 +587,13 @@ const ROUTINE_PAGE = 300
 type Sources = { status: 'loading' | 'ready' | 'error'; list: RoutineSource[]; error?: string }
 
 /** A connection's procedures, functions and triggers grouped by kind, or matches inside their source. */
-function RoutineList({ connectionId, filter, inSource }: { connectionId: string; filter: string; inSource: boolean }) {
+function RoutineList({ connectionId, filter, inSource, schemas }: { connectionId: string; filter: string; inSource: boolean; schemas: SchemaFolders }) {
   const { routines, loadRoutines } = useAppState()
   const link = useOpenLink()
   const state = routines[connectionId]
-  const [closed, setClosed] = useState<Set<RoutineKind>>(() => new Set())
-  const [showAll, setShowAll] = useState<Set<RoutineKind>>(() => new Set())
+  /** Kind groups the user closed, and those showing every routine: "kind", or "schema|kind" when grouped. */
+  const [closed, setClosed] = useState<Set<string>>(() => new Set())
+  const [showAll, setShowAll] = useState<Set<string>>(() => new Set())
   const [sources, setSources] = useState<Sources | null>(null)
   const needle = useDeferredValue(filter)
 
@@ -645,24 +681,18 @@ function RoutineList({ connectionId, filter, inSource }: { connectionId: string;
   }
 
   const visible = filterRoutines(state.routines, needle)
-  const toggle = (set: Set<RoutineKind>, kind: RoutineKind): Set<RoutineKind> => {
-    const next = new Set(set)
-    if (next.has(kind)) next.delete(kind)
-    else next.add(kind)
-    return next
-  }
 
-  return (
-    <div className="tables">
-      {ROUTINE_KINDS.map((kind) => {
-        const group = visible.filter((r) => r.kind === kind)
+  /** The kind groups for a list of routines; `prefix` keeps each schema's open state apart. */
+  const kindGroups = (routines: RoutineInfo[], prefix: string, withSchema: boolean): ReactNode => ROUTINE_KINDS.map((kind) => {
+        const group = routines.filter((r) => r.kind === kind)
         if (!group.length) return null
+        const key = `${prefix}${kind}`
         // Filtering opens every group, so a match is never tucked away.
-        const open = !!needle.trim() || !closed.has(kind)
-        const shown = showAll.has(kind) ? group : group.slice(0, ROUTINE_PAGE)
+        const open = !!needle.trim() || !closed.has(key)
+        const shown = showAll.has(key) ? group : group.slice(0, ROUTINE_PAGE)
         return (
           <div key={kind} className="routine-group">
-            <button className="group-head" onClick={() => setClosed((c) => toggle(c, kind))}>
+            <button className="group-head" onClick={() => setClosed((c) => toggled(c, key))}>
               <span className={`chevron ${open ? 'open' : ''}`}>›</span>
               <span className={`kind-dot kind-${kind}`} />
               <span className="group-name">{ROUTINE_LABELS[kind].plural}</span>
@@ -680,7 +710,7 @@ function RoutineList({ connectionId, filter, inSource }: { connectionId: string;
                 ].filter(Boolean).join(' · ')}
               >
                 <span className="table-name">
-                  {showSchema && <span className="muted">{r.schema}.</span>}
+                  {withSchema && <span className="muted">{r.schema}.</span>}
                   {r.name}
                 </span>
                 {r.kind === 'trigger' && r.parent && <span className="routine-aside">{r.parent.name}</span>}
@@ -689,19 +719,79 @@ function RoutineList({ connectionId, filter, inSource }: { connectionId: string;
               </button>
             ))}
             {open && group.length > shown.length && (
-              <button className="show-more" onClick={() => setShowAll((s) => toggle(s, kind))}>
+              <button className="show-more" onClick={() => setShowAll((s) => toggled(s, key))}>
                 Show all {group.length.toLocaleString()}
               </button>
             )}
           </div>
         )
-      })}
+      })
+
+  return (
+    <div className="tables">
+      {showSchema
+        ? (
+          <SchemaGroups items={visible} filtering={!!needle.trim()} {...schemas}>
+            {(group, schema) => kindGroups(group, `${schema.toLowerCase()}|`, false)}
+          </SchemaGroups>
+        )
+        : kindGroups(visible, '', false)}
       {!visible.length && <div className="muted pad">No matches by name. Try {'{ }'} to search inside the source.</div>}
     </div>
   )
 }
 
 const ROUTINE_KINDS: RoutineKind[] = ['procedure', 'function', 'trigger']
+
+function toggled(set: Set<string>, key: string): Set<string> {
+  const next = new Set(set)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  return next
+}
+
+/** Folder state for grouping a list by database / schema. */
+interface SchemaFolders {
+  /** Lowercased names of the open folders. */
+  open: Set<string>
+  onToggle(schema: string): void
+  /** "database" or "schema", for tooltips. */
+  label: string
+}
+
+/** Items in a collapsible folder per database / schema, alphabetically. A filter opens every folder with a match. */
+function SchemaGroups<T extends { schema: string }>({ items, open, filtering, onToggle, label, children }: SchemaFolders & {
+  items: T[]
+  filtering: boolean
+  children(group: T[], schema: string): ReactNode
+}) {
+  const groups = new Map<string, T[]>()
+  for (const item of items) {
+    const group = groups.get(item.schema)
+    if (group) group.push(item)
+    else groups.set(item.schema, [item])
+  }
+  const names = [...groups.keys()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+  return (
+    <>
+      {names.map((schema) => {
+        const isOpen = filtering || open.has(schema.toLowerCase())
+        const group = groups.get(schema)!
+        return (
+          <div key={schema} className="schema-group">
+            <button className="group-head schema-head" onClick={() => onToggle(schema)} title={`${schema} (${label})`}>
+              <span className={`chevron ${isOpen ? 'open' : ''}`}>›</span>
+              <span className="schema-icon">⛁</span>
+              <span className="group-name">{schema}</span>
+              <span className="table-rows">{group.length.toLocaleString()}</span>
+            </button>
+            {isOpen && <div className="schema-body">{children(group, schema)}</div>}
+          </div>
+        )
+      })}
+    </>
+  )
+}
 
 function filterRoutines(routines: RoutineInfo[], filter: string): RoutineInfo[] {
   if (!filter.trim()) return routines
