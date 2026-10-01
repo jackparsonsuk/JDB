@@ -6,7 +6,7 @@ import { SavedQueries } from './SavedQueries'
 import { Logo } from './Logo'
 import { confirm } from './Confirm'
 import { useAppState } from '../state'
-import { fuzzyScore } from '../lib/fuzzy'
+import { wordScore } from '@shared/fuzzy'
 import { appVersion } from '../lib/version'
 import { useUpdate } from '../lib/useUpdate'
 import { setTheme, useColorScheme } from '../lib/theme'
@@ -796,7 +796,7 @@ function SchemaGroups<T extends { schema: string }>({ items, open, filtering, on
 function filterRoutines(routines: RoutineInfo[], filter: string): RoutineInfo[] {
   if (!filter.trim()) return routines
   return routines
-    .map((r) => ({ r, score: fuzzyScore(filter, `${r.schema}.${r.name}`) }))
+    .map((r) => ({ r, score: wordScore(filter, `${r.schema}.${r.name}`) }))
     .filter((x) => x.score >= 0)
     .sort((a, b) => b.score - a.score)
     .map((x) => x.r)
@@ -805,7 +805,7 @@ function filterRoutines(routines: RoutineInfo[], filter: string): RoutineInfo[] 
 function filterTables(tables: TableInfo[], filter: string): TableInfo[] {
   if (!filter.trim()) return tables
   return tables
-    .map((t) => ({ t, score: fuzzyScore(filter, `${t.schema}.${t.name}`) }))
+    .map((t) => ({ t, score: wordScore(filter, `${t.schema}.${t.name}`) }))
     .filter((x) => x.score >= 0)
     .sort((a, b) => b.score - a.score)
     .map((x) => x.t)

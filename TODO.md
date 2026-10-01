@@ -62,7 +62,7 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 ## Smaller improvements
 
 - [ ] The table toolbar wraps to a second row when filters are applied; tighten it.
-- [ ] The sidebar's fuzzy name filter is loose ("next" matches `queue_invoice_export`); prefer word-start matches.
+- [x] The sidebar's name filter only jumps to word starts (`wordScore` in `src/shared/fuzzy.ts`), so "next" no longer matches `queue_invoice_export`. (1.6.0) The command palette, column finder and saved queries still use the looser `lib/fuzzy.ts`.
 - [ ] `DECLARE ... CURSOR FOR` then `SELECT` could indent the SELECT one level in the formatter.
 - [ ] MySQL `PREPARE` and `EXECUTE` show in the outline as a call; label them as prepared statements.
 - [ ] Deploy (`scripts/deploy-local.mjs`) force-closes the app when it's asking about unsaved work, which discards it. Ask before forcing, or stop and say so.

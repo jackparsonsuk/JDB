@@ -3,6 +3,7 @@
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
 ## 1.6.0
+- **A tighter sidebar filter.** Filtering tables and routines no longer picks letters out of the middle of words, so "next" stops matching `queue_invoice_export`. Any part of a name still matches ("voice"), and so do word starts: "pe" or "proem" finds ProcessedEmails, "qie" finds queue_invoice_export.
 - **Easier-to-read SQL before a write.** The SQL shown before saving grid edits or confirming a write is highlighted like the editor and wraps instead of scrolling sideways. When saving grid edits, each statement is laid out on its own lines (UPDATE, SET, WHERE) with a blank line between statements.
 - **See what a grid save changed.** After **Review & save** in a table, a panel above the grid shows each edited row's values before → after, shown straight away, then checked against the database in the background (so changes made by triggers or defaults show too), plus how many rows were deleted and added. Close it with ✕.
 
