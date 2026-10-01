@@ -3,7 +3,7 @@ import CodeMirror, { EditorView, type Extension, keymap, Prec } from '@uiw/react
 import { EditorState } from '@codemirror/state'
 import { indentUnit } from '@codemirror/language'
 import { useAppearance } from '../lib/appearance'
-import { sql, MSSQL, MySQL } from '@codemirror/lang-sql'
+import { MSSQL, MySQL } from '@codemirror/lang-sql'
 import { acceptCompletion } from '@codemirror/autocomplete'
 import type { HistoryEntry, QueryResult } from '@shared/types'
 import { findWriteKeyword } from '@shared/sqlGuard'
@@ -17,7 +17,7 @@ import { runFederated, type StepRun } from '../lib/federated'
 import type { TranslateResult } from '@shared/nl/translate'
 import type { Model } from '@shared/nl/model'
 import { localModel } from '../lib/useNl'
-import { sqlAssist, sqlNamespace } from '../lib/sqlAssist'
+import { notAfterDot, sqlAssist, sqlLanguage, sqlNamespace } from '../lib/sqlAssist'
 import { runExport } from '../lib/exporting'
 import { stagedChanges, useTransaction } from '../lib/useTransaction'
 import { TransactionBar } from './TransactionBar'
@@ -182,9 +182,9 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   const language = useMemo(() => {
     const dialect = conn?.kind === 'mssql' ? MSSQL : MySQL
     const { schema, defaultSchema } = sqlNamespace(tableList ?? [], model)
-    const extensions: Extension[] = [sql({ dialect, schema, defaultSchema, upperCaseKeywords: true })]
+    const extensions: Extension[] = [sqlLanguage(dialect, schema, defaultSchema)]
     if (model) extensions.push(dialect.language.data.of({ autocomplete: sqlAssist(model) }))
-    if (conn) extensions.push(dialect.language.data.of({ autocomplete: snippetCompletions(savedQueries, conn.id) }))
+    if (conn) extensions.push(dialect.language.data.of({ autocomplete: notAfterDot(snippetCompletions(savedQueries, conn.id)) }))
     return extensions
   }, [conn?.kind, conn?.id, tableList, model, savedQueries])
 

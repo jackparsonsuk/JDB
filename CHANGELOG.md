@@ -4,6 +4,8 @@ What changed in each JDB release, newest first. JDB shows these notes after it u
 
 ## 1.5.0
 - **More rows per page.** Tables can show 1,000 rows a page, or pick **Custom…** and type your own number (up to 10,000). The size you pick is remembered for the next table you open.
+- **New query from the sidebar.** Each connection has a ⌨ button that opens a query tab on it, and right-clicking a connection gives a menu with New query, links, reconnect and edit.
+- **Columns first after `alias.`** Typing `o.` in the SQL editor now lists only that table's columns, without keywords like DESC mixed in.
 
 ## 1.4.0
 - **Query parameters.** Write `:customerId` (or `@customerId`) in a query and running it asks for a value first. Values are written to suit the column they're compared with (quoted for text, as they are for numbers, dates the safe way), and `IN (:ids)` takes a comma-separated list. You can also choose Text, Number, NULL or raw SQL for a value, see the finished SQL before it runs, and each value is remembered for next time. Great for saved queries.

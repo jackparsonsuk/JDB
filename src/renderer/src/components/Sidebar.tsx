@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { useDeferredValue, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import type { ConnectionConfig, DatabaseList, RoutineInfo, RoutineKind, RoutineSource, TableInfo } from '@shared/types'
 import { ROUTINE_LABELS, searchSources } from '@shared/routines'
 import { useOpenLink } from '../lib/openLink'
@@ -308,12 +308,41 @@ function SidebarMenu({ children, onClose }: { children: ReactNode; onClose(): vo
   return <div className="menu sidebar-menu" onMouseDown={(e) => e.stopPropagation()}>{children}</div>
 }
 
+/** A connection's right-click menu, at the pointer and kept on screen. */
+function ConnectionMenu({ x, y, onClose, children }: { x: number; y: number; onClose(): void; children(act: (run: () => void) => () => void): ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState({ left: x, top: y })
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('mousedown', onClose)
+    window.addEventListener('blur', onClose)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onClose)
+      window.removeEventListener('blur', onClose)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (el) setPosition({ left: Math.min(x, window.innerWidth - el.offsetWidth - 8), top: Math.min(y, window.innerHeight - el.offsetHeight - 8) })
+  }, [x, y])
+  const act = (run: () => void) => (): void => {
+    onClose()
+    run()
+  }
+  return <div ref={ref} className="menu tab-menu" style={position} onMouseDown={(e) => e.stopPropagation()}>{children(act)}</div>
+}
+
 function ConnectionNode({ connection, onEdit, onLinks }: { connection: ConnectionConfig; onEdit(): void; onLinks(): void }) {
   const { tables, loadTables, forgetTables, routines, loadRoutines, openTable, openQuery, environment } = useAppState()
   const [expanded, setExpanded] = useState(false)
   const [filter, setFilter] = useState('')
   const [mode, setMode] = useState<'tables' | 'routines'>('tables')
   const [inSource, setInSource] = useState(false)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const state = tables[connection.id]
   const routineState = routines[connection.id]
 
@@ -347,19 +376,46 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
           e.dataTransfer.setData(CONNECTION_DRAG, connection.id)
           e.dataTransfer.effectAllowed = 'move'
         }}
-        title={`${connection.name} · ${environment(connection.env).name}${connection.readOnly ? ' · read-only' : ''}\nDrag onto a folder to file it`}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY })
+        }}
+        title={`${connection.name} · ${environment(connection.env).name}${connection.readOnly ? ' · read-only' : ''}\nDrag onto a folder to file it · right-click for more`}
       >
         <span className={`chevron ${expanded ? 'open' : ''}`}>›</span>
         <span className="env-dot" title={environment(connection.env).name} />
         <span className="conn-name">{connection.name}</span>
         {connection.readOnly && <span className="lock" title="Read-only">🔒</span>}
         <span className="conn-actions" onClick={(e) => e.stopPropagation()}>
-          <button className="icon small" title="Ask in plain English / new query (Ctrl+T)" onClick={() => openQuery(connection.id)}>✦</button>
           <button className="icon small" title="Cross-database links" onClick={onLinks}>🔗</button>
           <button className="icon small" title="Reconnect and refresh" onClick={reconnect}>⟳</button>
           <button className="icon small" title="Edit connection" onClick={onEdit}>✎</button>
         </span>
+        <button
+          className="icon small conn-query"
+          title="New query (Ctrl+T)"
+          onClick={(e) => {
+            e.stopPropagation()
+            openQuery(connection.id)
+          }}
+        >
+          ⌨
+        </button>
       </div>
+
+      {menu && (
+        <ConnectionMenu {...menu} onClose={() => setMenu(null)}>
+          {(act) => (
+            <>
+              <button onClick={act(() => openQuery(connection.id))}>New query<kbd>Ctrl+T</kbd></button>
+              <div className="menu-sep" />
+              <button onClick={act(onLinks)}>Cross-database links</button>
+              <button onClick={act(reconnect)}>Reconnect and refresh</button>
+              <button onClick={act(onEdit)}>Edit connection</button>
+            </>
+          )}
+        </ConnectionMenu>
+      )}
 
       {expanded && (
         <div className="conn-body">

@@ -195,6 +195,8 @@ kbd {
 .chevron.open { transform: rotate(90deg); }
 .conn-name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conn-actions { display: flex; opacity: 0; }
+.conn-query { color: var(--text-dim); }
+.conn-row:hover .conn-query { color: var(--text); }
 .lock { font-size: 10px; }
 .conn-body { padding: 2px 8px 8px 22px; }
 .conn-body .search { margin: 4px 0; }
