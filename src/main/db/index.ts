@@ -270,8 +270,12 @@ export function cancelQuery(runId: string): void {
   runs.get(runId)?.abort()
 }
 
-/** Transactions staged from query tabs, by id. Each holds its own connection until it ends. */
-const transactions = new Map<string, { connectionId: string; tx: DriverTransaction }>()
+/**
+ * Transactions staged from query tabs, by id. Each holds its own connection until it ends, and
+ * `owner` is the window (webContents id) whose tab opened it, so a window that reloads or closes
+ * rolls back only its own.
+ */
+const transactions = new Map<string, { connectionId: string; tx: DriverTransaction; owner?: number }>()
 
 function openTransaction(id: string, connectionId?: string): { connectionId: string; tx: DriverTransaction } {
   const entry = transactions.get(id)
@@ -286,13 +290,13 @@ function openTransaction(id: string, connectionId?: string): { connectionId: str
 const logged = (connectionId: string, sql: string, error?: unknown): void =>
   addHistory({ connectionId, sql, ranAt: new Date().toISOString(), durationMs: 0, ...(error ? { error: String((error as Error).message ?? error) } : {}) })
 
-export async function beginTransaction(connectionId: string): Promise<string> {
+export async function beginTransaction(connectionId: string, owner?: number): Promise<string> {
   const tx = await withDriver(connectionId, (driver, config) => {
     if (config.readOnly) throw new Error(`"${config.name}" is read-only, so there is nothing to commit.`)
     return driver.begin()
   })
   const id = randomUUID()
-  transactions.set(id, { connectionId, tx })
+  transactions.set(id, { connectionId, tx, owner })
   logged(connectionId, 'BEGIN TRANSACTION')
   return id
 }
@@ -325,9 +329,10 @@ export async function rollbackTransaction(id: string): Promise<void> {
   if (wasOpen) logged(entry.connectionId, 'ROLLBACK')
 }
 
-/** Rolls back every staged transaction, e.g. when the window reloads and forgets them. */
-export async function rollbackAll(): Promise<void> {
-  await Promise.all([...transactions.keys()].map((id) => rollbackTransaction(id).catch(() => undefined)))
+/** Rolls back the transactions a window staged, e.g. when it reloads and forgets them, or closes. */
+export async function rollbackOwnedBy(owner: number): Promise<void> {
+  const ids = [...transactions].filter(([, t]) => t.owner === owner).map(([id]) => id)
+  await Promise.all(ids.map((id) => rollbackTransaction(id).catch(() => undefined)))
 }
 
 /**

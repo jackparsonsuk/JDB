@@ -85,3 +85,46 @@ function parseFilters(value: unknown): ColumnFilter[] {
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
+
+/** Where a window was: its normal (unmaximised) bounds, and whether it was maximised. */
+export interface WindowBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+  maximized?: boolean
+}
+
+/** One window's tabs (an unchecked SavedSession, which its renderer parses) and where it was. */
+export interface WindowSession {
+  key: string
+  bounds?: WindowBounds
+  session: unknown
+}
+
+function parseBounds(value: unknown): WindowBounds | undefined {
+  if (!isObject(value)) return undefined
+  const { x, y, width, height } = value
+  if (![x, y, width, height].every((n) => typeof n === 'number' && Number.isFinite(n))) return undefined
+  return { x: x as number, y: y as number, width: width as number, height: height as number, ...(value.maximized === true && { maximized: true }) }
+}
+
+/** Each window's last session from session.json. Up to 1.8.0 the file held one window's session. */
+export function parseWindowSessions(raw: unknown): WindowSession[] {
+  if (!isObject(raw)) return []
+  if (!Array.isArray(raw.windows)) return [{ key: 'main', session: raw }]
+  return raw.windows.flatMap((w): WindowSession[] => {
+    if (!isObject(w) || typeof w.key !== 'string') return []
+    const bounds = parseBounds(w.bounds)
+    return [{ key: w.key, session: w.session ?? null, ...(bounds && { bounds }) }]
+  })
+}
+
+/**
+ * What session.json holds for these windows. The first window's tabs also stay at the top level,
+ * as 1.8.0 and earlier wrote them, so going back to an older version still reopens that window.
+ */
+export function windowSessionsFile(windows: WindowSession[]): Record<string, unknown> {
+  const first = windows.find((w) => isObject(w.session))?.session as Record<string, unknown> | undefined
+  return { ...first, windows }
+}

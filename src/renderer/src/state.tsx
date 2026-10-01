@@ -1,10 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { ColumnFilter, ConnectionConfig, CrossLink, RoutineInfo, RoutineRef, SavedQuery, SavedQueryInput, SavedSession, SavedTab, TableInfo, TableRef, TableSort } from '@shared/types'
+import type { ColumnFilter, ConnectionConfig, CrossLink, QueryResult, RoutineInfo, RoutineRef, SavedQuery, SavedQueryInput, SavedSession, SavedTab, TableInfo, TableRef, TableSort } from '@shared/types'
 import { sameRoutine } from '@shared/routines'
 import * as panes from '@shared/panes'
 import type { CloseScope, PaneId, Panes } from '@shared/panes'
 import { forgetAllNlEngines, forgetNlEngine } from './lib/useNl'
 import { confirm } from './components/Confirm'
+import { toast } from './components/Toast'
 import { envInfo, type EnvironmentDef, type EnvSafety } from '@shared/environments'
 
 export type Tab = (
@@ -24,6 +25,8 @@ export type Tab = (
       schema?: string
       /** SQL to insert at the cursor (a saved query from the sidebar); `seq` changes when asked again. Not saved. */
       insert?: { sql: string; seq: number }
+      /** Results it brought when moved from another window, shown without running again. Not saved. */
+      initialResult?: CarriedResult
     }
   | {
       kind: 'record'; id: string; pane: PaneId; connectionId: string; table: TableRef; key: ColumnFilter[]
@@ -130,6 +133,10 @@ interface AppState {
   /** Closes the unpinned tabs in `id`'s pane that `scope` picks, asking first about any with unsaved work. */
   closeTabs(id: string, scope: CloseScope): void
   pinTab(id: string, pinned: boolean): void
+  /** Opens another, empty window. */
+  openWindow(): void
+  /** Moves a tab into a new window of its own, results and all; refused for tabs with unsaved work. */
+  moveToNewWindow(id: string): void
   /** Bumped when JDB changes a connection's schema, so open views re-read their columns. */
   schemaVersions: Record<string, number>
   schemaChanged(connectionId: string): void
@@ -144,6 +151,27 @@ interface AppState {
 }
 
 const Ctx = createContext<AppState | null>(null)
+
+/** A query tab's results, as handed to a new window with the tab. */
+export interface CarriedResult {
+  result: QueryResult
+  /** The SELECT behind each result set, where it could be told (for lookups on its columns). */
+  sql: (string | null)[] | null
+}
+
+/** What a window opened by moving a tab was handed: results by the tab's index in its session. */
+export interface Carried {
+  results: Record<number, CarriedResult>
+}
+
+export function parseCarried(value: unknown): Carried | null {
+  if (typeof value !== 'object' || value === null) return null
+  const results = (value as { results?: unknown }).results
+  return results && typeof results === 'object' ? { results: results as Record<number, CarriedResult> } : null
+}
+
+/** Each query tab's latest results, kept up to date by QueryView, so a moved tab can take them along. */
+export const tabResults = new Map<string, CarriedResult>()
 
 /** Tabs that would lose something if closed (an open transaction, unsaved edits), with the warning. */
 const closeWarnings = new Map<string, string>()
@@ -233,15 +261,19 @@ function savedTab(saved: SavedTab): Tab {
   }
 }
 
-function restoreLayout(session: SavedSession | null): Panes<Tab> {
+function restoreLayout(session: SavedSession | null, carried: Carried | null): Panes<Tab> {
   if (!session) return panes.emptyPanes()
-  const tabs = session.tabs.map(fromSaved)
+  const tabs = session.tabs.map((saved, i) => {
+    const tab = fromSaved(saved)
+    const result = carried?.results[i]
+    return tab.kind === 'query' && result ? { ...tab, initialResult: result } : tab
+  })
   const idAt = (i: number | null): string | null => (i === null ? null : tabs[i]?.id ?? null)
   return panes.restore(tabs, [idAt(session.active[0]), idAt(session.active[1])], session.focused)
 }
 
-/** `session`: the last saved session, already checked with parseSession. */
-export function AppStateProvider({ children, session }: { children: ReactNode; session: SavedSession | null }) {
+/** `session`: the last saved session, already checked with parseSession; `carried`: results a moved tab brought. */
+export function AppStateProvider({ children, session, carried }: { children: ReactNode; session: SavedSession | null; carried?: Carried | null }) {
   const [connections, setConnections] = useState<ConnectionConfig[]>([])
   const [tables, setTables] = useState<Record<string, TablesState>>({})
   const [links, setLinksState] = useState<CrossLink[]>([])
@@ -254,7 +286,7 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
   useEffect(() => {
     window.api.listLinks().then(setLinksState).catch(() => undefined)
   }, [])
-  const [layout, setLayout] = useState<Panes<Tab>>(() => restoreLayout(session))
+  const [layout, setLayout] = useState<Panes<Tab>>(() => restoreLayout(session, carried ?? null))
 
   const reloadConnections = useCallback(async () => {
     setConnections(await window.api.listConnections())
@@ -507,6 +539,38 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
   }, [])
 
   const pinTab = useCallback((id: string, pinned: boolean) => setLayout((s) => panes.setPinned(s, id, pinned)), [])
+
+  const openWindow = useCallback(() => {
+    window.api.openWindow().catch((e) => toast((e as Error).message, true))
+  }, [])
+
+  const moveToNewWindow = useCallback(async (id: string) => {
+    const tab = layoutRef.current.tabs.find((t) => t.id === id)
+    if (!tab) return
+    // An open transaction or unsaved edits live in this window and can't go with the tab.
+    const warning = closeWarnings.get(id)
+    if (warning) {
+      toast(`This tab can't move to another window: ${warning.charAt(0).toLowerCase()}${warning.slice(1)}`, true)
+      return
+    }
+    const saved = { ...toSaved(tab, memory.current.get(id)), pane: 0 as const }
+    const result = tab.kind === 'query' ? tabResults.get(id) : undefined
+    try {
+      await window.api.openWindow({ tabs: [saved], active: [0, null], focused: 0, ratio: 0.5 }, result ? { results: { 0: result } } : undefined)
+    } catch (e) {
+      toast((e as Error).message, true)
+      return
+    }
+    setLayout((s) => panes.closeTab(s, id))
+  }, [])
+
+  // Another window saved something this one shows.
+  useEffect(() => window.api.onStoreChanged((topics) => {
+    if (topics.includes('connections')) reloadConnections().catch(() => undefined)
+    if (topics.includes('queries')) reloadQueries().catch(() => undefined)
+    if (topics.includes('links')) window.api.listLinks().then(setLinks).catch(() => undefined)
+    if (topics.includes('environments')) reloadEnvironments()
+  }), [reloadConnections, reloadQueries, setLinks, reloadEnvironments])
   const reorderTab = useCallback((id: string, pane: PaneId, beforeId: string | null) =>
     setLayout((s) => panes.reorderTab(s, id, pane, beforeId)), [])
 
@@ -548,6 +612,8 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     closeTab,
     closeTabs,
     pinTab,
+    openWindow,
+    moveToNewWindow,
     reorderTab,
     schemaVersions,
     schemaChanged,
@@ -555,7 +621,7 @@ export function AppStateProvider({ children, session }: { children: ReactNode; s
     rememberTab,
     initialRatio,
     rememberRatio
-  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, routines, loadRoutines, layout, setActiveTab, focusPane, moveTab, open, openTable, openQuery, environments, saveEnvironments, reloadEnvironments, deleteEnvironment, environment, safety, savedQueries, saveQuery, deleteQuery, reloadQueries, openSaved, linkQueryTab, insertIntoQuery, unsavedTabs, setTabUnsaved, openRecord, closeTab, closeTabs, pinTab, reorderTab, schemaVersions, schemaChanged, rememberTab, initialRatio, rememberRatio])
+  }), [connections, reloadConnections, links, setLinks, tables, loadTables, forgetTables, routines, loadRoutines, layout, setActiveTab, focusPane, moveTab, open, openTable, openQuery, environments, saveEnvironments, reloadEnvironments, deleteEnvironment, environment, safety, savedQueries, saveQuery, deleteQuery, reloadQueries, openSaved, linkQueryTab, insertIntoQuery, unsavedTabs, setTabUnsaved, openRecord, closeTab, closeTabs, pinTab, openWindow, moveToNewWindow, reorderTab, schemaVersions, schemaChanged, rememberTab, initialRatio, rememberRatio])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

@@ -7,7 +7,7 @@ import { MSSQL, MySQL } from '@codemirror/lang-sql'
 import { acceptCompletion, autocompletion } from '@codemirror/autocomplete'
 import type { CellValue, HistoryEntry, QueryResult, TableRef } from '@shared/types'
 import { findWriteKeyword } from '@shared/sqlGuard'
-import { useAppState, useCloseWarning, type Tab } from '../state'
+import { tabResults, useAppState, useCloseWarning, type Tab } from '../state'
 import { formatCount, formatDuration } from '../lib/format'
 import { useEditorTheme } from '../lib/editorTheme'
 import { DataGrid, LoadingBar, type Selection } from './DataGrid'
@@ -91,9 +91,15 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     if (firstText.current) firstText.current = false
     else rememberTab(tab.id, { sql: text })
   }, [tab.id, text, rememberTab])
-  const [result, setResult] = useState<QueryResult | null>(null)
+  const [result, setResult] = useState<QueryResult | null>(tab.initialResult?.result ?? null)
   /** The SELECT behind each result set, where it can be told, for finding lookups on its columns. */
-  const [resultSql, setResultSql] = useState<(string | null)[] | null>(null)
+  const [resultSql, setResultSql] = useState<(string | null)[] | null>(tab.initialResult?.sql ?? null)
+  // Kept where "Move to new window" can take them along.
+  useEffect(() => {
+    if (result) tabResults.set(tab.id, { result, sql: resultSql })
+    else tabResults.delete(tab.id)
+  }, [tab.id, result, resultSql])
+  useEffect(() => () => { tabResults.delete(tab.id) }, [tab.id])
   const [activeColumn, setActiveColumn] = useState<string | null>(null)
   /** The user closed the lookup panel, so row details show even on lookup columns. */
   const [preferRow, setPreferRow] = useState(false)

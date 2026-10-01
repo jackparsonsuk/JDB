@@ -1,4 +1,4 @@
-import { clipboard, ipcMain, nativeTheme } from 'electron'
+import { clipboard, ipcMain, nativeTheme, type IpcMainInvokeEvent } from 'electron'
 import type { LookupLink } from '@shared/lookups'
 import { nativeThemeOf } from '@shared/types'
 import type { CellValue, ColumnFilter, ConnectionConfig, DbKind, TableExportRequest, ConnectionInput, CrossLink, LinkEnd, RelatedCountRequest, RoutineRef, RowsRequest, SavedQueryInput, SavedSession, TableRef, ThemeSetting, ValueLookup } from '@shared/types'
@@ -10,15 +10,44 @@ import { signOutEntra } from './db/entra'
 import { exportRows, exportTable, showExported } from './export'
 import { exportConnections, importConnections } from './collections'
 import { checkNow, installUpdate, readyUpdate } from './updater'
+import { notifyOthers, openWindow, saveSessionFrom, sessionFor, setUnsaved, takeCarried } from './windows'
+
+/**
+ * What each saving call changes, so the other windows re-read it: a connection saved in one
+ * window shows in the others' sidebars, a theme picked in one applies to all.
+ */
+const CHANGES: Record<string, string[]> = {
+  'connections:save': ['connections'],
+  'connections:delete': ['connections'],
+  'connections:setFolder': ['connections'],
+  'connections:import': ['connections', 'queries', 'links', 'environments'],
+  'queries:save': ['queries'],
+  'queries:delete': ['queries'],
+  'links:save': ['links'],
+  'links:delete': ['links'],
+  'lookups:save': ['lookups'],
+  'lookups:delete': ['lookups'],
+  'envs:save': ['environments'],
+  'envs:delete': ['environments', 'connections'],
+  'theme:set': ['theme'],
+  'appearance:set': ['appearance']
+}
 
 /**
  * Registers a handler that returns { ok, value } or { ok: false, error } rather than throwing,
  * because Electron mangles thrown errors into "Error invoking remote method ..." strings.
  */
 function handle<A extends unknown[], R>(channel: string, fn: (...args: A) => R | Promise<R>): void {
-  ipcMain.handle(channel, async (_event, ...args) => {
+  handleFrom<A, R>(channel, (_event, ...args) => fn(...args))
+}
+
+/** Like handle, with the calling window's event first, for calls that depend on which window asked. */
+function handleFrom<A extends unknown[], R>(channel: string, fn: (event: IpcMainInvokeEvent, ...args: A) => R | Promise<R>): void {
+  ipcMain.handle(channel, async (event, ...args) => {
     try {
-      return { ok: true, value: await fn(...(args as A)) }
+      const value = await fn(event, ...(args as A))
+      if (CHANGES[channel]) notifyOthers(event.sender, CHANGES[channel])
+      return { ok: true, value }
     } catch (error) {
       // sqlLine: where in the SQL a query error happened (SQL Server), for the editor to point at.
       const sqlLine = (error as { sqlLine?: unknown })?.sqlLine
@@ -64,7 +93,7 @@ export function registerIpc(): void {
   handle('db:countForWrite', (id: string, sql: string) => db.countForWrite(id, sql))
   handle('db:snapshotRows', (id: string, sql: string, transactionId?: string) => db.snapshotRows(id, sql, transactionId))
   handle('db:applyChanges', (id: string, statements: string[]) => db.applyChanges(id, statements))
-  handle('tx:begin', (id: string) => db.beginTransaction(id))
+  handleFrom('tx:begin', (event, id: string) => db.beginTransaction(id, event.sender.id))
   handle('tx:commit', (transactionId: string) => db.commitTransaction(transactionId))
   handle('tx:rollback', (transactionId: string) => db.rollbackTransaction(transactionId))
   handle('tx:open', (transactionId: string) => db.transactionOpen(transactionId))
@@ -91,15 +120,18 @@ export function registerIpc(): void {
   handle('queries:list', () => store.listQueries())
   handle('queries:save', (input: SavedQueryInput) => store.saveQuery(input))
   handle('queries:delete', (id: string) => store.deleteQuery(id))
-  handle('session:load', () => store.loadSession())
+  // Each window loads and saves its own tabs; main keeps them together in session.json.
+  handleFrom('session:load', (event) => sessionFor(event.sender))
   // Fire-and-forget so the last save still lands while the window is closing.
-  ipcMain.on('session:save', (_event, session: SavedSession) => {
-    try {
-      store.saveSession(session)
-    } catch {
-      // Losing a session save only means the next launch opens an older layout.
-    }
+  ipcMain.on('session:save', (event, session: SavedSession) => saveSessionFrom(event.sender, session))
+  ipcMain.on('app:unsaved', (event, warnings: unknown) => {
+    setUnsaved(event.sender, Array.isArray(warnings) ? warnings.filter((w): w is string => typeof w === 'string') : [])
   })
+  /** A new window: empty, or opening with `session`'s tabs (a tab moved out of another window). */
+  handle('window:open', (session?: SavedSession, carried?: unknown) => {
+    openWindow({ session, carried })
+  })
+  handleFrom('window:carried', (event) => takeCarried(event.sender))
   handle('entra:signOut', async () => {
     await signOutEntra()
     // Open connections keep working until their token lapses; drop them so the next use signs in again.
