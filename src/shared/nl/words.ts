@@ -66,5 +66,10 @@ export const SQL_KEYWORDS = new Set([
   'as', 'at', 'by', 'do', 'go', 'if', 'in', 'is', 'no', 'of', 'on', 'or', 'to', 'add', 'all', 'and', 'any',
   'asc', 'end', 'for', 'key', 'not', 'set', 'top', 'use', 'desc', 'from', 'into', 'join', 'left', 'like',
   'null', 'open', 'over', 'plan', 'proc', 'read', 'rule', 'save', 'then', 'tran', 'user', 'view', 'when',
-  'with', 'case', 'else', 'drop', 'exec', 'file', 'full', 'goto', 'kill', 'load', 'text', 'char', 'int', 'div', 'mod'
+  'with', 'case', 'else', 'drop', 'exec', 'file', 'full', 'goto', 'kill', 'load', 'text', 'char', 'int', 'div', 'mod',
+  // Reserved words that are also plain words in table and key names ("OrderId" would alias as `order`).
+  'order', 'group', 'select', 'where', 'table', 'limit', 'values', 'union', 'having', 'index', 'check', 'column',
+  'default', 'delete', 'insert', 'update', 'create', 'alter', 'grant', 'range', 'rank', 'row', 'rows', 'lines',
+  'inner', 'outer', 'cross', 'right', 'match', 'keys', 'interval', 'option', 'current', 'leading', 'convert',
+  'function', 'procedure', 'trigger', 'database', 'schema', 'primary', 'foreign', 'references', 'condition', 'release'
 ])

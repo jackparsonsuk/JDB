@@ -140,13 +140,13 @@ export function buildFederated(q: Query, model: Model, notes: string[]): { plan:
     connectionName: local.name,
     kind: model.kind,
     role: 'main',
-    description: q.count ? `count ${q.table.info.name}` : `${q.table.info.name} rows`,
+    description: q.count ? `count ${q.table.info.name}` : q.aggregates?.length ? `${q.table.info.name} totals` : `${q.table.info.name} rows`,
     sql: main.sql,
     placeholders: main.placeholders
   })
 
   // Columns shown from linked tables are looked up for the rows the main step returns.
-  if (!q.count) {
+  if (!q.count && !q.aggregates?.length) {
     const shownByFk = new Map<ModelColumn, ModelColumn[]>()
     for (const t of q.shown.filter(isRemote)) shownByFk.set(t.via!, [...(shownByFk.get(t.via!) ?? []), t.column])
     for (const [fk, columns] of shownByFk) {
