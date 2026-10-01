@@ -198,7 +198,7 @@ export function CommandPalette({ onClose, onNewConnection, onLinks, onSettings }
       out.push({
         key: `theme:${option}`,
         label: `Theme: ${THEME_LABELS[option]}`,
-        detail: option === 'system' ? 'follow Windows' : option === 'dim' ? 'a softer dark' : option === 'midnight' ? 'near-black' : option === 'contrast' ? 'bold text and borders' : '',
+        detail: option === 'system' ? 'follow Windows' : option === 'dim' ? 'a softer dark' : option === 'midnight' ? 'near-black' : option === 'contrast' ? 'bold text and borders' : option === 'gruvbox' ? 'warm retro colours' : '',
         icon: THEME_ICONS[option],
         haystack: `theme appearance colour color ${option} mode`,
         bias: -10,

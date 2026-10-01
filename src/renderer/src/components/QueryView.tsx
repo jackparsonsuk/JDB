@@ -9,7 +9,7 @@ import type { HistoryEntry, QueryResult } from '@shared/types'
 import { findWriteKeyword } from '@shared/sqlGuard'
 import { useAppState, useCloseWarning, type Tab } from '../state'
 import { formatCount, formatDuration } from '../lib/format'
-import { useColorScheme } from '../lib/theme'
+import { useEditorTheme } from '../lib/editorTheme'
 import { DataGrid, LoadingBar, type Selection } from './DataGrid'
 import { RowInspector } from './RowInspector'
 import { AskBar } from './AskBar'
@@ -63,7 +63,7 @@ const NO_COLUMNS: string[] = []
 export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 'query' }>; active: boolean; focused: boolean }) {
   const { connection, tables, loadTables, rememberTab, savedQueries, saveQuery, linkQueryTab, setTabUnsaved, safety, environment } = useAppState()
   const conn = connection(tab.connectionId)
-  const scheme = useColorScheme()
+  const editorTheme = useEditorTheme()
   const [text, setText] = useState(tab.initialSql)
   const { wordWrap, tabSize, ctrlEnter, lowerKeywords, hideRunGutter, hideRunNotes, completeOnRequest, queryTimeout } = useAppearance()
   /** Word wrap (on unless switched off) and tab size from Settings; unset tab size keeps CodeMirror's default. */
@@ -545,7 +545,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
             <CodeMirror
               value={text}
               height="100%"
-              theme={scheme}
+              theme={editorTheme}
               extensions={[...language, ...editorPrefs, errorMarks, names, gutter, gutterConfig, runKeymap]}
               onChange={setText}
               onCreateEditor={(view) => {

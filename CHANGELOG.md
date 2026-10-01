@@ -3,6 +3,7 @@
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
 ## 1.6.0
+- **Gruvbox theme.** A warm, retro dark theme in Settings → Theme & colours (or Ctrl+K, "Theme: Gruvbox"), with Gruvbox colours in the SQL editor and routine source too.
 - **Much more in Settings.** Settings now has six sections, and these are new:
   - **Grid & values:** show dates as stored, 2026-06-15, 15/06/2026, 06/15/2026 or 15 Jun 2026, with or without fractions of a second, and optionally in your own time zone. Show NULL as NULL, blank, ∅ or (null). Turn on thousands separators (ID-like columns are left alone). Copying, exporting, filtering and editing still use the stored value.
   - **SQL editor:** choose whether Ctrl+Enter runs the statement at the cursor or everything (like SSMS), hide the ▶ run buttons or the ✓ / ✕ notes, use lower-case keywords in suggestions and formatting, and have suggestions appear only on Ctrl+Space.

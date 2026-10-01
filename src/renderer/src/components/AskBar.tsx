@@ -6,7 +6,7 @@ import type { Span, TranslateResult } from '@shared/nl/translate'
 import { linkedConnections, useNl } from '../lib/useNl'
 import { useAppState } from '../state'
 import { QueryDiagram } from './QueryDiagram'
-import { useColorScheme } from '../lib/theme'
+import { useEditorTheme } from '../lib/editorTheme'
 
 const VIEW_KEY = 'jdb.askView'
 
@@ -38,7 +38,7 @@ export function AskBar({ connection, onRun, onEdit }: Props) {
   const { links, connections, tables } = useAppState()
   const [text, setText] = useState('')
   const [view, setView] = useState<'sql' | 'diagram'>(savedView)
-  const scheme = useColorScheme()
+  const editorTheme = useEditorTheme()
   // Linked databases are only queried once connected this session, so asking never triggers a sign-in.
   const connected = useMemo(() => new Set(Object.entries(tables).filter(([, t]) => t.status === 'ready').map(([id]) => id)), [tables])
   const linked = useMemo(() => linkedConnections(connection.id, links, connections, connected), [connection.id, links, connections, connected])
@@ -111,7 +111,7 @@ export function AskBar({ connection, onRun, onEdit }: Props) {
             {generated ? (
               <CodeMirror
                 value={generated}
-                theme={scheme}
+                theme={editorTheme}
                 editable={false}
                 basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
                 extensions={[sql({ dialect: kind === 'mssql' ? MSSQL : MySQL }), EditorView.lineWrapping]}

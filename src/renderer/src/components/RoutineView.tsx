@@ -7,7 +7,7 @@ import type { ConnectionConfig, RoutineDefinition, RoutineKind, TableRef } from 
 import { callTemplate, findInSource, ROUTINE_LABELS, routineUses, type RoutineUses } from '@shared/routines'
 import { layoutSql, type OutlineItem } from '@shared/sqlLayout'
 import { useAppState, type Tab } from '../state'
-import { useColorScheme } from '../lib/theme'
+import { useEditorTheme } from '../lib/editorTheme'
 import { useAppearance } from '../lib/appearance'
 import { useOpenLink } from '../lib/openLink'
 import { formatAgo, parseStamp } from '../lib/format'
@@ -40,7 +40,7 @@ type Side = 'outline' | 'overview'
 export function RoutineView({ tab }: { tab: Extract<Tab, { kind: 'routine' }> }) {
   const { connection, tables, loadTables, routines, loadRoutines, openQuery, schemaVersions } = useAppState()
   const conn = connection(tab.connectionId)
-  const scheme = useColorScheme()
+  const editorTheme = useEditorTheme()
   const [def, setDef] = useState<RoutineDefinition | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -198,7 +198,7 @@ export function RoutineView({ tab }: { tab: Extract<Tab, { kind: 'routine' }> })
                 className="routine-editor"
                 value={shown}
                 height="100%"
-                theme={scheme}
+                theme={editorTheme}
                 editable
                 extensions={extensions}
                 onCreateEditor={(view) => {

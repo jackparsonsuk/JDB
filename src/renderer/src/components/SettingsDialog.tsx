@@ -34,7 +34,8 @@ const THEME_PREVIEW: Record<Exclude<ThemeSetting, 'system'>, [string, string, st
   dark: ['#15171c', '#1b1e24', '#d8dbe0', '#2e333c'],
   dim: ['#1f2430', '#252b38', '#cdd3de', '#3a4254'],
   midnight: ['#050608', '#0b0d11', '#d6dae1', '#20252e'],
-  contrast: ['#000000', '#0a0a0a', '#ffffff', '#8a8a8a']
+  contrast: ['#000000', '#0a0a0a', '#ffffff', '#8a8a8a'],
+  gruvbox: ['#282828', '#32302f', '#ebdbb2', '#504945']
 }
 
 const DENSITY_LABELS: Record<Density, string> = { compact: 'Compact', comfortable: 'Comfortable', spacious: 'Spacious' }
@@ -149,7 +150,7 @@ function ThemeThumb({ theme, accent }: { theme: ThemeSetting; accent?: string })
     )
   }
   const [bg, panel, text, border] = THEME_PREVIEW[theme]
-  const dot = accent ?? (theme === 'light' ? '#0969da' : theme === 'contrast' ? '#6cb6ff' : '#4c8dff')
+  const dot = accent ?? (theme === 'light' ? '#0969da' : theme === 'contrast' ? '#6cb6ff' : theme === 'gruvbox' ? '#d65d0e' : '#4c8dff')
   return (
     <span className="theme-thumb" style={{ background: bg, borderColor: border }}>
       <span className="thumb-side" style={{ background: panel, borderColor: border }}>
