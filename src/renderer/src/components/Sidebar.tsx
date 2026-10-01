@@ -6,11 +6,12 @@ import { SavedQueries } from './SavedQueries'
 import { Logo } from './Logo'
 import { confirm } from './Confirm'
 import { useAppState } from '../state'
-import { fuzzyScore } from '../lib/fuzzy'
+import { wordScore } from '@shared/fuzzy'
 import { appVersion } from '../lib/version'
 import { useUpdate } from '../lib/useUpdate'
 import { setTheme, useColorScheme } from '../lib/theme'
-import { formatCount } from '../lib/format'
+import { formatCount, selectSql } from '../lib/format'
+import { pinKey, usePinnedTables } from '../lib/pinnedTables'
 import { toast } from './Toast'
 import { APP_NAME } from '@shared/brand'
 
@@ -367,17 +368,27 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
     loadTables(connection.id, true)
   }
 
-  const list = filterTables(state?.tables ?? [], filter)
+  const { pinned, setPinned } = usePinnedTables(connection.id)
+  const [tableMenu, setTableMenu] = useState<{ x: number; y: number; table: TableInfo } | null>(null)
+  const filtered = filterTables(state?.tables ?? [], filter)
+  // Pinned tables sit at the top, in the order they were pinned, and leave the list below.
+  const pinnedList = pinned.flatMap((key) => filtered.find((t) => pinKey(t) === key) ?? [])
+  const list = pinnedList.length ? filtered.filter((t) => !pinned.includes(pinKey(t))) : filtered
   // Grouped by database (MySQL) or schema (SQL Server) once there's more than one, like DBeaver's tree.
   const showSchema = new Set((state?.tables ?? []).map((t) => t.schema)).size > 1
   const schemaLabel = connection.kind === 'mysql' ? 'database' : 'schema'
+  const queryIn = (schema: string): void => openQuery(connection.id, '', schema)
 
   const tableItem = (t: TableInfo, withSchema: boolean): ReactNode => (
     <button
       key={`${t.schema}.${t.name}`}
       className="table-item"
       onClick={() => openTable(connection.id, t)}
-      title={`${t.schema}.${t.name}${t.rowEstimate !== undefined ? ` · ~${formatCount(t.rowEstimate)} rows` : ''}`}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        setTableMenu({ x: e.clientX, y: e.clientY, table: t })
+      }}
+      title={`${t.schema}.${t.name}${t.rowEstimate !== undefined ? ` · ~${formatCount(t.rowEstimate)} rows` : ''}\nRight-click to pin it to the top`}
     >
       <span className="table-icon">{t.type === 'view' ? '◫' : '▦'}</span>
       <span className="table-name">
@@ -439,6 +450,25 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
         </ConnectionMenu>
       )}
 
+      {tableMenu && (() => {
+        const t = tableMenu.table
+        const isPinned = pinned.includes(pinKey(t))
+        return (
+          <ConnectionMenu x={tableMenu.x} y={tableMenu.y} onClose={() => setTableMenu(null)}>
+            {(act) => (
+              <>
+                <div className="menu-label">{t.schema}.{t.name}</div>
+                <button onClick={act(() => setPinned(t, !isPinned))}>{isPinned ? 'Unpin' : 'Pin to top'}</button>
+                <div className="menu-sep" />
+                <button onClick={act(() => openTable(connection.id, t))}>Open</button>
+                <button onClick={act(() => openQuery(connection.id, selectSql(connection.kind, t, [], undefined, undefined, 100)))}>New query on this {t.type === 'view' ? 'view' : 'table'}</button>
+                <button onClick={act(() => window.api.copy(t.name))}>Copy name</button>
+              </>
+            )}
+          </ConnectionMenu>
+        )
+      })()}
+
       {expanded && (
         <div className="conn-body">
           {state?.status === 'loading' && <div className="muted pad">Connecting…</div>}
@@ -488,12 +518,18 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
                   connectionId={connection.id}
                   filter={filter}
                   inSource={inSource}
-                  schemas={{ open: openSchemas, onToggle: toggleSchema, label: schemaLabel }}
+                  schemas={{ open: openSchemas, onToggle: toggleSchema, label: schemaLabel, onQuery: queryIn }}
                 />
               )}
               <div className="tables" hidden={mode !== 'tables'}>
+                {pinnedList.length > 0 && (
+                  <div className="routine-group pinned-group">
+                    <div className="group-head"><span className="pin-icon">📌</span><span className="group-name">Pinned</span></div>
+                    {pinnedList.map((t) => tableItem(t, showSchema))}
+                  </div>
+                )}
                 {showSchema ? (
-                  <SchemaGroups items={list} open={openSchemas} filtering={!!filter.trim()} onToggle={toggleSchema} label={schemaLabel}>
+                  <SchemaGroups items={list} open={openSchemas} filtering={!!filter.trim()} onToggle={toggleSchema} label={schemaLabel} onQuery={queryIn}>
                     {(group, schema) => (['table', 'view'] as const).map((type) => {
                       const items = group.filter((t) => t.type === type)
                       if (!items.length) return null
@@ -757,10 +793,12 @@ interface SchemaFolders {
   onToggle(schema: string): void
   /** "database" or "schema", for tooltips. */
   label: string
+  /** Starts a query tab for that database / schema. */
+  onQuery?(schema: string): void
 }
 
 /** Items in a collapsible folder per database / schema, alphabetically. A filter opens every folder with a match. */
-function SchemaGroups<T extends { schema: string }>({ items, open, filtering, onToggle, label, children }: SchemaFolders & {
+function SchemaGroups<T extends { schema: string }>({ items, open, filtering, onToggle, label, onQuery, children }: SchemaFolders & {
   items: T[]
   filtering: boolean
   children(group: T[], schema: string): ReactNode
@@ -784,6 +822,19 @@ function SchemaGroups<T extends { schema: string }>({ items, open, filtering, on
               <span className="schema-icon">⛁</span>
               <span className="group-name">{schema}</span>
               <span className="table-rows">{group.length.toLocaleString()}</span>
+              {onQuery && (
+                <span
+                  role="button"
+                  className="schema-query"
+                  title={`New query for ${schema}: its tables come first in suggestions, written with the ${label}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onQuery(schema)
+                  }}
+                >
+                  ⌨
+                </span>
+              )}
             </button>
             {isOpen && <div className="schema-body">{children(group, schema)}</div>}
           </div>
@@ -796,7 +847,7 @@ function SchemaGroups<T extends { schema: string }>({ items, open, filtering, on
 function filterRoutines(routines: RoutineInfo[], filter: string): RoutineInfo[] {
   if (!filter.trim()) return routines
   return routines
-    .map((r) => ({ r, score: fuzzyScore(filter, `${r.schema}.${r.name}`) }))
+    .map((r) => ({ r, score: wordScore(filter, `${r.schema}.${r.name}`) }))
     .filter((x) => x.score >= 0)
     .sort((a, b) => b.score - a.score)
     .map((x) => x.r)
@@ -805,7 +856,7 @@ function filterRoutines(routines: RoutineInfo[], filter: string): RoutineInfo[] 
 function filterTables(tables: TableInfo[], filter: string): TableInfo[] {
   if (!filter.trim()) return tables
   return tables
-    .map((t) => ({ t, score: fuzzyScore(filter, `${t.schema}.${t.name}`) }))
+    .map((t) => ({ t, score: wordScore(filter, `${t.schema}.${t.name}`) }))
     .filter((x) => x.score >= 0)
     .sort((a, b) => b.score - a.score)
     .map((x) => x.t)

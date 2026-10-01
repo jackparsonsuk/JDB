@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ColumnInfo, DbKind, SchemaTable } from './types'
 import { buildModel } from './nl/model'
-import { aliasFor, columnOptions, joinOptions, mentionedTables, resolveMentions, resultColumnSources, statementAt, statementRanges } from './sqlComplete'
+import { aliasFor, columnOptions, joinOptions, mentionedTables, resolveMentions, resultColumnSources, schemaTableOptions, statementAt, statementRanges } from './sqlComplete'
 
 function col(name: string, dataType: string, extra: Partial<ColumnInfo> = {}): ColumnInfo {
   return { name, dataType, nullable: true, isPrimaryKey: false, isIdentity: false, ...extra }
@@ -141,5 +141,14 @@ describe('resultColumnSources', () => {
   it('ignores SELECTs in subqueries and CTEs', () => {
     expect(sources('WITH x AS (SELECT Id FROM Customers) SELECT o.CustomerId FROM Orders o WHERE o.Id IN (SELECT Id FROM x)', ['CustomerId']))
       .toEqual(['Orders.CustomerId'])
+  })
+})
+
+describe('schemaTableOptions', () => {
+  it("lists a schema's tables by name, inserting them with the schema", () => {
+    expect(schemaTableOptions(model(), 'sales')).toEqual([{ label: 'Targets', apply: 'sales.Targets', detail: 'sales · table' }])
+    expect(schemaTableOptions(model(), 'SALES').map((o) => o.apply)).toEqual(['sales.Targets'])
+    expect(schemaTableOptions(model(), 'dbo').map((o) => o.apply)).toEqual(['dbo.Customers', 'dbo.Orders', 'dbo.OrderLines'])
+    expect(schemaTableOptions(model(), 'nope')).toEqual([])
   })
 })

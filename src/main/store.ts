@@ -290,7 +290,7 @@ interface Settings {
   appearance?: unknown
 }
 
-const THEMES: ReadonlySet<string> = new Set<ThemeSetting>(['system', 'light', 'dark', 'dim', 'midnight', 'contrast'])
+const THEMES: ReadonlySet<string> = new Set<ThemeSetting>(['system', 'light', 'dark', 'dim', 'midnight', 'contrast', 'gruvbox'])
 
 export function getTheme(): ThemeSetting {
   const theme = readJson<Settings>('settings.json', {}).theme

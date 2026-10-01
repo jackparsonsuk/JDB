@@ -2,6 +2,17 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 1.6.0
+- **New query for a database or schema.** Each database / schema folder in the sidebar has a ⌨ button that opens a query tab for it ("Query 3 · Support"). After FROM, JOIN, UPDATE or INTO, its tables are suggested first and written in full (`Support.TaskQueue`), so the query runs where you expect.
+- **Gruvbox theme.** A warm, retro dark theme in Settings → Theme & colours (or Ctrl+K, "Theme: Gruvbox"), with Gruvbox colours in the SQL editor and routine source too.
+- **More in Settings → Grid & values.** Show dates as stored, 2026-06-15, 15/06/2026, 06/15/2026 or 15 Jun 2026, with or without fractions of a second, and optionally in your own time zone. Show NULL as NULL, blank, ∅ or (null). Turn on thousands separators (ID-like columns are left alone). Copying, exporting, filtering and editing still use the stored value.
+- **New Settings → SQL editor section.** Choose whether Ctrl+Enter runs the statement at the cursor or everything (like SSMS), hide the ▶ run buttons or the ✓ / ✕ notes, use lower-case keywords in suggestions and formatting, and have suggestions appear only on Ctrl+Space.
+- **New Settings → Queries & startup section.** Stop queries after a time limit, keep at most a set number of rows per result, start without reopening the last session's tabs, and pick the connection Ctrl+T uses when no tab is open.
+- **Pin tables to the top.** Right-click a table or view in the sidebar and choose **Pin to top**; it moves to a **Pinned** group at the top of that connection's list. Right-click it again to unpin. The same menu can open the table, start a query on it or copy its name.
+- **A tighter sidebar filter.** Filtering tables and routines no longer picks letters out of the middle of words, so "next" stops matching `queue_invoice_export`. Any part of a name still matches ("voice"), and so do word starts: "pe" or "proem" finds ProcessedEmails, "qie" finds queue_invoice_export.
+- **Easier-to-read SQL before a write.** The SQL shown before saving grid edits or confirming a write is highlighted like the editor and wraps instead of scrolling sideways. When saving grid edits, each statement is laid out on its own lines (UPDATE, SET, WHERE) with a blank line between statements.
+- **See what a grid save changed.** After **Review & save** in a table, a panel above the grid shows each edited row's values before → after, shown straight away, then checked against the database in the background (so changes made by triggers or defaults show too), plus how many rows were deleted and added. Close it with ✕.
+
 ## 1.5.1
 - **Databases as folders.** When a connection shows more than one database (or schema), the sidebar groups them like DBeaver: a folder per database with its Tables and Views inside, and in Routines its procedures, functions and triggers. The connection's own database starts open, and filtering opens every folder with a match.
 - Fixed: in results scrolled to the right, the selected row's number could show the cells passing underneath it, so the selected cell looked like it sat over the row numbers.

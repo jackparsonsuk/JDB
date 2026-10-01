@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import type { ColumnFilter, ConnectionConfig, KeyKind, QueryResult, ResultSet, RoutineRef, RoutineSource, RowsRequest, SchemaTable, TableRef, ValueLookup, WriteCount } from '@shared/types'
 import { findImplicitCommit, findTransactionControl, findWriteKeyword } from '@shared/sqlGuard'
 import { MAX_PAGE_SIZE } from '@shared/rows'
-import { addHistory, getConnection } from '../store'
+import { addHistory, getAppearance, getConnection } from '../store'
 import { TimeoutError, type Driver, type DriverTransaction } from './driver'
 import { MssqlDriver } from './mssql'
 import { MysqlDriver } from './mysql'
@@ -178,6 +178,15 @@ export const countMatchingKeys = (id: string, table: TableRef, column: string, v
 const runs = new Map<string, AbortController>()
 
 /** Runs user SQL; with `transactionId` it runs inside that open transaction instead of committing. */
+/**
+ * Cuts each result set to Settings' row limit, saying so in `capped`. The driver has still read
+ * them all; this keeps a huge SELECT * from flooding the window.
+ */
+export function capRows(result: QueryResult, max: number | undefined): QueryResult {
+  if (!max || !result.resultSets.some((rs) => rs.rows.length > max)) return result
+  return { ...result, capped: max, resultSets: result.resultSets.map((rs) => (rs.rows.length > max ? { ...rs, rows: rs.rows.slice(0, max) } : rs)) }
+}
+
 export async function runQuery(connectionId: string, sql: string, runId?: string, transactionId?: string): Promise<QueryResult> {
   const started = Date.now()
   const controller = new AbortController()
@@ -201,7 +210,7 @@ export async function runQuery(connectionId: string, sql: string, runId?: string
     addHistory({ connectionId, sql, ranAt: new Date().toISOString(), durationMs: result.durationMs })
     const keyword = findWriteKeyword(sql)
     if (keyword && SCHEMA_CHANGE.test(keyword)) forgetSchema(connectionId)
-    return result
+    return capRows(result, getAppearance().maxRows)
   } catch (error) {
     addHistory({ connectionId, sql, ranAt: new Date().toISOString(), durationMs: Date.now() - started, error: String((error as Error).message ?? error) })
     throw error

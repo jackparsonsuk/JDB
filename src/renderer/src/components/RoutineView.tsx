@@ -7,7 +7,8 @@ import type { ConnectionConfig, RoutineDefinition, RoutineKind, TableRef } from 
 import { callTemplate, findInSource, ROUTINE_LABELS, routineUses, type RoutineUses } from '@shared/routines'
 import { layoutSql, type OutlineItem } from '@shared/sqlLayout'
 import { useAppState, type Tab } from '../state'
-import { useColorScheme } from '../lib/theme'
+import { useEditorTheme } from '../lib/editorTheme'
+import { useAppearance } from '../lib/appearance'
 import { useOpenLink } from '../lib/openLink'
 import { formatAgo, parseStamp } from '../lib/format'
 import { EFFECT_KINDS, effectMarkers } from '../lib/routineEditor'
@@ -39,7 +40,7 @@ type Side = 'outline' | 'overview'
 export function RoutineView({ tab }: { tab: Extract<Tab, { kind: 'routine' }> }) {
   const { connection, tables, loadTables, routines, loadRoutines, openQuery, schemaVersions } = useAppState()
   const conn = connection(tab.connectionId)
-  const scheme = useColorScheme()
+  const editorTheme = useEditorTheme()
   const [def, setDef] = useState<RoutineDefinition | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -87,7 +88,8 @@ export function RoutineView({ tab }: { tab: Extract<Tab, { kind: 'routine' }> })
     ? routineUses(def.definition, conn.kind, tab.routine, tableList ?? [], routineList ?? [])
     : null), [def, conn, tab.routine, tableList, routineList])
 
-  const layout = useMemo(() => (def?.definition && conn ? layoutSql(def.definition, conn.kind, formatted) : null), [def, conn, formatted])
+  const { lowerKeywords } = useAppearance()
+  const layout = useMemo(() => (def?.definition && conn ? layoutSql(def.definition, conn.kind, formatted, !!lowerKeywords) : null), [def, conn, formatted, lowerKeywords])
   // Ctrl+click a table or routine in the source to open it; unqualified names are this routine's schema's (or dbo's).
   const nameDefaults = useMemo(() => (conn?.kind === 'mssql' ? [schema, 'dbo'] : [schema]), [conn?.kind, schema])
   const names = useClickableNames(tab.connectionId, tab.pane, conn?.kind, nameDefaults)
@@ -196,7 +198,7 @@ export function RoutineView({ tab }: { tab: Extract<Tab, { kind: 'routine' }> })
                 className="routine-editor"
                 value={shown}
                 height="100%"
-                theme={scheme}
+                theme={editorTheme}
                 editable
                 extensions={extensions}
                 onCreateEditor={(view) => {

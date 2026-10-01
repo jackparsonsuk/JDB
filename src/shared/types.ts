@@ -218,6 +218,8 @@ export interface QueryResult {
   resultSets: ResultSet[]
   rowsAffected: number[]
   durationMs: number
+  /** Settings' row limit, when a result set had more rows than it and was cut to it. */
+  capped?: number
 }
 
 /** One side of a cross-database link: a column in a table on a saved connection. */
@@ -323,7 +325,8 @@ export interface TableSort {
 /** A tab as saved between runs: what it shows, not its results. */
 export type SavedTab = (
   | { kind: 'table'; pane: 0 | 1; connectionId: string; table: TableRef; filters: ColumnFilter[]; sort?: TableSort }
-  | { kind: 'query'; pane: 0 | 1; connectionId: string; title: string; sql: string; savedId?: string }
+  /** `schema`: the database (MySQL) or schema (SQL Server) the query tab was started in, from its sidebar folder. */
+  | { kind: 'query'; pane: 0 | 1; connectionId: string; title: string; sql: string; savedId?: string; schema?: string }
   | { kind: 'record'; pane: 0 | 1; connectionId: string; table: TableRef; key: ColumnFilter[] }
   | { kind: 'design'; pane: 0 | 1; connectionId: string; table: TableRef }
   | { kind: 'routine'; pane: 0 | 1; connectionId: string; routine: RoutineRef }
@@ -340,7 +343,7 @@ export interface SavedSession {
 }
 
 /** 'system' follows the Windows light/dark setting. */
-export type ThemeSetting = 'system' | 'light' | 'dark' | 'dim' | 'midnight' | 'contrast'
+export type ThemeSetting = 'system' | 'light' | 'dark' | 'dim' | 'midnight' | 'contrast' | 'gruvbox'
 
 /** What Windows is told for the title bar and prefers-color-scheme: the dark variants are all dark. */
 export const nativeThemeOf = (theme: ThemeSetting): 'system' | 'light' | 'dark' =>

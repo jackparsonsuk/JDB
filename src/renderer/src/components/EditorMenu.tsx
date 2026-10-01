@@ -13,11 +13,13 @@ export function statementUnderCursor(view: EditorView): { text: string; from: nu
 }
 
 /** The SQL editor's right-click menu. */
-export function EditorMenu({ x, y, view, running, onRun, onFormat, onSave, onClose }: {
+export function EditorMenu({ x, y, view, running, ctrlEnterRunsAll = false, onRun, onFormat, onSave, onClose }: {
   x: number
   y: number
   view: EditorView
   running: boolean
+  /** Settings swapped Ctrl+Enter back to the selection or everything, so the shortcuts shown swap too. */
+  ctrlEnterRunsAll?: boolean
   /** `from`: where the SQL starts in the editor, for pointing at errors. */
   onRun(sql: string, from: number): void
   onFormat(): void
@@ -71,9 +73,9 @@ export function EditorMenu({ x, y, view, running, onRun, onFormat, onSave, onClo
           onRun(statement.text, statement.from)
         })}
       >
-        Run statement at cursor<kbd>Ctrl+Enter</kbd>
+        Run statement at cursor<kbd>{ctrlEnterRunsAll ? 'Ctrl+Shift+Enter' : 'Ctrl+Enter'}</kbd>
       </button>
-      <button disabled={running || !all.trim()} onClick={act(() => onRun(all, 0))}>Run all<kbd>Ctrl+Shift+Enter</kbd></button>
+      <button disabled={running || !all.trim()} onClick={act(() => onRun(all, 0))}>Run all{!ctrlEnterRunsAll && <kbd>Ctrl+Shift+Enter</kbd>}</button>
       <div className="menu-sep" />
       <button disabled={!selected} onClick={act(() => { window.api.copy(selected); replaceSelection('') })}>Cut<kbd>Ctrl+X</kbd></button>
       <button disabled={!selected} onClick={act(() => window.api.copy(selected))}>Copy<kbd>Ctrl+C</kbd></button>

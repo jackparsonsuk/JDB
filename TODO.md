@@ -5,7 +5,7 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 ## From using it
 
 - [x] **Show what an update changed.** After an UPDATE (from a query or grid edits), show the rows it touched with before and after values, so it's clear it worked. It's especially hard to tell on MySQL today, which only reports "rows affected". (1.2.0)
-- [ ] **Show what grid edits changed.** The query-tab Changes view (`lib/updateChanges.ts`, `UpdateChangesView`) doesn't cover saving edits from a table grid yet; `applyChanges` already knows each row's key and old and new values.
+- [x] **Show what grid edits changed.** After a grid save, a panel above the grid shows the edited rows before → after, read back by key, with deleted and added counts. (1.6.0)
 - [x] **Query tabs open as plain SQL.** A new query tab should start with the SQL editor focused and the Ask bar closed; Ask stays one click away (✦ Ask). (1.2.0)
 - [x] **Right-click menu in the SQL editor.** Run selection, run all, run the statement under the cursor, format, copy, save as a query. (1.2.0)
 - [x] **Word wrap on by default in the SQL editor.** A long pasted WHERE clause (dozens of `AND` conditions) currently runs off to the right. Turn wrapping on unless the user switches it off in Settings → Grid & editor. (1.2.0)
@@ -32,6 +32,8 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [ ] **Azure database picker** on a connection with a blank Database (it should land in master and list ProdDB and the rest).
 - [ ] **Run gutter in use** (1.5.0): markers on the left of the line numbers, the spinner stopping a slow query, notes clearing when a statement is edited, and the ✕ note jumping to the error.
 - [ ] **Lookups in query results** (1.5.0): `SELECT *` with joins, `alias.*`, `AS` names, and a script with several SELECTs.
+- [ ] **Settings** (1.6.0): each date format on both dialects, local time across a BST change, the time limit on a slow query (the message, and the gutter note), the row cap on a big SELECT *, and Ctrl+Enter swapped back.
+- [ ] **Grid save changes** (1.6.0): edits, a delete and an add in one save, a table with a trigger, and over 200 edited rows (only the first are compared).
 - [ ] **Database folders** (1.5.1) on a MySQL connection with a blank Database, and on a SQL Server database with several schemas, including the filter and the Routines switch.
 
 ## Features
@@ -45,7 +47,8 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [ ] **Undo last change.** After an UPDATE or grid save, offer a script that puts the rows back, from the Changes view's before values.
 - [ ] **Diff between connections.** Compare a table's columns and keys between two connections, one row by key, or a query's results on both. Link discovery already does much of the sampling.
 - [ ] **Query plans.** An Explain button on query tabs (SHOWPLAN_XML on SQL Server, EXPLAIN FORMAT=JSON on MySQL) that flags table scans on big tables.
-- [ ] **Recent and pinned tables** per connection, at the top of its table list.
+- [x] **Pinned tables** per connection, at the top of its table list, from a right-click menu. (1.6.0)
+- [ ] **Recent tables** per connection, beside the pinned ones.
 - [ ] **Share a result** as a Markdown table or a Teams / Slack message, with the query and connection name.
 - [ ] **ER diagram from the Ask model.** A "tables around this one" diagram, including inferred keys and cross-database links.
 - [ ] **Pinned records.** Pin a record in the explorer and come back to it later, across databases.
@@ -53,6 +56,7 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 - [ ] **Quick charts.** A bar or line chart of a grouped query result, drawn as SVG.
 - [x] **Filter from a cell.** Right-click a cell and choose "filter to this value" or "exclude it", added as a filter chip.
 - [x] **Insert a saved query into the open tab** from the sidebar, rather than only opening it in a new tab. (1.2.1)
+- [x] **More settings**: date, NULL and number display, Ctrl+Enter, keyword case, the run gutter and notes, autocompletion, a query time limit, a row cap, starting fresh, and Ctrl+T's default connection. (1.6.0)
 - [ ] **Import and export appearance settings**, so a theme and colours can be shared.
 - [ ] **More from the run gutter**: right-click a ▶ for Count rows first, Explain, Run in a new tab and Copy; Shift+click to run from there down; one result tab per statement when running several.
 - [ ] **Database folders, the rest of DBeaver's tree**: empty databases, Indexes and Events folders, and routines under each database in one tree rather than the Tables / Routines switch.
@@ -61,7 +65,7 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 ## Smaller improvements
 
 - [ ] The table toolbar wraps to a second row when filters are applied; tighten it.
-- [ ] The sidebar's fuzzy name filter is loose ("next" matches `queue_invoice_export`); prefer word-start matches.
+- [x] The sidebar's name filter only jumps to word starts (`wordScore` in `src/shared/fuzzy.ts`), so "next" no longer matches `queue_invoice_export`. (1.6.0) The command palette, column finder and saved queries still use the looser `lib/fuzzy.ts`.
 - [ ] `DECLARE ... CURSOR FOR` then `SELECT` could indent the SELECT one level in the formatter.
 - [ ] MySQL `PREPARE` and `EXECUTE` show in the outline as a call; label them as prepared statements.
 - [ ] Deploy (`scripts/deploy-local.mjs`) force-closes the app when it's asking about unsaved work, which discards it. Ask before forcing, or stop and say so.
@@ -72,4 +76,4 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 
 - [ ] Tests only cover `src/shared`. Consider a small scripted smoke test of the installed app (the debug-port approach used during testing) for the main flows.
 - [ ] RELEASE.md: note that GitHub CLI isn't installed on this machine, and releases are checked through the public jdb-releases API instead.
-- [ ] Delete merged branches (`fixes/minor`, `feature/saved-queries`, `feature/customisation`, `feature/query-params-errors`, `feature/clickable-names`, `feature/1.5.0`, `fix/rownum-see-through`, `feature/database-tree`) once nothing else is needed from them.
+- [ ] Delete merged branches (`fixes/minor`, `feature/saved-queries`, `feature/customisation`, `feature/query-params-errors`, `feature/clickable-names`, `feature/1.5.0`, `fix/rownum-see-through`, `feature/database-tree`, `feature/grid-edit-changes`) once nothing else is needed from them.

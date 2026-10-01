@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { CellValue, ColumnInfo, CrossLink, DbKind, ReverseReference, TableRef } from '@shared/types'
 import { displayValue, formatRows, quoteIdent, sqlLiteral } from '../lib/format'
+import { useAppearance } from '../lib/appearance'
+import { formatCell, type CellFormat } from '@shared/cellFormat'
 import { useOpenLink } from '../lib/openLink'
 import { toast } from './Toast'
 
@@ -45,6 +47,9 @@ function prettyJson(value: CellValue): string | null {
 }
 
 export function RowInspector({ kind, table, columns, row, columnInfo, referencedBy, connectionId, cross, onExplore, onShowLookup, onClose }: Props) {
+  // Dates and numbers as Settings shows them in the grid; a NULL still says so here, even when the grid leaves it blank.
+  const { dateFormat, hideFractions, localTime, nullText, thousands } = useAppearance()
+  const inspectorFormat: CellFormat = { dateFormat, hideFractions, localTime, nullText: nullText === 'blank' ? undefined : nullText, thousands }
   const link = useOpenLink()
   const tableTarget = (table: TableRef, column: string, value: CellValue) =>
     link({ kind: 'table', connectionId: connectionId!, table, filters: [{ column, op: '=', value: String(value) }] })
@@ -95,7 +100,7 @@ export function RowInspector({ kind, table, columns, row, columnInfo, referenced
                 <button className="icon small" title="Copy value" onClick={() => copy(value === null ? '' : String(value), column)}>⧉</button>
               </div>
               <div className={`field-value ${value === null ? 'null' : ''}`}>
-                {json ? <pre>{json}</pre> : displayValue(value)}
+                {json ? <pre>{json}</pre> : formatCell(value, column, inspectorFormat)}
               </div>
               {info?.references && value !== null && connectionId && (
                 <button

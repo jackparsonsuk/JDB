@@ -29,6 +29,12 @@ describe('layoutSql', () => {
     }
   })
 
+  it('writes keywords in lower case when asked, leaving names and strings alone', () => {
+    const lower = layoutSql("SELECT o.Id, o.Status FROM dbo.Orders o WHERE o.Status = 'OPEN'", 'mssql', true, true)
+    expect(lower.formatted).toBe(true)
+    expect(lower.text).toBe("select o.Id, o.Status\nfrom dbo.Orders o\nwhere o.Status = 'OPEN'")
+  })
+
   it('lays out a procedure header, blocks, IF / ELSE and clauses', () => {
     const lines = layoutSql(PROC, 'mssql', true).text.split('\n')
     expect(lines.slice(0, 8)).toEqual([

@@ -10,7 +10,9 @@ import './lib/appearance'
 /** The last session, loaded before the first render so restored tabs don't flash in. */
 async function loadSession(): Promise<SavedSession | null> {
   try {
-    const [raw, connections] = await Promise.all([window.api.loadSession(), window.api.listConnections()])
+    const [raw, connections, settings] = await Promise.all([window.api.loadSession(), window.api.listConnections(), window.api.getAppearance()])
+    // Settings can start with no tabs instead.
+    if (settings.freshStart) return null
     return parseSession(raw, new Set(connections.map((c) => c.id)))
   } catch {
     return null

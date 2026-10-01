@@ -4,12 +4,12 @@ import { EditorState } from '@codemirror/state'
 import { indentUnit } from '@codemirror/language'
 import { useAppearance } from '../lib/appearance'
 import { MSSQL, MySQL } from '@codemirror/lang-sql'
-import { acceptCompletion } from '@codemirror/autocomplete'
+import { acceptCompletion, autocompletion } from '@codemirror/autocomplete'
 import type { HistoryEntry, QueryResult } from '@shared/types'
 import { findWriteKeyword } from '@shared/sqlGuard'
 import { useAppState, useCloseWarning, type Tab } from '../state'
 import { formatCount, formatDuration } from '../lib/format'
-import { useColorScheme } from '../lib/theme'
+import { useEditorTheme } from '../lib/editorTheme'
 import { DataGrid, LoadingBar, type Selection } from './DataGrid'
 import { RowInspector } from './RowInspector'
 import { AskBar } from './AskBar'
@@ -63,9 +63,9 @@ const NO_COLUMNS: string[] = []
 export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 'query' }>; active: boolean; focused: boolean }) {
   const { connection, tables, loadTables, rememberTab, savedQueries, saveQuery, linkQueryTab, setTabUnsaved, safety, environment } = useAppState()
   const conn = connection(tab.connectionId)
-  const scheme = useColorScheme()
+  const editorTheme = useEditorTheme()
   const [text, setText] = useState(tab.initialSql)
-  const { wordWrap, tabSize } = useAppearance()
+  const { wordWrap, tabSize, ctrlEnter, lowerKeywords, hideRunGutter, hideRunNotes, completeOnRequest, queryTimeout } = useAppearance()
   /** Word wrap (on unless switched off) and tab size from Settings; unset tab size keeps CodeMirror's default. */
   const editorPrefs = useMemo<Extension[]>(() => [
     ...(wordWrap !== false ? [EditorView.lineWrapping] : []),
@@ -194,11 +194,13 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   const language = useMemo(() => {
     const dialect = conn?.kind === 'mssql' ? MSSQL : MySQL
     const { schema, defaultSchema } = sqlNamespace(tableList ?? [], model)
-    const extensions: Extension[] = [sqlLanguage(dialect, schema, defaultSchema)]
-    if (model) extensions.push(dialect.language.data.of({ autocomplete: sqlAssist(model) }))
+    const extensions: Extension[] = [sqlLanguage(dialect, schema, defaultSchema, !lowerKeywords)]
+    // Settings: suggestions only on Ctrl+Space.
+    if (completeOnRequest) extensions.push(autocompletion({ activateOnTyping: false }))
+    if (model) extensions.push(dialect.language.data.of({ autocomplete: sqlAssist(model, tab.schema) }))
     if (conn) extensions.push(dialect.language.data.of({ autocomplete: notAfterDot(snippetCompletions(savedQueries, conn.id)) }))
     return extensions
-  }, [conn?.kind, conn?.id, tableList, model, savedQueries])
+  }, [conn?.kind, conn?.id, tableList, model, savedQueries, lowerKeywords, completeOnRequest, tab.schema])
 
   /** Points the editor at a failed run's error, when the editor still holds the SQL that ran. */
   const showError = useCallback((message: string, statement: string, origin: Origin | undefined, serverLine?: number): number | undefined => {
@@ -244,6 +246,9 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
       if (origin) viewRef.current?.dispatch({ effects: setRunStatus.of({ source: origin.source, from: origin.from, status }) })
     }
     note({ kind: 'running' })
+    // Settings' time limit stops the run as Cancel would, then says why.
+    let timedOut = false
+    const timer = queryTimeout ? setTimeout(() => { timedOut = true; cancel() }, queryTimeout * 1000) : undefined
     let transactionId = txn.idRef.current
     setChanges(null)
     try {
@@ -264,19 +269,22 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
         txn.record({ sql: statement, write: !!keyword, rowsAffected: r.rowsAffected.reduce((a, b) => a + b, 0), durationMs: r.durationMs })
       }
     } catch (e) {
-      let message = (e as Error).message
+      let message = timedOut
+        ? `Stopped after ${queryTimeout} s, the time limit set in Settings → Queries & startup.`
+        : (e as Error).message
       if (transactionId) {
         txn.record({ sql: statement, write: !!keyword, rowsAffected: 0, durationMs: 0, error: message })
         if (!(await txn.stillOpen())) message += '\n\nThe server rolled back the transaction, so none of its changes were kept.'
       }
       const at = showError(message, statement, origin, (e as { sqlLine?: number }).sqlLine)
-      note(signal.aborted ? { kind: 'cancelled' } : { kind: 'error', message, at })
+      note(signal.aborted && !timedOut ? { kind: 'cancelled' } : { kind: 'error', message, at })
       setResult(null)
     } finally {
+      clearTimeout(timer)
       runRef.current = null
       setRunning(false)
     }
-  }, [conn, running, tab.connectionId, txn, safety, model, showError])
+  }, [conn, running, tab.connectionId, txn, safety, model, showError, queryTimeout, cancel])
 
   /** Runs SQL from the editor, asking for its parameters' values first when it has any. */
   const runSql = useCallback((sqlText: string, from: number) => {
@@ -383,14 +391,14 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   // The gutter is built once, so it calls whichever runSql is current.
   const runSqlRef = useRef(runSql)
   runSqlRef.current = runSql
-  const gutter = useMemo(() => runGutter((sqlText, from) => runSqlRef.current(sqlText, from), cancel), [cancel])
-  const gutterConfig = useMemo(() => runGutterConfig.of({ readOnly: !!conn?.readOnly }), [conn?.readOnly])
+  const gutter = useMemo(() => runGutter((sqlText, from) => runSqlRef.current(sqlText, from), cancel, !hideRunGutter), [cancel, hideRunGutter])
+  const gutterConfig = useMemo(() => runGutterConfig.of({ readOnly: !!conn?.readOnly, notes: !hideRunNotes }), [conn?.readOnly, hideRunNotes])
 
   /** Shift+Alt+F: lays the whole editor out, as one change so Ctrl+Z puts it back. */
   const format = useCallback(() => {
     const view = viewRef.current
     if (!view || !conn) return
-    const layout = layoutSql(view.state.doc.toString(), conn.kind, true)
+    const layout = layoutSql(view.state.doc.toString(), conn.kind, true, !!lowerKeywords)
     if (layout.formatted) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: layout.text } })
     else toast(layout.problem ?? "Couldn't format this SQL")
   }, [conn])
@@ -415,15 +423,16 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
 
   const runKeymap = useMemo(
     () => Prec.highest(keymap.of([
-      { key: 'Mod-Enter', run: () => { runStatement(); return true } },
-      { key: 'Mod-Shift-Enter', run: () => { runSql(text, 0); return true } },
+      // Settings can swap these back: Ctrl+Enter for the selection or everything, Ctrl+Shift+Enter for the statement.
+      { key: 'Mod-Enter', run: () => { if (ctrlEnter === 'all') run(); else runStatement(); return true } },
+      { key: 'Mod-Shift-Enter', run: () => { if (ctrlEnter === 'all') runStatement(); else runSql(text, 0); return true } },
       { key: 'Shift-Alt-f', run: () => { format(); return true } },
       { key: 'F5', run: () => { run(); return true } },
       { key: 'Mod-s', run: () => { save(); return true } },
       // Tab accepts the highlighted completion like Enter; with no list open it indents as before.
       { key: 'Tab', run: acceptCompletion }
     ])),
-    [run, runStatement, runSql, text, format, save]
+    [run, runStatement, runSql, text, format, save, ctrlEnter]
   )
 
   const startResize = (event: React.MouseEvent): void => {
@@ -478,7 +487,9 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
             ? 'Esc cancels the running query'
             : !txn.tx && !conn.readOnly && safety(conn) === 'protected'
               ? `Ctrl+Enter runs · writes on ${environment(conn.env).name.toUpperCase()} are staged until you commit`
-              : 'Ctrl+Enter runs the selection, or the statement at the cursor · Ctrl+Shift+Enter runs everything · Ctrl+click a table to open it'}
+              : ctrlEnter === 'all'
+                ? 'Ctrl+Enter runs the selection, or everything · Ctrl+Shift+Enter the statement at the cursor · Ctrl+click a table to open it'
+                : 'Ctrl+Enter runs the selection, or the statement at the cursor · Ctrl+Shift+Enter runs everything · Ctrl+click a table to open it'}
         </span>
         <div className="toolbar-right">
           <button
@@ -534,7 +545,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
             <CodeMirror
               value={text}
               height="100%"
-              theme={scheme}
+              theme={editorTheme}
               extensions={[...language, ...editorPrefs, errorMarks, names, gutter, gutterConfig, runKeymap]}
               onChange={setText}
               onCreateEditor={(view) => {
@@ -600,6 +611,11 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
                   )}
                   {formatDuration(result.durationMs)}
                   {result.resultSets.length === 0 && ` · ${result.rowsAffected.reduce((a, b) => a + b, 0)} rows affected`}
+                  {result.capped && set && set.rows.length >= result.capped && (
+                    <span className="result-capped" title="Settings → Queries & startup limits how many rows a result keeps. Add a WHERE or TOP / LIMIT, or raise the limit.">
+                      {' '}· first {formatCount(result.capped)} rows only
+                    </span>
+                  )}
                 </span>
               </div>
               {showChanges && changes ? (
@@ -681,6 +697,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
           y={menu.y}
           view={viewRef.current}
           running={running}
+          ctrlEnterRunsAll={ctrlEnter === 'all'}
           onRun={runSql}
           onFormat={format}
           onSave={save}

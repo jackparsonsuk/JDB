@@ -23,11 +23,11 @@ window.api.getTheme().then(apply).catch(() => undefined)
 media.addEventListener('change', notify)
 
 export const THEME_LABELS: Record<ThemeSetting, string> = {
-  system: 'System', light: 'Light', dark: 'Dark', dim: 'Dim', midnight: 'Midnight', contrast: 'High contrast'
+  system: 'System', light: 'Light', dark: 'Dark', dim: 'Dim', midnight: 'Midnight', contrast: 'High contrast', gruvbox: 'Gruvbox'
 }
-export const THEME_ICONS: Record<ThemeSetting, string> = { system: '◐', light: '☀', dark: '☾', dim: '◑', midnight: '●', contrast: '◧' }
+export const THEME_ICONS: Record<ThemeSetting, string> = { system: '◐', light: '☀', dark: '☾', dim: '◑', midnight: '●', contrast: '◧', gruvbox: '◒' }
 /** The order themes are offered in. */
-export const THEMES: ThemeSetting[] = ['system', 'light', 'dark', 'dim', 'midnight', 'contrast']
+export const THEMES: ThemeSetting[] = ['system', 'light', 'dark', 'dim', 'midnight', 'gruvbox', 'contrast']
 
 export function setTheme(theme: ThemeSetting): void {
   apply(theme)

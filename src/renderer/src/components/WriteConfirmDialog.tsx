@@ -3,6 +3,7 @@ import type { ConnectionConfig, WriteCount } from '@shared/types'
 import { previewWrite } from '@shared/writePreview'
 import { formatCount } from '../lib/format'
 import { useAppState } from '../state'
+import { SqlPreview } from './SqlPreview'
 
 const VERBS = { update: 'update', delete: 'delete', insert: 'insert' } as const
 
@@ -85,11 +86,11 @@ export function WriteConfirmDialog({ connection, sql, keyword, onRun, onCancel }
         )}
         {none && <div className="status ok">Nothing matches, so running it changes no rows.</div>}
 
-        <pre className="sql-preview write-sql">{sql.trim()}</pre>
+        <SqlPreview className="write-sql" sql={sql.trim()} kind={connection.kind} />
         {known?.countSql && (
           <button className="linkish" onClick={() => setShowSql((s) => !s)}>{showSql ? 'Hide' : 'Show'} how it was counted</button>
         )}
-        {showSql && known?.countSql && <pre className="sql-preview count-sql">{known.countSql}</pre>}
+        {showSql && known?.countSql && <SqlPreview className="count-sql" sql={known.countSql} kind={connection.kind} />}
 
         <div className="dialog-actions">
           <button className={`primary ${safety(connection) === 'protected' || big || known?.noWhere ? 'prod' : ''}`} onClick={onRun}>

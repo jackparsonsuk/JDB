@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { layoutSql } from '@shared/sqlLayout'
+import { SqlPreview } from './SqlPreview'
+import { useAppearance } from '../lib/appearance'
 import type { ConnectionConfig } from '@shared/types'
 import { toast } from './Toast'
 import { useAppState } from '../state'
@@ -21,9 +24,14 @@ export function SaveChangesDialog({ connection, statements, onClose, onSaved, on
   onOpenSql(sql: string): void
 }) {
   const { environment, safety } = useAppState()
+  const { lowerKeywords } = useAppearance()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const sql = statements.join('\n')
+  // Each statement laid out like a query, with a blank line between them. What runs is the statements as given.
+  const sql = useMemo(() => statements.map((s) => {
+    const layout = layoutSql(s, connection.kind, true, !!lowerKeywords)
+    return layout.formatted ? layout.text.trim() : s
+  }).join('\n\n'), [statements, connection.kind, lowerKeywords])
   const n = statements.length
 
   const save = async (): Promise<void> => {
@@ -46,7 +54,7 @@ export function SaveChangesDialog({ connection, statements, onClose, onSaved, on
           <span className={`env-name env-${connection.env}`}>{environment(connection.env).name}</span>
         </h2>
         <p className="muted">{note}</p>
-        <pre className="sql-preview">{sql}</pre>
+        <SqlPreview sql={sql} kind={connection.kind} />
         {error && <div className="status error">{error}</div>}
         <div className="dialog-actions">
           <button className={`primary ${safety(connection) === 'protected' ? 'prod' : ''}`} disabled={saving} onClick={save} autoFocus>
