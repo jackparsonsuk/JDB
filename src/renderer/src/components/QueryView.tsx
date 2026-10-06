@@ -123,8 +123,8 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
   const [selection, setSelection] = useState<Selection>(emptySelection)
   const [editorHeight, setEditorHeight] = useState(220)
   const [showHistory, setShowHistory] = useState(false)
-  // New tabs open as plain SQL; Ask is one click away.
-  const [showAsk, setShowAsk] = useState(false)
+  // New tabs open as plain SQL, unless opened to ask (Ctrl+K "Ask…"); Ask is one click away.
+  const [showAsk, setShowAsk] = useState(!!tab.ask)
   /** What the last UPDATE changed, and whether its tab is the one showing. */
   const [changes, setChanges] = useState<UpdateChanges | null>(null)
   const [showChanges, setShowChanges] = useState(false)
@@ -357,6 +357,8 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     if (running) return
     const current = startRun()
     setStepRuns(null)
+    setChanges(null)
+    setShowChanges(false)
     try {
       const { result: merged, runs } = await runFederated(plan, (step) =>
         setStepLabel(`Step ${step.index} of ${plan.steps.length} · ${step.connectionName}: ${step.description}`), current)
@@ -410,7 +412,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
     const layout = layoutSql(view.state.doc.toString(), conn.kind, true, !!lowerKeywords)
     if (layout.formatted) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: layout.text } })
     else toast(layout.problem ?? "Couldn't format this SQL")
-  }, [conn])
+  }, [conn, lowerKeywords])
 
   /** Ctrl+S: updates the saved query this tab holds, or asks for a name for a new one. */
   const save = useCallback(async () => {
@@ -528,7 +530,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
             {savedQuery ? (unsaved ? 'Save' : 'Saved') : 'Save'}
           </button>
           <button className={`ghost ${showAsk ? 'on' : ''}`} title="Describe a query in plain English" onClick={() => setShowAsk((s) => !s)}>✦ Ask</button>
-          <button className={`ghost ${showHistory ? 'on' : ''}`} onClick={() => setShowHistory((s) => !s)}>History</button>
+          <button className={`ghost ${showHistory ? 'on' : ''}`} title="Queries run before, on this connection or all" onClick={() => setShowHistory((s) => !s)}>History</button>
         </div>
       </div>
 
@@ -590,7 +592,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
                 const view = viewRef.current
                 const mark = runError.mark
                 if (!view || !mark || view.state.doc.toString() !== runError.doc) return
-                const at = mark.from ?? view.state.doc.line(mark.line).from
+                const at = mark.from ?? view.state.doc.line(Math.min(mark.line, view.state.doc.lines)).from
                 view.dispatch({ selection: mark.from !== undefined ? { anchor: mark.from, head: mark.to } : { anchor: at }, scrollIntoView: true })
                 view.focus()
               }}
@@ -619,7 +621,7 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
                   <span className="step-runs" title={stepRuns.map((r) => `Step ${r.step.index} · ${r.step.connectionName}: ${r.step.description}`).join('\n')}>
                     {stepRuns.map((r) => (
                       <span key={r.step.index} className="step-run">
-                        {r.step.connectionName} <span className="muted">{r.rows.toLocaleString()} · {formatDuration(r.durationMs)}</span>
+                        {r.step.connectionName} <span className="muted">{formatCount(r.rows)} · {formatDuration(r.durationMs)}</span>
                       </span>
                     ))}
                   </span>
@@ -635,7 +637,10 @@ export function QueryView({ tab, active, focused }: { tab: Extract<Tab, { kind: 
                     </button>
                   )}
                   {formatDuration(result.durationMs)}
-                  {result.resultSets.length === 0 && ` · ${result.rowsAffected.reduce((a, b) => a + b, 0)} rows affected`}
+                  {result.resultSets.length === 0 && (() => {
+                    const affected = result.rowsAffected.reduce((a, b) => a + b, 0)
+                    return ` · ${formatCount(affected)} row${affected === 1 ? '' : 's'} affected`
+                  })()}
                   {result.capped && set && set.rows.length >= result.capped && (
                     <span className="result-capped" title="Settings → Queries & startup limits how many rows a result keeps. Add a WHERE or TOP / LIMIT, or raise the limit.">
                       {' '}· first {formatCount(result.capped)} rows only
@@ -847,7 +852,7 @@ function HistoryPanel({ connectionId, onPick }: { connectionId: string; onPick(s
             </span>
           </button>
         ))}
-        {!visible.length && <div className="muted pad">Nothing yet.</div>}
+        {!visible.length && <div className="muted pad">{entries.length ? 'No matches' : 'Nothing yet.'}</div>}
       </div>
     </aside>
   )

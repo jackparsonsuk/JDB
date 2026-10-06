@@ -179,3 +179,21 @@ DELETE w FROM #work w JOIN dbo.Orders o ON o.Id = w.Id`)).toEqual([
     for (const item of r.outline) expect(lines[item.line - 1]).toMatch(item.kind === 'write' ? /UPDATE t/ : /EXEC dbo\.x/)
   })
 })
+
+describe('cursors and prepared statements', () => {
+  it("indents a cursor's SELECT under its DECLARE", () => {
+    expect(layoutSql('DECLARE c CURSOR LOCAL FAST_FORWARD FOR SELECT Id FROM dbo.Orders WHERE Id > 1 OPEN c', 'mssql', true).text.split('\n')).toEqual([
+      'DECLARE c CURSOR LOCAL FAST_FORWARD FOR',
+      '    SELECT Id',
+      '    FROM dbo.Orders',
+      '    WHERE Id > 1',
+      'OPEN c'
+    ])
+  })
+
+  it('labels MySQL PREPARE and EXECUTE as prepared statements, and keeps DEALLOCATE PREPARE on one line', () => {
+    const sql = 'BEGIN\nPREPARE s FROM @sql;\nEXECUTE s USING @a;\nDEALLOCATE PREPARE s;\nEND'
+    expect(outline(sql, 'mysql')).toEqual(['  call: PREPARE statement s', '  call: EXECUTE prepared s'])
+    expect(layoutSql(sql, 'mysql', true).text).toContain('    DEALLOCATE PREPARE s;')
+  })
+})

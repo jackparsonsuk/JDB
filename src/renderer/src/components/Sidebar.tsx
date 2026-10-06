@@ -9,6 +9,7 @@ import { useAppState } from '../state'
 import { wordScore } from '@shared/fuzzy'
 import { appVersion } from '../lib/version'
 import { useUpdate } from '../lib/useUpdate'
+import { openWhatsNew } from '../lib/whatsNew'
 import { setTheme, useColorScheme } from '../lib/theme'
 import { formatCount, selectSql } from '../lib/format'
 import { pinKey, usePinnedTables } from '../lib/pinnedTables'
@@ -235,7 +236,7 @@ export function Sidebar({ onEdit, onNew, onLinks, onSettings }: { onEdit(c: Conn
             Restart to update
           </button>
         ) : (
-          <span className="version" title={`${APP_NAME} version`}>{appVersion}</span>
+          <button className="version" title="What's new: the change log" onClick={() => openWhatsNew()}>{appVersion}</button>
         )}
       </div>
     </nav>
@@ -426,7 +427,7 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
         </span>
         <button
           className="icon small conn-query"
-          title="New query (Ctrl+T)"
+          title="New query on this connection"
           onClick={(e) => {
             e.stopPropagation()
             openQuery(connection.id)
@@ -440,7 +441,7 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
         <ConnectionMenu {...menu} onClose={() => setMenu(null)}>
           {(act) => (
             <>
-              <button onClick={act(() => openQuery(connection.id))}>New query<kbd>Ctrl+T</kbd></button>
+              <button onClick={act(() => openQuery(connection.id))}>New query</button>
               <button onClick={act(() => open({ kind: 'search', connectionId: connection.id, value: '' }))}>Find a value…</button>
               <div className="menu-sep" />
               <button onClick={act(onLinks)}>Cross-database links</button>

@@ -82,9 +82,14 @@ export function RowInspector({ kind, table, columns, row, columnInfo, referenced
       </header>
 
       <div className="inspector-actions">
-        <button onClick={() => copy(formatRows('json', columns, [row]).replace(/^\[\n|\n\]$/g, ''), 'row as JSON')}>JSON</button>
-        <button onClick={() => copy(formatRows('insert', columns, [row], { kind, table }), 'INSERT')}>INSERT</button>
-        <button onClick={() => copy(`WHERE ${whereClause}`, 'WHERE clause')}>WHERE</button>
+        <button title="Copy this row as JSON" onClick={() => copy(formatRows('json', columns, [row]).replace(/^\[\n|\n\]$/g, ''), 'row as JSON')}>JSON</button>
+        <button title="Copy an INSERT for this row" onClick={() => copy(formatRows('insert', columns, [row], { kind, table }), 'INSERT')}>INSERT</button>
+        <button
+          title={`Copy a WHERE clause matching this row${keyColumns.length ? ' by its primary key' : ', using every column (no primary key)'}`}
+          onClick={() => copy(`WHERE ${whereClause}`, 'WHERE clause')}
+        >
+          WHERE
+        </button>
       </div>
 
       <div className="inspector-fields">

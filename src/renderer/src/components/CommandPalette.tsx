@@ -102,7 +102,7 @@ export function CommandPalette({ onClose, onNewConnection, onLinks, onSettings }
         icon: '✦',
         haystack: `ask english natural query ${c.name}`,
         bias: -4,
-        run: () => openQuery(c.id)
+        run: () => openQuery(c.id, '', undefined, { ask: true })
       })
       if (connections.length > 1) {
         out.push({

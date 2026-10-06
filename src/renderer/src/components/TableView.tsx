@@ -284,12 +284,13 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
   const estimate = filters.length ? undefined : tables[tab.connectionId]?.tables.find((t) => t.schema === tab.table.schema && t.name === tab.table.name)?.rowEstimate
   // The last page also gives the total away, before (or instead of) the count.
   const total = typeof count === 'number' ? count : result && !result.hasMore ? page * pageSize + result.rows.length : undefined
+  const rows = (n: number): string => `${formatCount(n)} row${n === 1 ? '' : 's'}`
   const countLabel = (): { text: string; title?: string } => {
-    if (total !== undefined) return { text: `${formatCount(total)} rows` }
+    if (total !== undefined) return { text: rows(total) }
     if (estimate !== undefined) {
       return count === undefined
-        ? { text: `~${formatCount(estimate)} rows`, title: 'Estimated; counting…' }
-        : { text: `~${formatCount(estimate)} rows`, title: 'Too many to count quickly; this is the database estimate' }
+        ? { text: `~${rows(estimate)}`, title: 'Estimated; counting…' }
+        : { text: `~${rows(estimate)}`, title: 'Too many to count quickly; this is the database estimate' }
     }
     if (count === undefined) return { text: 'counting rows…' }
     const seen = page * pageSize + (result?.rows.length ?? 0)
@@ -390,6 +391,9 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
             placeholder="Find in page…"
             value={quickFind}
             onChange={(e) => setQuickFind(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setQuickFind('')
+            }}
           />
           <button
             className="ghost"
@@ -495,6 +499,7 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
         <DataGrid
           onFindValue={(value) => open({ kind: 'search', connectionId: tab.connectionId, value })}
           loadingLabel={loading ? loadingLabel() : undefined}
+          emptyLabel={quickFind.trim() ? `No rows on this page match "${quickFind.trim()}"` : undefined}
           columns={columnNames}
           rows={edits.rows}
           scrollResetKey={visibleRows}
@@ -601,14 +606,15 @@ export function TableView({ tab, focused }: { tab: Extract<Tab, { kind: 'table' 
 
       <div className="statusbar">
         <div className="pager">
-          <button className="ghost" disabled={page === 0} onClick={() => setPage(0)}>«</button>
-          <button className="ghost" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>‹</button>
+          <button className="ghost" title="First page" aria-label="First page" disabled={page === 0} onClick={() => setPage(0)}>«</button>
+          <button className="ghost" title="Previous page" aria-label="Previous page" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>‹</button>
           <span>Page {page + 1}{pageCount !== undefined ? ` of ${formatCount(pageCount)}` : ''}</span>
-          <button className="ghost" disabled={!result?.hasMore} onClick={() => setPage((p) => p + 1)}>›</button>
+          <button className="ghost" title="Next page" aria-label="Next page" disabled={!result?.hasMore} onClick={() => setPage((p) => p + 1)}>›</button>
           <button
             className="ghost"
             disabled={pageCount === undefined || page + 1 >= pageCount}
-            title={pageCount === undefined ? 'Waiting for the row count' : undefined}
+            title={pageCount === undefined ? 'Waiting for the row count' : 'Last page'}
+            aria-label="Last page"
             onClick={() => pageCount !== undefined && setPage(pageCount - 1)}
           >»</button>
           {customSize !== null ? (

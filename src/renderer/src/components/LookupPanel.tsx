@@ -108,7 +108,7 @@ export function LookupPanel({ conn, column, lookup, targetRows, value, setBlocke
             <code className="lookup-key">{displayValue(item.key)}</code>
           </button>
         ))}
-        {list.status === 'ready' && !items.length && <div className="muted pad">No matches</div>}
+        {list.status === 'ready' && !items.length && <div className="muted pad">{search.trim() ? 'No matches' : 'No values'}</div>}
       </div>
 
       {list.status === 'ready' && (

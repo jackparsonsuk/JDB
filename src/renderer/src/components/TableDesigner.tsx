@@ -97,7 +97,7 @@ export function TableDesigner({ tab }: { tab: Extract<Tab, { kind: 'design' }> }
         <div className="toolbar-title">
           <span className="muted">{tab.table.schema}.</span>
           <strong>{tab.table.name}</strong>
-          <span className="count">{design ? `${design.columns.length} columns · ${design.indexes.length} indexes` : ''}</span>
+          <span className="count">{design ? `${design.columns.length} column${design.columns.length === 1 ? '' : 's'} · ${design.indexes.length} ${design.indexes.length === 1 ? 'index' : 'indexes'}` : ''}</span>
         </div>
         {!editable && <span className="muted hint">Read-only connection: structure only</span>}
         <div className="toolbar-right">
@@ -126,7 +126,21 @@ export function TableDesigner({ tab }: { tab: Extract<Tab, { kind: 'design' }> }
             {problems.length ? `${problems[0]}${problems.length > 1 ? ` (+${problems.length - 1} more)` : ''}` : 'Nothing changes until you review and apply'}
           </span>
           <div className="toolbar-right">
-            <button onClick={() => design && setDrafts(draftsFrom(design))}>Discard</button>
+            <button
+              onClick={async () => {
+                if (!design) return
+                const ok = await confirm({
+                  title: `Discard ${changes} column change${changes === 1 ? '' : 's'}?`,
+                  message: `The columns you changed in ${tab.table.name} go back to how they are in the database. Nothing has been applied yet.`,
+                  confirmLabel: 'Discard changes',
+                  cancelLabel: 'Keep editing',
+                  tone: 'danger'
+                })
+                if (ok) setDrafts(draftsFrom(design))
+              }}
+            >
+              Discard
+            </button>
             <button className="primary" disabled={problems.length > 0} onClick={review}>Review &amp; apply…</button>
           </div>
         </div>

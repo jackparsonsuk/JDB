@@ -211,7 +211,8 @@ kbd {
 .brand .logo-name { font-size: 14px; }
 .sidebar-list { flex: 1; overflow-y: auto; }
 .sidebar-foot { padding: 8px 12px; font-size: 11px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 8px; }
-.sidebar-foot .version { white-space: nowrap; }
+.sidebar-foot .version { white-space: nowrap; padding: 0; border: none; background: none; font: inherit; color: inherit; cursor: pointer; }
+.sidebar-foot .version:hover { color: var(--accent); text-decoration: underline; }
 .sidebar-foot .update { padding: 1px 8px; font-size: 11px; white-space: nowrap; color: var(--accent); border-color: var(--accent); }
 .welcome-version { font-size: 13px; font-weight: normal; }
 
@@ -355,7 +356,8 @@ body.resizing-cols { cursor: col-resize; user-select: none; }
 .toolbar-right .search { width: 180px; }
 .hint { font-size: 12px; }
 
-.filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* Takes the toolbar's spare width and wraps its chips there, rather than pushing the right-hand tools onto a second row. */
+.filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1 1 0; min-width: 140px; }
 .chip { display: inline-flex; align-items: center; gap: 5px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 12px; padding: 1px 4px 1px 10px; font-size: 12px; }
 /* Filter chips: click the body to change a filter, ✕ to remove it */
 .filter-chip { padding: 0 2px 0 0; gap: 0; overflow: hidden; }
@@ -597,7 +599,7 @@ tr:hover .fk-jump { opacity: 1; }
 .shortcuts kbd { min-width: 90px; text-align: center; }
 
 .toasts { position: fixed; bottom: 40px; right: 16px; display: flex; flex-direction: column; gap: 6px; z-index: 60; }
-.toast { background: var(--bg-3); border: 1px solid var(--border); padding: 8px 14px; border-radius: 7px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); font-size: 12px; max-width: 420px; }
+.toast { background: var(--bg-3); border: 1px solid var(--border); padding: 8px 14px; border-radius: 7px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); font-size: 12px; max-width: 420px; cursor: pointer; }
 .toast.error { border-color: var(--danger); color: var(--danger); }
 .toast-action { margin-left: 10px; padding: 2px 8px; font-size: 12px; }
 

@@ -3,6 +3,7 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { closeSync, existsSync, openSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { createInterface } from 'node:readline'
 
 const source = join(process.cwd(), 'dist', 'win-unpacked')
 const exe = 'JDB.exe'
@@ -41,6 +42,17 @@ function writable(path) {
   }
 }
 
+/** A yes / no question on the terminal; no without one (as when run by a script), so nothing is lost unasked. */
+async function ask(question) {
+  if (!process.stdin.isTTY) return false
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  const answer = await new Promise((resolve) => rl.question(question, resolve))
+  rl.close()
+  return /^y(es)?$/i.test(answer.trim())
+}
+
+/** `--force` closes JDB even when it's asking about unsaved work. */
+const force = process.argv.includes('--force')
 const target = installDir()
 if (!existsSync(join(source, exe))) throw new Error(`No build at ${source}; run electron-builder --dir first.`)
 if (!existsSync(join(target, exe))) throw new Error(`JDB isn't installed at ${target}; run the installer once first.`)
@@ -51,8 +63,12 @@ if (isRunning()) {
   spawnSync('taskkill', ['/IM', exe], { stdio: 'ignore' })
   for (let i = 0; i < 20 && isRunning(); i++) await sleep(250)
   if (isRunning()) {
-    // Usually it's asking about unsaved work (an open transaction or edits), which this discards.
-    console.log('JDB did not close by itself (probably asking about unsaved work); forcing it closed.')
+    // Usually it's asking about unsaved work (an open transaction or edits), which forcing it closed discards.
+    console.log('JDB did not close by itself; it is probably asking about unsaved work.')
+    if (!force && !(await ask('Force it closed and lose that work? [y/N] '))) {
+      console.log('Not deployed. Deal with the open work in JDB and run the deploy again, or use `npm run deploy -- --force`.')
+      process.exit(1)
+    }
     spawnSync('taskkill', ['/IM', exe, '/T', '/F'], { stdio: 'ignore' })
   }
   for (let i = 0; i < 20 && isRunning(); i++) await sleep(250)

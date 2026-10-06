@@ -73,11 +73,11 @@ What could come next for OverlookDB, roughly in the order worth doing. Tick thin
 
 ## Smaller improvements
 
-- [ ] The table toolbar wraps to a second row when filters are applied; tighten it.
+- [x] The table toolbar wraps to a second row when filters are applied; tighten it.
 - [x] The sidebar's name filter only jumps to word starts (`wordScore` in `src/shared/fuzzy.ts`), so "next" no longer matches `queue_invoice_export`. (1.6.0) The command palette, column finder and saved queries still use the looser `lib/fuzzy.ts`.
-- [ ] `DECLARE ... CURSOR FOR` then `SELECT` could indent the SELECT one level in the formatter.
-- [ ] MySQL `PREPARE` and `EXECUTE` show in the outline as a call; label them as prepared statements.
-- [ ] Deploy (`scripts/deploy-local.mjs`) force-closes the app when it's asking about unsaved work, which discards it. Ask before forcing, or stop and say so.
+- [x] `DECLARE ... CURSOR FOR` then `SELECT` could indent the SELECT one level in the formatter.
+- [x] MySQL `PREPARE` and `EXECUTE` show in the outline as a call; label them as prepared statements.
+- [x] Deploy (`scripts/deploy-local.mjs`) force-closes the app when it's asking about unsaved work, which discards it. Ask before forcing, or stop and say so.
 - [ ] Read-only connections block `SELECT ... INTO @var` (MySQL) and `EXEC sp_helptext`. That's deliberate over-blocking; revisit only with a safe allow-list.
 - [ ] The Changes view skips joined UPDATEs and SQL Server's `UPDATE ... FROM`; they could be read back through the target's key when the join is on it.
 

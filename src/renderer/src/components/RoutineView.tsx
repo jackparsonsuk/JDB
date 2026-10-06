@@ -177,7 +177,7 @@ export function RoutineView({ tab }: { tab: Extract<Tab, { kind: 'routine' }> })
           <button disabled={!shown} onClick={() => shown && openQuery(conn.id, shown)} title="Open the source as shown in a new query tab">
             Open as query
           </button>
-          <button className="icon" title="Reload" onClick={() => setReloadKey((k) => k + 1)}>⟳</button>
+          <button className="icon" disabled={loading} title={loading ? 'Reading…' : 'Read the source again from the server'} onClick={() => setReloadKey((k) => k + 1)}>⟳</button>
         </div>
       </div>
 
@@ -367,7 +367,7 @@ function Overview({ def, conn, uses }: { def: RoutineDefinition; conn: Connectio
       {uses && uses.calls.length > 0 && (
         <Section title="Calls" count={uses.calls.length}>
           {uses.calls.map((r) => (
-            <button key={`${r.schema}.${r.name}`} className="use-row" {...link({ kind: 'routine', connectionId: conn.id, routine: r })}>
+            <button key={`${r.schema}.${r.name}`} className="use-row" {...link({ kind: 'routine', connectionId: conn.id, routine: r })} title={`Open ${r.schema}.${r.name} · Shift+click opens beside · drag to a pane`}>
               <span className={`kind-dot kind-${r.kind}`} />
               <span className="use-name"><span className="muted">{r.schema}.</span>{r.name}</span>
             </button>

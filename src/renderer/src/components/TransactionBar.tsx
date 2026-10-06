@@ -65,7 +65,7 @@ export function TransactionBar({ tx, env, busy, onCommit, onRollback, onPick }: 
                 <code>{run.sql.length > 400 ? `${run.sql.slice(0, 400)}…` : run.sql}</code>
               </button>
               <span className="muted">
-                {run.error ? 'failed' : run.write ? `${formatCount(run.rowsAffected)} rows` : 'read'} · {formatDuration(run.durationMs)}
+                {run.error ? 'failed' : run.write ? `${formatCount(run.rowsAffected)} row${run.rowsAffected === 1 ? '' : 's'}` : 'read'} · {formatDuration(run.durationMs)}
               </span>
             </li>
           ))}

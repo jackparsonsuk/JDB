@@ -88,6 +88,8 @@ interface Props {
   summarizeAll?(column: string): Promise<ColumnSummary | null>
   /** While set, shows a progress bar and this message instead of "No rows". */
   loadingLabel?: string
+  /** Shown when there are no rows; defaults to "No rows". */
+  emptyLabel?: string
   /** Told the column of the clicked cell (null when none), e.g. to show its lookup values. */
   onActiveColumnChange?(column: string | null): void
   /** Extra items for a column header's right-click menu, such as setting up a lookup. */
@@ -224,22 +226,37 @@ function Grid(props: Props) {
   useEffect(() => {
     if (!headerMenu) return
     const close = (): void => setHeaderMenu(null)
+    // Captured first, so Escape only closes the menu rather than also clearing the selection.
+    const onKey = (e: globalThis.KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      close()
+    }
     window.addEventListener('mousedown', close)
     window.addEventListener('blur', close)
+    window.addEventListener('keydown', onKey, true)
     return () => {
       window.removeEventListener('mousedown', close)
       window.removeEventListener('blur', close)
+      window.removeEventListener('keydown', onKey, true)
     }
   }, [headerMenu])
 
   useEffect(() => {
     if (!menu) return
     const close = (): void => setMenu(null)
+    const onKey = (e: globalThis.KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      close()
+    }
     window.addEventListener('mousedown', close)
     window.addEventListener('blur', close)
+    window.addEventListener('keydown', onKey, true)
     return () => {
       window.removeEventListener('mousedown', close)
       window.removeEventListener('blur', close)
+      window.removeEventListener('keydown', onKey, true)
     }
   }, [menu])
 
@@ -609,7 +626,7 @@ function Grid(props: Props) {
             {last < rows.length && <tr style={{ height: (rows.length - last) * ROW_HEIGHT }} />}
           </tbody>
         </table>
-        {!rows.length && !props.loadingLabel && <div className="grid-empty">No rows</div>}
+        {!rows.length && !props.loadingLabel && <div className="grid-empty">{props.emptyLabel ?? 'No rows'}</div>}
       </div>
 
       {stats && activeColumn !== null && (() => {
