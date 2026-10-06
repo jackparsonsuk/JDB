@@ -2,6 +2,11 @@
 
 What changed in each JDB release, newest first. JDB shows these notes after it updates, so write them for the people using it. `npm run release` refuses to release a version without a section here.
 
+## 1.8.2
+- **Click the version number** at the bottom of the sidebar to see what's changed.
+- Table filters no longer push the toolbar onto a second row.
+- Stored procedure source: a cursor's SELECT is indented under its DECLARE, and MySQL's PREPARE and EXECUTE show in the outline as prepared statements.
+
 ## 1.8.1
 - **Duplicate a tab.** Right-click a tab and choose **Duplicate** for a copy next to it, or **Duplicate in new window**: the same SQL (and results), filters, sort or record, as it is now. A copied query gets its own name and isn't tied to the saved query, so saving it can't overwrite the original.
 - **Window titles say what's in them**, such as "Query 3 · Sales — OverlookDB", so windows can be told apart on the taskbar and in Alt+Tab.
