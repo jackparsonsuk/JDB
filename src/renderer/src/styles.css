@@ -356,7 +356,8 @@ body.resizing-cols { cursor: col-resize; user-select: none; }
 .toolbar-right .search { width: 180px; }
 .hint { font-size: 12px; }
 
-.filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* Takes the toolbar's spare width and wraps its chips there, rather than pushing the right-hand tools onto a second row. */
+.filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1 1 0; min-width: 140px; }
 .chip { display: inline-flex; align-items: center; gap: 5px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 12px; padding: 1px 4px 1px 10px; font-size: 12px; }
 /* Filter chips: click the body to change a filter, ✕ to remove it */
 .filter-chip { padding: 0 2px 0 0; gap: 0; overflow: hidden; }

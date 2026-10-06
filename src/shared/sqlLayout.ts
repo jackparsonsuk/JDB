@@ -596,6 +596,7 @@ class Walker {
     if (u === 'SET' && prev === 'CHARACTER') return false
     if (u === 'FETCH' && prev && ['ROWS', 'ROW'].includes(prev)) return false
     if ((u === 'CONTINUE' || u === 'EXIT') && prev === 'DECLARE') return false
+    if (u === 'PREPARE' && (prev === 'DEALLOCATE' || prev === 'DROP')) return false
     if (u === 'SAVE' && !['TRAN', 'TRANSACTION'].includes(this.wordAt(this.nextIndex(i)) ?? '')) return false
     if (u === 'START' && this.wordAt(this.nextIndex(i)) !== 'TRANSACTION') return false
     if (u === 'WITH') return this.isCte(i)
@@ -999,7 +1000,7 @@ class Walker {
       if (u === 'WHEN') s.action = false
       else if (['UPDATE', 'INSERT', 'DELETE'].includes(u)) s.action = true
     }
-    const indent = s.indent + (s.verb === 'MERGE' && s.action ? 1 : 0)
+    let indent = s.indent + (s.verb === 'MERGE' && s.action ? 1 : 0)
     if ((u === 'UPDATE' && this.prevWord(i) === 'KEY') || (u === 'SET' && s.verb === 'MERGE' && this.prevWord(i) === 'UPDATE')) {
       this.put(i)
       this.startClause(i, 'SET', indent)
@@ -1013,6 +1014,8 @@ class Walker {
         s.hasSelect = true
         if (u === 'SELECT') s.verb = 'SELECT'
       } else if (s.verb === 'DECLARE' || s.verb === 'CREATE') {
+        // A cursor's SELECT sits one level in, under its DECLARE ... CURSOR FOR.
+        if (s.verb === 'DECLARE') indent = ++s.indent
         s.verb = 'SELECT'
       }
     }
@@ -1269,9 +1272,17 @@ class Walker {
         this.item(target?.startsWith('#') || target?.startsWith('@') ? 'temp' : 'write', `${u}${target ? ` ${target}` : ''}`, i)
         return
       }
+      case 'PREPARE':
+        this.item('call', `PREPARE statement ${this.t[next] ? unquote(this.t[next]) : ''}`.trim(), i)
+        return
       case 'EXEC':
       case 'EXECUTE':
       case 'CALL': {
+        // MySQL's EXECUTE runs a statement made by PREPARE, not a procedure.
+        if (u === 'EXECUTE' && this.kind === 'mysql') {
+          this.item('call', `EXECUTE prepared ${this.t[next] ? unquote(this.t[next]) : ''}`.trim(), i)
+          return
+        }
         if (nextWord === 'AS') {
           this.item('call', `${u} AS ${this.flatText(this.nextIndex(next), this.clauseEnd(next, false), 30)}`, i)
           return
