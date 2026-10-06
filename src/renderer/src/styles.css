@@ -599,7 +599,7 @@ tr:hover .fk-jump { opacity: 1; }
 .shortcuts kbd { min-width: 90px; text-align: center; }
 
 .toasts { position: fixed; bottom: 40px; right: 16px; display: flex; flex-direction: column; gap: 6px; z-index: 60; }
-.toast { background: var(--bg-3); border: 1px solid var(--border); padding: 8px 14px; border-radius: 7px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); font-size: 12px; max-width: 420px; }
+.toast { background: var(--bg-3); border: 1px solid var(--border); padding: 8px 14px; border-radius: 7px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); font-size: 12px; max-width: 420px; cursor: pointer; }
 .toast.error { border-color: var(--danger); color: var(--danger); }
 .toast-action { margin-left: 10px; padding: 2px 8px; font-size: 12px; }
 

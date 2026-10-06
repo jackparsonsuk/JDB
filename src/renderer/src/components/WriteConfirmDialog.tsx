@@ -39,12 +39,18 @@ export function WriteConfirmDialog({ connection, sql, keyword, onRun, onCancel }
 
   useEffect(() => {
     cancelRef.current?.focus()
+  }, [])
+
+  // The caller passes a new onCancel each render; a ref keeps the listener from being rebound.
+  const cancel = useRef(onCancel)
+  cancel.current = onCancel
+  useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onCancel()
+      if (e.key === 'Escape') cancel.current()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  }, [])
 
   const known = 'unsupported' in preview ? null : preview
   const rows = known?.rows ?? (count?.status === 'counted' ? count.rows : null)

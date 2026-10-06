@@ -138,7 +138,7 @@ class StatusWidget extends WidgetType {
     const s = this.status
     if (s.kind === 'done') {
       el.className = 'cm-run-status ok'
-      const what = s.rows !== undefined ? `${formatCount(s.rows)} row${s.rows === 1 ? '' : 's'}` : `${formatCount(s.affected)} affected`
+      const what = s.rows !== undefined ? `${formatCount(s.rows)} row${s.rows === 1 ? '' : 's'}` : `${formatCount(s.affected)} row${s.affected === 1 ? '' : 's'} affected`
       el.textContent = `✓ ${what} · ${formatDuration(s.durationMs)}`
     } else if (s.kind === 'error') {
       el.className = 'cm-run-status err'

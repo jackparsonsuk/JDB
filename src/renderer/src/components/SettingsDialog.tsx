@@ -11,6 +11,7 @@ import { resetAppearance, updateAppearance, useAppearance } from '../lib/appeara
 import { setTheme, THEME_LABELS, THEMES, useTheme } from '../lib/theme'
 import { CODE_FONTS, isInstalled, UI_FONTS } from '../lib/fonts'
 import { EnvironmentSettings } from './EnvironmentSettings'
+import { confirm } from './Confirm'
 
 type Section = 'theme' | 'env' | 'fonts' | 'grid' | 'editor' | 'queries' | 'about'
 
@@ -53,11 +54,24 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      // A question on top (Reset everything's) answers its own Escape.
+      if (e.key === 'Escape' && !document.querySelector('.confirm-overlay')) onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  const resetEverything = async (): Promise<void> => {
+    const ok = await confirm({
+      title: 'Reset everything?',
+      message: 'The theme, colours, fonts, grid, editor and query settings all go back to their defaults.',
+      confirmLabel: 'Reset everything',
+      tone: 'warning'
+    })
+    if (!ok) return
+    setTheme('system')
+    resetAppearance(ALL_KEYS)
+  }
 
   return (
     <div className="overlay" onMouseDown={onClose}>
@@ -80,7 +94,7 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
           {section === 'queries' && <QueriesSection a={a} />}
           {section === 'about' && <AboutSection />}
           <div className="settings-actions">
-            <button className="ghost" onClick={() => { setTheme('system'); resetAppearance(ALL_KEYS) }}>
+            <button className="ghost" onClick={resetEverything}>
               Reset everything
             </button>
             <button className="primary" onClick={onClose}>Done</button>

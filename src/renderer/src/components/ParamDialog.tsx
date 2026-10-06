@@ -66,7 +66,7 @@ export function ParamDialog({ sql, kind, params, onRun, onCancel }: {
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === 'Escape') onCancel()
-          if (e.key === 'Enter' && !(e.target instanceof HTMLSelectElement)) {
+          if (e.key === 'Enter' && !(e.target instanceof HTMLSelectElement) && !(e.target instanceof HTMLButtonElement)) {
             e.preventDefault()
             run()
           }

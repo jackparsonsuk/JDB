@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { AuthType, ConnectionConfig, ConnectionInput, DbKind, EnvTag } from '@shared/types'
 import { useAppState } from '../state'
 import { toast } from './Toast'
@@ -35,6 +35,7 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConf
   const [form, setForm] = useState<ConnectionConfig>(initial ?? blank())
   const [password, setPassword] = useState<string | undefined>(undefined)
   const [status, setStatus] = useState<{ kind: 'ok' | 'error' | 'busy'; message: string } | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const set = <K extends keyof ConnectionConfig>(key: K, value: ConnectionConfig[K]): void =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -58,17 +59,25 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConf
   }
 
   const save = async (): Promise<void> => {
+    // Saving twice (a double click, or Enter held down) would add the connection twice.
+    if (saving || status?.kind === 'busy') return
     if (!form.name.trim() || !form.host.trim()) {
       setStatus({ kind: 'error', message: 'Name and host are required' })
       return
     }
     const folder = form.folder?.trim()
     const input: ConnectionInput = { ...form, folder: folder || undefined, password }
-    const saved = await window.api.saveConnection(input)
-    forgetTables(saved.id)
-    await reloadConnections()
-    toast(`Saved ${saved.name}`)
-    onClose()
+    setSaving(true)
+    try {
+      const saved = await window.api.saveConnection(input)
+      forgetTables(saved.id)
+      await reloadConnections()
+      toast(`Saved ${saved.name}`)
+      onClose()
+    } catch (e) {
+      setStatus({ kind: 'error', message: (e as Error).message })
+      setSaving(false)
+    }
   }
 
   const remove = async (): Promise<void> => {
@@ -79,17 +88,35 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConf
       tone: 'danger'
     })
     if (!ok) return
-    await window.api.deleteConnection(form.id)
-    forgetTables(form.id)
-    await reloadConnections()
-    onClose()
+    try {
+      await window.api.deleteConnection(form.id)
+      forgetTables(form.id)
+      await reloadConnections()
+      onClose()
+    } catch (e) {
+      setStatus({ kind: 'error', message: (e as Error).message })
+    }
   }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      // A question on top (e.g. Delete's) answers its own keys.
+      if (document.querySelector('.confirm-overlay')) return
+      if (e.key === 'Escape') onClose()
+      else if (e.key === 'Enter' && !e.isComposing && e.target instanceof HTMLInputElement && e.target.closest('.connection-dialog') && !['checkbox', 'radio'].includes(e.target.type)) {
+        e.preventDefault()
+        void save()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
   const needsCredentials = form.authType === 'sql'
 
   return (
     <div className="overlay" onMouseDown={onClose}>
-      <div className="dialog" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div className="dialog connection-dialog" onMouseDown={(e) => e.stopPropagation()}>
         <h2>{initial ? 'Edit connection' : 'New connection'}</h2>
 
         <div className="form">
@@ -184,7 +211,7 @@ export function ConnectionDialog({ initial, onClose }: { initial: ConnectionConf
           <span className="grow" />
           <button onClick={test} disabled={status?.kind === 'busy'}>Test</button>
           <button onClick={onClose}>Cancel</button>
-          <button className="primary" onClick={save}>Save</button>
+          <button className="primary" onClick={save} disabled={saving || status?.kind === 'busy'}>{saving ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
     </div>

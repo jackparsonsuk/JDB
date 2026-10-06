@@ -427,7 +427,7 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
         </span>
         <button
           className="icon small conn-query"
-          title="New query (Ctrl+T)"
+          title="New query on this connection"
           onClick={(e) => {
             e.stopPropagation()
             openQuery(connection.id)
@@ -441,7 +441,7 @@ function ConnectionNode({ connection, onEdit, onLinks }: { connection: Connectio
         <ConnectionMenu {...menu} onClose={() => setMenu(null)}>
           {(act) => (
             <>
-              <button onClick={act(() => openQuery(connection.id))}>New query<kbd>Ctrl+T</kbd></button>
+              <button onClick={act(() => openQuery(connection.id))}>New query</button>
               <button onClick={act(() => open({ kind: 'search', connectionId: connection.id, value: '' }))}>Find a value…</button>
               <div className="menu-sep" />
               <button onClick={act(onLinks)}>Cross-database links</button>

@@ -127,7 +127,7 @@ export function App() {
       } else if (mod && key === 'w' && activeTabId) {
         e.preventDefault()
         // Pinned tabs close only from their menu, so a stray Ctrl+W can't lose them.
-        if (activeTab?.pinned) toast('Pinned tab: unpin it, or use Close from its right-click menu')
+        if (activeTab?.pinned) toast(PINNED_CLOSE)
         else closeTab(activeTabId)
       } else if (mod && e.key === ',') {
         e.preventDefault()
@@ -328,7 +328,10 @@ function PaneHead({ pane, split }: { pane: PaneId; split: boolean }) {
               onDrop={dropTab}
               onMouseDown={(e) => {
                 if (e.button === 1) {
-                  if (!tab.pinned) closeTab(tab.id)
+                  // Stops the middle-button autoscroll; pinned tabs don't close this way, as with Ctrl+W.
+                  e.preventDefault()
+                  if (tab.pinned) toast(PINNED_CLOSE)
+                  else closeTab(tab.id)
                 } else if (e.button === 0) {
                   setActiveTab(tab.id)
                 }
@@ -347,7 +350,7 @@ function PaneHead({ pane, split }: { pane: PaneId; split: boolean }) {
               {tab.pinned ? (
                 <button className="icon small tab-pin" title="Unpin" onMouseDown={(e) => e.stopPropagation()} onClick={() => pinTab(tab.id, false)}>📌</button>
               ) : (
-                <button className="icon small" onMouseDown={(e) => e.stopPropagation()} onClick={() => closeTab(tab.id)}>✕</button>
+                <button className="icon small" title="Close (Ctrl+W or middle-click)" aria-label="Close tab" onMouseDown={(e) => e.stopPropagation()} onClick={() => closeTab(tab.id)}>✕</button>
               )}
             </div>
           )
@@ -483,6 +486,9 @@ function DropZones({ split, ratio }: { split: boolean; ratio: number }) {
   )
 }
 
+/** What Ctrl+W and middle-click say instead of closing a pinned tab. */
+const PINNED_CLOSE = 'Pinned tab: unpin it, or use Close from its right-click menu'
+
 function tabTitle(tab: Tab): string {
   if (tab.kind === 'query') return tab.title
   if (tab.kind === 'record') return `${tab.table.name} ${tab.key.map((k) => k.value).join('·')}`
@@ -502,8 +508,10 @@ function Welcome({ onPalette }: { onPalette(): void }) {
         <li><kbd>Ctrl K</kbd> Jump to table / command</li>
         <li><kbd>Ctrl ,</kbd> Settings: theme, colours, fonts</li>
         <li><kbd>Ctrl T</kbd> New query tab</li>
-        <li><kbd>Ctrl Enter</kbd> Run query (or selection)</li>
+        <li><kbd>Ctrl Enter</kbd> Run the statement at the cursor (or selection)</li>
         <li><kbd>Ctrl W</kbd> Close tab</li>
+        <li><kbd>Ctrl Tab</kbd> Next tab</li>
+        <li><kbd>Ctrl B</kbd> Hide / show sidebar</li>
         <li><kbd>Ctrl \</kbd> Move tab to the other side</li>
         <li><kbd>Ctrl Shift N</kbd> New window</li>
         <li><kbd>Shift</kbd> click a reference to open it beside</li>

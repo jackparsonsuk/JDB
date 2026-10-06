@@ -28,17 +28,21 @@ export function ToastHost() {
     }
   }, [])
 
+  const dismiss = (id: number): void => setItems((prev) => prev.filter((i) => i.id !== id))
+
   return (
-    <div className="toasts">
+    <div className="toasts" role="status" aria-live="polite">
       {items.map((item) => (
-        <div key={item.id} className={`toast ${item.isError ? 'error' : ''}`}>
+        <div key={item.id} className={`toast ${item.isError ? 'error' : ''}`} title="Click to dismiss" onClick={() => dismiss(item.id)}>
           {item.message}
           {item.action && (
             <button
               className="ghost toast-action"
-              onClick={() => {
+              onClick={(e) => {
+                // The toast's own click would dismiss it a second time.
+                e.stopPropagation()
                 item.action!.run()
-                setItems((prev) => prev.filter((i) => i.id !== item.id))
+                dismiss(item.id)
               }}
             >
               {item.action.label}

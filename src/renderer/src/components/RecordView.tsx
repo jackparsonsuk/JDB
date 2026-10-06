@@ -357,6 +357,9 @@ function watchPlan(relations: Relation[], keys: Record<string, ChildKeys>, ownCo
   return plan
 }
 
+/** A watch interval as "30s" or "2m". */
+const every = (s: number): string => (s < 60 ? `${s}s` : `${s / 60}m`)
+
 function WatchControls({ watch, interval, intervals, onInterval, withRelated, onWithRelated }: {
   watch: RowWatch; interval: number; intervals: number[]; onInterval(seconds: number): void; withRelated: boolean; onWithRelated(on: boolean): void
 }) {
@@ -366,7 +369,7 @@ function WatchControls({ watch, interval, intervals, onInterval, withRelated, on
         <input type="checkbox" checked={withRelated} onChange={(e) => onWithRelated(e.target.checked)} /> related rows
       </label>
       <select value={interval} onChange={(e) => onInterval(Number(e.target.value))} title="How often the row is read again while watching">
-        {intervals.map((s) => <option key={s} value={s}>every {s < 60 ? `${s}s` : `${s / 60}m`}</option>)}
+        {intervals.map((s) => <option key={s} value={s}>every {every(s)}</option>)}
       </select>
       {watch.watching
         ? <button className="watching" onClick={watch.stop} title="Stop reading the row">◉ Watching</button>
@@ -396,7 +399,7 @@ function WatchTimeline({ watch, interval, plan }: { watch: RowWatch; interval: n
         {watch.error
           ? <>Couldn't read the row{watch.watching ? ', trying again' : ', so watching stopped'}: {watch.error}</>
           : watch.watching
-            ? <>Reading the row every {interval}s{watch.checkedAt && <> · last read {timeOf(watch.checkedAt)}</>}. Changes made between two reads show as one.</>
+            ? <>Reading the row every {every(interval)}{watch.checkedAt && <> · last read {timeOf(watch.checkedAt)}</>}. Changes made between two reads show as one.</>
             : <>Not watching. Press Watch to carry on.</>}
       </div>
       {plan && (plan.watched.length > 0 || plan.skipped.length > 0) && (
@@ -470,16 +473,18 @@ function RelationRow({ relation, local, onCountAnyway }: { relation: Relation; l
   const link = useOpenLink()
   const [open, setOpen] = useState(false)
   const [preview, setPreview] = useState<{ details: TableDetails; rows: RowsResult } | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const target = connection(relation.connectionId)
   const filter: ColumnFilter = { column: relation.column, op: '=', value: relation.value }
   const c = relation.count
 
   useEffect(() => {
     if (!open || preview) return
+    setPreviewError(null)
     Promise.all([
       describe(relation.connectionId, relation.table),
       window.api.fetchRows(relation.connectionId, { table: relation.table, limit: PREVIEW_ROWS, offset: 0, filters: [filter] })
-    ]).then(([details, rows]) => setPreview({ details, rows })).catch(() => undefined)
+    ]).then(([details, rows]) => setPreview({ details, rows })).catch((e) => setPreviewError((e as Error).message))
   }, [open])
 
   const hasRows = c?.status === 'ok' && c.count > 0
@@ -492,18 +497,24 @@ function RelationRow({ relation, local, onCountAnyway }: { relation: Relation; l
   return (
     <div className={`relation ${local ? '' : `remote env-${target?.env}`}`}>
       <div className="relation-row">
-        <button className="relation-toggle" disabled={!hasRows} onClick={() => setOpen((o) => !o)}>{hasRows ? (open ? '▾' : '▸') : ''}</button>
+        <button
+          className="relation-toggle"
+          disabled={!hasRows}
+          title={hasRows ? (open ? 'Hide preview' : `Show the first ${PREVIEW_ROWS} rows`) : undefined}
+          aria-expanded={hasRows ? open : undefined}
+          onClick={() => setOpen((o) => !o)}
+        >{hasRows ? (open ? '▾' : '▸') : ''}</button>
         <span className="relation-name">
           {!local && <><span className="env-dot" /><span className="cross-conn">{target?.name}</span></>}
           {relation.table.name}<span className="muted">.{relation.column}</span>
         </span>
-        <span className={`count-pill ${c?.status ?? 'pending'} ${hasRows ? 'has' : ''}`} title={c?.status === 'skipped' ? c.reason : c?.status === 'error' ? c.message : c?.status === 'timeout' ? 'Stopped after 8 seconds' : undefined}>{badge}</span>
+        <span className={`count-pill ${c?.status ?? 'pending'} ${hasRows ? 'has' : ''}`} title={c?.status === 'skipped' ? c.reason : c?.status === 'error' ? c.message : c?.status === 'timeout' ? 'Took too long to count, so counting stopped' : undefined}>{badge}</span>
         {(c?.status === 'skipped' || c?.status === 'timeout') && <button className="link small" onClick={onCountAnyway}>count anyway</button>}
         {hasRows && <button className="link small" {...link({ kind: 'table', connectionId: relation.connectionId, table: relation.table, filters: [filter] })}>open all</button>}
       </div>
       {open && (
         <div className="relation-preview">
-          {!preview ? <div className="muted small">Loading…</div> : (() => {
+          {!preview ? (previewError ? <div className="conn-error">Couldn't read the rows: {previewError}</div> : <div className="muted small">Loading…</div>) : (() => {
             const pk = preview.details.columns.filter((col) => col.isPrimaryKey)
             const display = pickDisplayColumn(preview.details.columns, relation.table.name)
             const date = pickDateColumn(preview.details.columns)

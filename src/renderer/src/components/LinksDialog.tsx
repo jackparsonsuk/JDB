@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ColumnInfo, ConnectionConfig, CrossLink, LinkCandidate, LinkEnd, LinkOverlap } from '@shared/types'
 import { useAppState } from '../state'
 import { toast } from './Toast'
+import { confirm } from './Confirm'
 import { APP_NAME } from '@shared/brand'
 
 interface Group {
@@ -95,16 +96,38 @@ export function LinksDialog({ connectionId, onClose }: { connectionId: string; o
 
   const removeGroup = async (group: Group): Promise<void> => {
     const ids = pairLinks.filter((l) => group.items.some((i) => linkKey(i.from, i.to) === linkKey(l.from, l.to))).map((l) => l.id)
+    const count = `${ids.length} link${ids.length === 1 ? '' : 's'}`
+    const ok = await confirm({
+      title: `Remove ${count}?`,
+      message: `${name(group.from.connectionId)} ${group.from.column} → ${name(group.to.connectionId)} ${group.to.table.name}.${group.to.column}. Discovery may suggest ${ids.length === 1 ? 'it' : 'them'} again.`,
+      confirmLabel: 'Remove',
+      tone: 'danger'
+    })
+    if (!ok) return
     let next = links
-    for (const id of ids) next = await window.api.deleteLink(id)
+    try {
+      for (const id of ids) next = await window.api.deleteLink(id)
+      toast(`Removed ${count}`)
+    } catch (e) {
+      toast((e as Error).message, true)
+    }
     setLinks(next)
   }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      // A question on top (e.g. Remove's) answers its own Escape.
+      if (e.key === 'Escape' && !document.querySelector('.confirm-overlay')) onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   const chosen = (candidates ?? []).filter((c) => selected.has(linkKey(c.from, c.to)))
 
   return (
     <div className="overlay" onMouseDown={onClose}>
-      <div className="dialog links-dialog" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div className="dialog links-dialog" onMouseDown={(e) => e.stopPropagation()}>
         <h2>Cross-database links</h2>
         <p className="muted small">
           Links let {APP_NAME} jump between databases that can't join each other, e.g. an order in one database to its job in another.
@@ -223,6 +246,7 @@ function ManualLink({ connectionId, otherId }: { connectionId: string; otherId: 
   const [from, setFrom] = useState({ connectionId, table: '', column: '' })
   const [to, setTo] = useState({ connectionId: otherId, table: '', column: '' })
   const [status, setStatus] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => setTo((t) => ({ ...t, connectionId: otherId })), [otherId])
   useEffect(() => {
@@ -244,12 +268,15 @@ function ManualLink({ connectionId, otherId }: { connectionId: string; otherId: 
       return
     }
     setStatus('Checking values…')
+    setBusy(true)
     try {
       const overlap = await window.api.verifyLink(f, t)
       setLinks(await window.api.saveLinks([{ id: '', from: f, to: t, status: 'confirmed', source: 'manual', overlap }]))
       setStatus(`Saved. ${overlap.matched} of ${overlap.sampled} sampled values found on the other side.`)
     } catch (e) {
       setStatus((e as Error).message)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -260,7 +287,7 @@ function ManualLink({ connectionId, otherId }: { connectionId: string; otherId: 
       <EndPicker label="From (the column holding the reference)" end={from} onChange={setFrom} connections={connections} />
       <EndPicker label="To (the key it points at)" end={to} onChange={setTo} connections={connections} />
       <div className="row-gap">
-        <button className="primary" onClick={add}>Check and save</button>
+        <button className="primary" onClick={add} disabled={busy}>Check and save</button>
         <button onClick={() => setOpen(false)}>Cancel</button>
         {status && <span className="muted small">{status}</span>}
       </div>

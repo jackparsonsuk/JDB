@@ -23,6 +23,8 @@ export type Tab = (
        * Autocompletion offers its tables first, written in full; it doesn't change where unqualified names resolve.
        */
       schema?: string
+      /** Open with the Ask bar showing (Ask from the command palette). Not saved. */
+      ask?: boolean
       /** SQL to insert at the cursor (a saved query from the sidebar); `seq` changes when asked again. Not saved. */
       insert?: { sql: string; seq: number }
       /** Results it brought when moved from another window, shown without running again. Not saved. */
@@ -100,7 +102,7 @@ interface AppState {
   open(target: OpenTarget, pane?: PaneId): void
   openTable(connectionId: string, table: TableRef, filters?: ColumnFilter[], pane?: PaneId): void
   /** `schema`: started from a database / schema folder in the sidebar, so its tables are offered first. */
-  openQuery(connectionId: string, sql?: string, schema?: string): void
+  openQuery(connectionId: string, sql?: string, schema?: string, options?: { ask?: boolean }): void
   /** The user's own environments; the built-ins come from @shared/environments. */
   environments: EnvironmentDef[]
   saveEnvironments(environments: EnvironmentDef[]): Promise<void>
@@ -439,9 +441,9 @@ export function AppStateProvider({ children, session, carried }: { children: Rea
   const openRecord = useCallback((connectionId: string, table: TableRef, key: ColumnFilter[], pane?: PaneId, watch?: boolean) =>
     open({ kind: 'record', connectionId, table, key, watch }, pane), [open])
 
-  const openQuery = useCallback((connectionId: string, sql = '', schema?: string) => {
+  const openQuery = useCallback((connectionId: string, sql = '', schema?: string, options?: { ask?: boolean }) => {
     const title = `Query ${++queryCounter.current}${schema ? ` · ${schema}` : ''}`
-    setLayout((s) => panes.addTab(s, { kind: 'query', id: nextTabId(), pane: s.focused, connectionId, title, initialSql: sql, ...(schema && { schema }) }))
+    setLayout((s) => panes.addTab(s, { kind: 'query', id: nextTabId(), pane: s.focused, connectionId, title, initialSql: sql, ...(schema && { schema }), ...(options?.ask && { ask: true }) }))
   }, [])
 
   const [environments, setEnvironments] = useState<EnvironmentDef[]>([])
