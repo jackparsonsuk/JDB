@@ -9,6 +9,7 @@ import { useAppState } from '../state'
 import { wordScore } from '@shared/fuzzy'
 import { appVersion } from '../lib/version'
 import { useUpdate } from '../lib/useUpdate'
+import { openWhatsNew } from '../lib/whatsNew'
 import { setTheme, useColorScheme } from '../lib/theme'
 import { formatCount, selectSql } from '../lib/format'
 import { pinKey, usePinnedTables } from '../lib/pinnedTables'
@@ -235,7 +236,7 @@ export function Sidebar({ onEdit, onNew, onLinks, onSettings }: { onEdit(c: Conn
             Restart to update
           </button>
         ) : (
-          <span className="version" title={`${APP_NAME} version`}>{appVersion}</span>
+          <button className="version" title="What's new: the change log" onClick={() => openWhatsNew()}>{appVersion}</button>
         )}
       </div>
     </nav>

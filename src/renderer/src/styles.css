@@ -211,7 +211,8 @@ kbd {
 .brand .logo-name { font-size: 14px; }
 .sidebar-list { flex: 1; overflow-y: auto; }
 .sidebar-foot { padding: 8px 12px; font-size: 11px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 8px; }
-.sidebar-foot .version { white-space: nowrap; }
+.sidebar-foot .version { white-space: nowrap; padding: 0; border: none; background: none; font: inherit; color: inherit; cursor: pointer; }
+.sidebar-foot .version:hover { color: var(--accent); text-decoration: underline; }
 .sidebar-foot .update { padding: 1px 8px; font-size: 11px; white-space: nowrap; color: var(--accent); border-color: var(--accent); }
 .welcome-version { font-size: 13px; font-weight: normal; }
 
